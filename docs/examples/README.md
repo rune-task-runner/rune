@@ -40,7 +40,7 @@ Each isolates one feature so you can see exactly how it works.
 
 | Example | Capability |
 |---------|-----------|
-| [dependencies](dependencies/README.md) | Dependencies and post-hooks. |
+| [dependencies](dependencies/README.md) | Dependencies, post-hooks, and failure hooks. |
 | [parameters](parameters/README.md) | Defaulted, required, and variadic parameters. |
 | [caching](caching/README.md) | Opt-in content-hash caching (`[cache(...)]`). |
 | [parallel](parallel/README.md) | Running independent prerequisites concurrently. |

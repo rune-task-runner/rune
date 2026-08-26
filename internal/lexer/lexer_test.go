@@ -233,3 +233,47 @@ func TestLexGolden(t *testing.T) {
 }
 
 var _ = kinds // retained for ad-hoc debugging
+
+// TestLexFailHookOperator covers the || failure-hook operator (spec 022):
+// "||" is a single PIPEPIPE token; a lone "|" stays illegal (RUNE1001).
+func TestLexFailHookOperator(t *testing.T) {
+	toks, diags := Lex("Runefile", "deploy: build && notify || diagnose\n    @echo hi\n")
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	var got []string
+	for _, tk := range toks {
+		got = append(got, tk.String())
+	}
+	want := []string{
+		`IDENT("deploy")`, "COLON", `IDENT("build")`, "AMPAMP", `IDENT("notify")`,
+		"PIPEPIPE", `IDENT("diagnose")`, "NEWLINE",
+		"INDENT", "AT", `BODYTEXT("echo hi")`, "NEWLINE", "DEDENT", "EOF",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("token count = %d, want %d\n got: %v\nwant: %v", len(got), len(want), got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("token[%d] = %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+// TestLexLonePipeIllegal: a single "|" has no meaning and must emit RUNE1001,
+// exactly as a lone "&" does.
+func TestLexLonePipeIllegal(t *testing.T) {
+	toks, diags := Lex("Runefile", "deploy: build | diagnose\n    @echo hi\n")
+	if !diags.HasErrors() {
+		t.Fatalf("expected RUNE1001 diagnostics, got none (tokens: %v)", toks)
+	}
+	found := false
+	for i := range diags {
+		if diags[i].Code == "RUNE1001" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected code RUNE1001, got %v", diags)
+	}
+}

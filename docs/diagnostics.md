@@ -46,7 +46,7 @@ filtering and CI.
 | `RUNE1004` | Incomplete expression |
 | `RUNE1005` | Malformed task declaration |
 
-### Semantic (RUNE2xxx) — errors, except `RUNE2010`
+### Semantic (RUNE2xxx) — errors, except `RUNE2010` (warning)
 
 | Code | Condition |
 |------|-----------|
@@ -60,6 +60,7 @@ filtering and CI.
 | `RUNE2008` | Invalid setting |
 | `RUNE2009` | Invalid executor *(reserved; executors are open-ended custom interpreters)* |
 | `RUNE2010` | Public task lacks documentation — **warning**, never gates execution or exit code |
+| `RUNE2011` | Invalid failure hook (a `\|\|` hook targets — or reaches through its dependencies — an `agent`-executor task) |
 
 ### Project (RUNE3xxx) — errors
 

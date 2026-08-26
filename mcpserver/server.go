@@ -15,6 +15,12 @@ type Result struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
+	// FixSuggestion is the captured output of the task's || failure hooks
+	// (spec 022). Like Options.Instructions, it must already be masked and
+	// size-capped by the engine; this package never processes it, only
+	// renders it as a delimited section after the exit marker. Empty means
+	// no section is rendered.
+	FixSuggestion string
 }
 
 // ParamInfo describes a task parameter for input-schema derivation.

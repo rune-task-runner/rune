@@ -10,3 +10,7 @@ greet name="world":
 build: greet
     @echo "building {{build_dir}}..."
     go build ./...
+
+# Deploy with post-mortem diagnostics.
+deploy: build && notify || (diagnose "verbose")
+    @echo "deploying"

@@ -9,7 +9,9 @@ An OS attribute makes a task exist only on the platforms it names. On a non-matc
 the task is **hidden** from `--list`, the interactive picker, shell completion, and the MCP
 tool list; **not runnable** — invoking it by name fails with a diagnostic naming the
 required OS (exit 3); and **silently skipped as a dependency or post-hook**, which lets one
-cross-platform task depend on per-OS variants and run exactly the matching one. This keeps
+cross-platform task depend on per-OS variants and run exactly the matching one (a `||`
+failure hook is skipped **with a warning** instead — a silent skip would hide why no
+diagnostic appeared). This keeps
 platform-specific setup in one Runefile without cluttering every machine's task list. The
 `os()` and `arch()` built-ins report the current platform for inline branching, and
 `rune --dump --format json` reports the computed verdict per task in an `available` field.

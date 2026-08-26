@@ -84,12 +84,25 @@ type Task struct {
 	Executor   string // "" => default sh
 	Deps       []*DepCall
 	PostHooks  []*DepCall // run after, on success (&&)
+	FailHooks  []*DepCall // run after, on failure (||)
 	Attributes []*Attribute
 	Body       []*BodyLine
 	Sp         token.Span
 }
 
 func (t *Task) Span() token.Span { return t.Sp }
+
+// Edges returns every outgoing task reference of t: dependencies, && post-
+// hooks, and || failure hooks — the single edge-set definition shared by
+// dependency resolution, cycle detection, [context] closure walks, and
+// editor navigation, so a new clause kind cannot be missed by one of them.
+func (t *Task) Edges() []*DepCall {
+	edges := make([]*DepCall, 0, len(t.Deps)+len(t.PostHooks)+len(t.FailHooks))
+	edges = append(edges, t.Deps...)
+	edges = append(edges, t.PostHooks...)
+	edges = append(edges, t.FailHooks...)
+	return edges
+}
 
 // IsPrivate reports whether the task carries the [private] attribute or a name
 // beginning with '_'.

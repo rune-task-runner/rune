@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/rune-task-runner/rune/internal/ast"
 )
@@ -59,16 +57,8 @@ func (a *mcpAdapter) gatherContext(ctx context.Context, stderr io.Writer) string
 		fmt.Fprintf(stderr, "warning: %s\n", msg)
 		return "(" + msg + ")"
 	}
-	out := strings.TrimRight(res.Stdout, "\r\n")
-	if len(out) > contextMaxBytes {
-		// Masking already happened inside Call, so the cut cannot expose a
-		// secret that the mask would have caught. Back up to a rune boundary
-		// so the injected text stays valid UTF-8.
-		cut := contextMaxBytes
-		for cut > 0 && !utf8.RuneStart(out[cut]) {
-			cut--
-		}
-		out = out[:cut] + "\n[truncated]"
-	}
-	return out
+	// Masking already happened inside Call, so the cap cannot expose a
+	// secret that the mask would have caught; capAgentText is the shared
+	// truncation discipline (also used for the || fix suggestion).
+	return capAgentText(res.Stdout)
 }

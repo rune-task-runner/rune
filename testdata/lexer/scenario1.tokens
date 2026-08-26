@@ -25,4 +25,17 @@ AT
 BODYTEXT("echo \"building...\"")
 NEWLINE
 DEDENT
+IDENT("deploy")
+COLON
+IDENT("build")
+AMPAMP
+IDENT("notify")
+PIPEPIPE
+IDENT("diagnose")
+NEWLINE
+INDENT
+AT
+BODYTEXT("echo \"deploying\"")
+NEWLINE
+DEDENT
 EOF

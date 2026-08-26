@@ -6,16 +6,33 @@
 // Dependency and post-hook targets the Engine reports unavailable (e.g.
 // declared for another OS) are skipped silently — they never execute and
 // leave no memo entry — while the depending task still runs (spec 020).
+//
+// || failure hooks (spec 022) are the one deliberate exception to run-once:
+// a hook body runs once per FAILING task (its dependencies still memoize),
+// carries the failure context, never alters the original error, and never
+// chains its own || hooks. User cancellation fires no hooks. Unavailable or
+// failing hooks warn via Engine.Warnf instead of being silent — a silent
+// skip would hide why no diagnosis appeared.
 package scheduler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/rune-task-runner/rune/internal/ast"
+	"github.com/rune-task-runner/rune/internal/runtime/interp"
+	"github.com/rune-task-runner/rune/internal/runtime/shell"
 )
+
+// ErrBodyNotRun marks an Execute error raised before the task's body started
+// (e.g. a declined [confirm] prompt). Failure hooks fire for body failures
+// only (spec 022 FR-003), so errors wrapping this sentinel suppress the
+// task's || hooks.
+var ErrBodyNotRun = errors.New("task body did not run")
 
 // Engine resolves dependencies and executes task bodies. The CLI layer
 // implements it (it owns the evaluator, parameter binding, and executors).
@@ -25,11 +42,23 @@ type Engine interface {
 	ResolveDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall) (*ast.Task, map[string]string, error)
 	// Execute runs a single task body with its bound parameters.
 	Execute(task *ast.Task, params map[string]string) error
+	// ExecuteFailHook runs a || failure-hook body with the failure context
+	// available to it (spec 022 FR-009). Called outside the memo table.
+	ExecuteFailHook(task *ast.Task, params map[string]string, f Failure) error
+	// Warnf emits a one-line warning (failure-hook skip or failure).
+	Warnf(format string, args ...any)
 	// Namespace returns the memoization namespace for a task (mod path, or "").
 	Namespace(task *ast.Task) string
 	// Available reports whether a task may run on this host. Unavailable
 	// dependency/post-hook targets are skipped silently.
 	Available(task *ast.Task) bool
+}
+
+// Failure is the context of one task-body failure, handed to every failure
+// hook fired for it.
+type Failure struct {
+	TaskName string // user-visible (namespaced) name of the failed task
+	ExitCode int    // exit code of the failed body; 1 when non-numeric
 }
 
 // Invocation is a task plus its resolved parameters (a scheduler root).
@@ -60,6 +89,13 @@ type state struct {
 	mu       sync.Mutex
 	done     map[string]error           // completed keys -> result
 	inflight map[string]*sync.WaitGroup // keys currently running
+
+	// hookMu serializes || hook BODY runs. Hook bodies live outside the
+	// memo/inflight table (once per failing task), so without this two
+	// [parallel] siblings failing at once would run the same hook body
+	// concurrently with itself — interleaving its output and racing any
+	// side effects. Hook dependencies still parallelize normally.
+	hookMu sync.Mutex
 }
 
 // run executes a task once (singleflight by memo key). chain is the
@@ -116,6 +152,7 @@ func (s *state) execute(task *ast.Task, params map[string]string, chain []string
 	}
 
 	if err := s.engine.Execute(task, params); err != nil {
+		s.runFailHooks(task, params, err, chain)
 		return err
 	}
 
@@ -125,6 +162,93 @@ func (s *state) execute(task *ast.Task, params map[string]string, chain []string
 		}
 	}
 	return nil
+}
+
+// runFailHooks fires the task's || hooks after its own body failed. Hook
+// outcomes never surface: the caller returns the original body error, so the
+// exit code is preserved (FR-004); hook failures and skips become warnings.
+// User cancellation aborts everything — no post-mortem runs (FR-002).
+func (s *state) runFailHooks(task *ast.Task, params map[string]string, bodyErr error, chain []string) {
+	if len(task.FailHooks) == 0 || errors.Is(bodyErr, context.Canceled) || errors.Is(bodyErr, ErrBodyNotRun) {
+		return
+	}
+	f := Failure{TaskName: task.Name, ExitCode: failureExitCode(bodyErr)}
+	for _, hook := range task.FailHooks {
+		target, hookParams, err := s.engine.ResolveDep(task, params, hook)
+		if err != nil {
+			s.engine.Warnf("failure hook %s could not be resolved: %v", hook.Name, err)
+			continue
+		}
+		if !s.engine.Available(target) {
+			s.engine.Warnf("failure hook %s skipped: not available on this OS", target.Name)
+			continue
+		}
+		if err := s.runFailHook(target, hookParams, f, chain); err != nil {
+			if errors.Is(err, context.Canceled) {
+				// The run is being cancelled (Ctrl-C): stop firing hooks
+				// quietly — a "failure hook failed" warning here would be
+				// noise about the user's own interrupt (FR-002).
+				return
+			}
+			s.engine.Warnf("failure hook %s failed: %v", target.Name, err)
+		}
+	}
+}
+
+// runFailHook runs one hook occurrence: dependencies and && post-hooks under
+// normal memoized semantics, the body via ExecuteFailHook OUTSIDE the memo
+// table (once per failure, spec 022 clarification Q2). The hook's own ||
+// hooks are deliberately not consulted — post-mortems do not chain.
+func (s *state) runFailHook(hook *ast.Task, params map[string]string, f Failure, chain []string) error {
+	for _, name := range chain {
+		if name == hook.Name {
+			return &CycleError{Path: cyclePath(chain, hook.Name)}
+		}
+	}
+	chain = append(append([]string{}, chain...), hook.Name)
+
+	if hook.Attr(ast.AttrParallel) != nil {
+		if err := s.runDepsParallel(hook, params, hook.Deps, chain); err != nil {
+			return err
+		}
+	} else {
+		for _, dep := range hook.Deps {
+			if err := s.runDep(hook, params, dep, chain); err != nil {
+				return err
+			}
+		}
+	}
+
+	s.hookMu.Lock()
+	err := s.engine.ExecuteFailHook(hook, params, f)
+	s.hookMu.Unlock()
+	if err != nil {
+		return err
+	}
+
+	for _, ph := range hook.PostHooks {
+		if err := s.runDep(hook, params, ph, chain); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// failureExitCode extracts the failed body's exit code: the shell or
+// interpreter executor's real exit status when available, else 1 (mirroring
+// the CLI's ExitTaskFail). A zero Code on an executor error means no exit
+// status was recorded (e.g. a shell parse error) — the task still failed, so
+// that also falls back to 1 rather than reporting a bogus "exit 0".
+func failureExitCode(err error) int {
+	var se *shell.ExecError
+	if errors.As(err, &se) && se.Code != 0 {
+		return se.Code
+	}
+	var ie *interp.ExecError
+	if errors.As(err, &ie) && ie.Code != 0 {
+		return ie.Code
+	}
+	return 1
 }
 
 func (s *state) runDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall, chain []string) error {

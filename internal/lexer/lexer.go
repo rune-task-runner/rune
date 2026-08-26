@@ -370,6 +370,12 @@ func (l *lexer) lexOperator() {
 		} else {
 			l.illegal(start)
 		}
+	case '|':
+		if l.at(l.pos+1) == '|' {
+			two(token.PIPEPIPE)
+		} else {
+			l.illegal(start)
+		}
 	case '=':
 		switch l.at(l.pos + 1) {
 		case '=':

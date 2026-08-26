@@ -148,3 +148,45 @@ func TestParseGolden(t *testing.T) {
 		})
 	}
 }
+
+func TestParseFailHook(t *testing.T) {
+	f := mustParse(t, "test: build && notify || diagnose\n    echo test\n")
+	tk := f.Tasks[0]
+	if len(tk.Deps) != 1 || tk.Deps[0].Name != "build" {
+		t.Errorf("deps = %+v", tk.Deps)
+	}
+	if len(tk.PostHooks) != 1 || tk.PostHooks[0].Name != "notify" {
+		t.Errorf("posthooks = %+v", tk.PostHooks)
+	}
+	if len(tk.FailHooks) != 1 || tk.FailHooks[0].Name != "diagnose" {
+		t.Errorf("failhooks = %+v", tk.FailHooks)
+	}
+}
+
+func TestParseFailHookOnly(t *testing.T) {
+	f := mustParse(t, "test: || diagnose report\n    echo test\n")
+	tk := f.Tasks[0]
+	if len(tk.Deps) != 0 || len(tk.PostHooks) != 0 {
+		t.Errorf("deps/posthooks = %+v / %+v", tk.Deps, tk.PostHooks)
+	}
+	if len(tk.FailHooks) != 2 || tk.FailHooks[0].Name != "diagnose" || tk.FailHooks[1].Name != "report" {
+		t.Errorf("failhooks = %+v", tk.FailHooks)
+	}
+}
+
+func TestParseFailHookWithArgs(t *testing.T) {
+	f := mustParse(t, "test: || (diagnose \"verbose\")\n    echo test\n")
+	tk := f.Tasks[0]
+	if len(tk.FailHooks) != 1 || tk.FailHooks[0].Name != "diagnose" || len(tk.FailHooks[0].Args) != 1 {
+		t.Fatalf("failhooks = %+v", tk.FailHooks)
+	}
+}
+
+// TestParseFailHookClauseOrderFixed: the || clause must come last —
+// "|| ... && ..." is a parse error (contracts/grammar.md).
+func TestParseFailHookClauseOrderFixed(t *testing.T) {
+	_, diags := Parse("Runefile", "test: a || c && b\n    echo test\n")
+	if !diags.HasErrors() {
+		t.Fatal("expected parse error for '|| ... && ...' clause order, got none")
+	}
+}

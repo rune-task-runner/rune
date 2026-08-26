@@ -13,3 +13,12 @@ test:
 
 notify:
     @echo "notify: deployed ✓"
+
+# Failure hooks (after ||) run only when the task's own body FAILS —
+# post-mortem diagnostics with the failure context in the environment.
+flaky: || diagnose
+    @echo "checking"
+    @exit 3
+
+diagnose:
+    @echo "diagnose: $RUNE_FAILED_TASK failed with exit $RUNE_FAILED_EXIT_CODE"

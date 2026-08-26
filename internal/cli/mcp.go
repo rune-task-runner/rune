@@ -78,7 +78,14 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 	if !t.AvailableOn(a.goos) {
 		return mcpserver.Result{}, availabilityErr(name, t, a.goos)
 	}
+	// syncWriter guards the capture buffers: [parallel] tasks (and their ||
+	// failure hooks) write concurrently, and when the mask set is empty
+	// maskOptions leaves the writers unwrapped, so the buffers themselves
+	// must be safe. With a non-empty set the mask writer's own lock sits on
+	// top; the extra mutex there is uncontended.
 	var outBuf, errBuf bytes.Buffer
+	outSink := &syncWriter{w: &outBuf}
+	errSink := &syncWriter{w: &errBuf}
 	scope := eval.NewScope(a.assigns, a.overrides)
 	// One host-OS truth per adapter: availability (above), dependency
 	// skipping (eng.goos below), and the os()/os_family() builtins must
@@ -89,7 +96,7 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 	// The same masking choke point as the CLI path: the buffers only ever hold
 	// masked text, so the tool result an agent receives is safe by construction.
 	mopts, flushMask := maskOptions(
-		Options{Stdin: nil, Stdout: &outBuf, Stderr: &errBuf, Cwd: a.workDir, Quiet: true},
+		Options{Stdin: nil, Stdout: outSink, Stderr: errSink, Cwd: a.workDir, Quiet: true},
 		a.maskSet,
 	)
 
@@ -98,18 +105,27 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 	// keeps gatherContext → Call → executeAgent from recursing when an agent
 	// task is reached through this path. If you ever thread file through,
 	// add an explicit recursion guard first (spec 021, review finding).
+	// || failure-hook stdout is captured separately (spec 022): masked at the
+	// writer like the main buffers, serialized because [parallel] failures can
+	// fire hooks concurrently, and capped twice — the buffer stops storing a
+	// little past the budget (so a runaway hook cannot grow the long-lived
+	// server's memory) and capAgentText renders the exact cap after the flush.
+	fixBuf := &cappedBuffer{max: contextMaxBytes + 64}
+	fixSink, flushFix := maskWriter(fixBuf, a.maskSet)
+
 	eng := &engine{
-		tasks:    a.tasks,
-		scope:    scope,
-		settings: a.settings,
-		workDir:  a.workDir,
-		root:     a.root,
-		env:      a.baseEnv,
-		opts:     mopts,
-		plan:     planRun,
-		now:      a.now,
-		ctx:      ctx,
-		goos:     a.goos,
+		tasks:       a.tasks,
+		scope:       scope,
+		settings:    a.settings,
+		workDir:     a.workDir,
+		root:        a.root,
+		env:         a.baseEnv,
+		opts:        mopts,
+		plan:        planRun,
+		now:         a.now,
+		ctx:         ctx,
+		goos:        a.goos,
+		failHookOut: &syncWriter{w: fixSink},
 	}
 
 	params, err := bindNamedParams(t, args, scope)
@@ -125,5 +141,11 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 		code = CodeFor(eng.classifyRunErr(runErr))
 	}
 	flushMask()
-	return mcpserver.Result{Stdout: outBuf.String(), Stderr: errBuf.String(), ExitCode: code}, nil
+	flushFix()
+	return mcpserver.Result{
+		Stdout:        outBuf.String(),
+		Stderr:        errBuf.String(),
+		ExitCode:      code,
+		FixSuggestion: capAgentText(fixBuf.String()),
+	}, nil
 }

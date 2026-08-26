@@ -136,7 +136,7 @@ func (a *analyzer) checkContext() {
 // prep. Unknown dependency names are left to checkDependencies.
 func (a *analyzer) checkContextClosure(hook *ast.Task) {
 	visited := map[string]bool{hook.Name: true}
-	queue := append(append([]*ast.DepCall{}, hook.Deps...), hook.PostHooks...)
+	queue := hook.Edges()
 	for len(queue) > 0 {
 		dep := queue[0]
 		queue = queue[1:]
@@ -151,8 +151,7 @@ func (a *analyzer) checkContextClosure(hook *ast.Task) {
 		if t.Executor == ast.ExecAgent {
 			a.diags.Codef(diag.CodeInvalidAttribute, dep.Sp, "dependency %q of [context] task %q cannot use the agent executor", t.Name, hook.Name)
 		}
-		queue = append(queue, t.Deps...)
-		queue = append(queue, t.PostHooks...)
+		queue = append(queue, t.Edges()...)
 	}
 }
 
@@ -175,12 +174,7 @@ func (a *analyzer) checkExpressions() {
 		for _, p := range t.Params {
 			a.resolveExpr(p.Default, params)
 		}
-		for _, dep := range t.Deps {
-			for _, arg := range dep.Args {
-				a.resolveExpr(arg, params)
-			}
-		}
-		for _, dep := range t.PostHooks {
+		for _, dep := range t.Edges() {
 			for _, arg := range dep.Args {
 				a.resolveExpr(arg, params)
 			}
@@ -232,16 +226,58 @@ func (a *analyzer) resolveExpr(e ast.Expr, validParams map[string]bool) {
 	}
 }
 
-// checkDependencies resolves dependency/post-hook target names and arity.
+// checkDependencies resolves dependency/post-hook/fail-hook target names and
+// arity. Fail-hook targets additionally must not reach the agent executor
+// anywhere in their closure: a post-mortem must never recursively require an
+// agent session (spec 022 FR-011).
 func (a *analyzer) checkDependencies() {
 	for _, t := range a.file.Tasks {
-		for _, dep := range append(append([]*ast.DepCall{}, t.Deps...), t.PostHooks...) {
+		for _, dep := range t.Edges() {
 			target, ok := a.tasks[dep.Name]
 			if !ok {
 				a.diags.Codef(diag.CodeUnknownDependency, dep.Sp, "unknown task: %s", dep.Name)
 				continue
 			}
 			a.checkArity(target, len(dep.Args), dep.Sp)
+		}
+		for _, dep := range t.FailHooks {
+			a.checkFailHookClosure(t, dep)
+		}
+	}
+}
+
+// checkFailHookClosure rejects a || hook whose reachable task closure
+// contains an agent-executor task (RUNE2011, FR-011). During a hook run the
+// hook's dependencies and && post-hooks execute under normal semantics, so
+// checking only the direct target would still let a post-mortem spawn an
+// agent session through them — the same transitive rule as the [context]
+// closure walk. Unknown names are left to checkDependencies.
+func (a *analyzer) checkFailHookClosure(t *ast.Task, dep *ast.DepCall) {
+	start, ok := a.tasks[dep.Name]
+	if !ok {
+		return
+	}
+	visited := map[string]bool{}
+	queue := []*ast.Task{start}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if visited[cur.Name] {
+			continue
+		}
+		visited[cur.Name] = true
+		if cur.Executor == ast.ExecAgent {
+			if cur == start {
+				a.diags.Codef(diag.CodeInvalidFailureHook, dep.Sp, "failure hook %q of task %q cannot use the agent executor", start.Name, t.Name)
+			} else {
+				a.diags.Codef(diag.CodeInvalidFailureHook, dep.Sp, "failure hook %q of task %q reaches task %q, which uses the agent executor", start.Name, t.Name, cur.Name)
+			}
+			return
+		}
+		for _, e := range cur.Edges() {
+			if next, ok := a.tasks[e.Name]; ok && !visited[next.Name] {
+				queue = append(queue, next)
+			}
 		}
 	}
 }
@@ -292,7 +328,7 @@ func (a *analyzer) checkCycles() {
 		}
 		color[name] = gray
 		stack = append(stack, name)
-		for _, dep := range append(append([]*ast.DepCall{}, t.Deps...), t.PostHooks...) {
+		for _, dep := range t.Edges() {
 			switch color[dep.Name] {
 			case gray:
 				a.reportCycle(t.Sp, stack, dep.Name)

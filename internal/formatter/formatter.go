@@ -108,6 +108,13 @@ func formatTask(t *ast.Task) string {
 			b.WriteString(formatDep(d))
 		}
 	}
+	if len(t.FailHooks) > 0 {
+		b.WriteString(" ||")
+		for _, d := range t.FailHooks {
+			b.WriteByte(' ')
+			b.WriteString(formatDep(d))
+		}
+	}
 	b.WriteByte('\n')
 
 	for _, bl := range t.Body {

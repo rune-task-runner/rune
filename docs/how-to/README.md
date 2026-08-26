@@ -10,7 +10,7 @@ for a guided tour, see the **[user guide](../user-guide/README.md)**.
 
 | How-to | Capability | Example |
 |--------|-----------|---------|
-| [Dependencies & post-hooks](dependencies-and-hooks.md) | Order work; run things before/after | [dependencies](../examples/dependencies/README.md) |
+| [Dependencies & post-hooks](dependencies-and-hooks.md) | Order work; run things before/after/on failure | [dependencies](../examples/dependencies/README.md) |
 | [Parameters](parameters.md) | Defaulted, required, variadic inputs | [parameters](../examples/parameters/README.md) |
 | [Caching](caching.md) | Opt-in content-hash skipping | [caching](../examples/caching/README.md) |
 | [Parallelism](parallelism.md) | Run independent prerequisites concurrently | [parallel](../examples/parallel/README.md) |

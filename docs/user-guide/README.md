@@ -20,7 +20,7 @@ between them. Everything else builds on that. For the complete syntax in one pla
 ## 3. Composing work
 
 - **[Dependencies & post-hooks](../how-to/dependencies-and-hooks.md)** — order work; run things
-  before and after.
+  before, after, and on failure.
 - **[Parameters](../how-to/parameters.md)** — defaulted, required, and variadic inputs.
 - **[Parallelism](../how-to/parallelism.md)** — run independent prerequisites concurrently.
 - **[Imports & modules](../how-to/imports-and-modules.md)** — split and namespace task files

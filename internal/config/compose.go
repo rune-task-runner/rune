@@ -151,6 +151,7 @@ func namespaceInto(f, sub *ast.File, ns string, diags *diag.List) {
 	for _, t := range sub.Tasks {
 		rewrite(t.Deps)
 		rewrite(t.PostHooks)
+		rewrite(t.FailHooks)
 		t.Name = prefix + t.Name
 		if existing[t.Name] {
 			diags.Codef(diag.CodeDuplicateNamespace, t.Sp, "module collision: task %q already defined", t.Name)

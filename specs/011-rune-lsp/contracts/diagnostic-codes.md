@@ -26,6 +26,7 @@ Per the 2026-07-10 clarification and FR-010, these codes are a **stable public c
 | `RUNE2008` | Invalid setting | — |
 | `RUNE2009` | Invalid executor | — |
 | `RUNE2010` | **Public task lacks documentation** — severity: **warning** (FR-008a); never causes exit 3 | task declaration |
+| `RUNE2011` | Invalid failure hook — a `\|\|` hook targets, or reaches through its dependency closure, an `agent`-executor task (spec 022 FR-011) | — |
 
 ## Project diagnostics (RUNE3xxx) — severity: error
 

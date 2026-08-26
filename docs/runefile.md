@@ -59,8 +59,10 @@ Run them: `rune greet Ada`, `rune deploy prod`, `rune test ./... ./cmd/...`.
 
 ### Dependencies and post-hooks
 
-Dependencies run **before** the task; post-hooks (after `&&`) run **after** it succeeds.
-Each task runs at most once per invocation.
+Dependencies run **before** the task; post-hooks (after `&&`) run **after** it succeeds;
+failure hooks (after `||`) run **after** it fails — the place to run a diagnostic and
+turn a raw exit code into a post-mortem. Each task runs at most once per invocation
+(failure hooks are the one exception: they run once per failing task).
 
 ```rune
 deploy: build test && notify
@@ -69,12 +71,25 @@ deploy: build test && notify
 build:
     go build ./...
 
-test:
+test: || diagnose
     go test ./...
 
 notify:
     @echo "deployed ✓"
+
+diagnose:
+    @echo "post-mortem for $RUNE_FAILED_TASK (exit $RUNE_FAILED_EXIT_CODE)"
+    go vet ./...
 ```
+
+Clause order is fixed: dependencies, then `&&`, then `||`. Failure hooks fire only when
+the task's **own body** fails (a failing dependency fires its own hooks instead), never
+change the exit code, and never chain — a hook's own `||` hooks are ignored while it
+runs as a hook. The hook body sees the failed task's name and exit code in
+`RUNE_FAILED_TASK` and `RUNE_FAILED_EXIT_CODE`. On the CLI the hook's output streams
+under a `diagnosing:` header; over MCP it reaches the agent as a *fix suggestion*
+section in the same tool response as the failure (masked and size-capped) — see
+[mcp.md](mcp.md). Cancelling with Ctrl-C aborts everything, hooks included.
 
 Pass arguments to a dependency with the parenthesized form:
 
@@ -261,7 +276,9 @@ matches every platform except Windows. On a non-matching host the task is:
 - **skipped silently as a dependency or post-hook**, which turns per-OS tasks
   into a dispatch pattern — one cross-platform task can depend on a
   `[linux]`, a `[macos]`, and a `[windows]` variant, and only the matching
-  one runs:
+  one runs (a `||` failure hook is the exception: skipping it emits a
+  one-line warning, because a silently missing diagnostic would hide why no
+  post-mortem appeared):
 
 ```rune
 # Install the toolchain for this platform.

@@ -13,16 +13,17 @@ const (
 	CodeMalformedTaskDecl = "RUNE1005"
 
 	// Semantic diagnostics (RUNE2xxx) — error, except RUNE2010 (warning).
-	CodeUnknownDependency = "RUNE2001"
-	CodeDuplicateTask     = "RUNE2002"
-	CodeDependencyCycle   = "RUNE2003"
-	CodeUndefinedVariable = "RUNE2004"
-	CodeWrongArgCount     = "RUNE2005"
-	CodeDuplicateParam    = "RUNE2006"
-	CodeInvalidAttribute  = "RUNE2007"
-	CodeInvalidSetting    = "RUNE2008"
-	CodeInvalidExecutor   = "RUNE2009"
-	CodeUndocumentedTask  = "RUNE2010" // warning: public task lacks documentation (FR-008a)
+	CodeUnknownDependency  = "RUNE2001"
+	CodeDuplicateTask      = "RUNE2002"
+	CodeDependencyCycle    = "RUNE2003"
+	CodeUndefinedVariable  = "RUNE2004"
+	CodeWrongArgCount      = "RUNE2005"
+	CodeDuplicateParam     = "RUNE2006"
+	CodeInvalidAttribute   = "RUNE2007"
+	CodeInvalidSetting     = "RUNE2008"
+	CodeInvalidExecutor    = "RUNE2009"
+	CodeUndocumentedTask   = "RUNE2010" // warning: public task lacks documentation (FR-008a)
+	CodeInvalidFailureHook = "RUNE2011" // a || failure hook targets an agent-executor task (spec 022 FR-011)
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

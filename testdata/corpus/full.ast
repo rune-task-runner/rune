@@ -55,3 +55,12 @@ File
   Task notify
     Body
       @"echo notified"
+  Task test
+    Deps: build
+    FailHooks: (diagnose "verbose")
+    Body
+      @"echo testing"
+  Task diagnose
+    Param mode defaulted = "quick"
+    Body
+      @"echo diagnosing {{mode}}"
