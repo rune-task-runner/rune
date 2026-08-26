@@ -29,14 +29,15 @@ Import      = "import" [ "?" ] StringLit NEWLINE ;
 Mod         = "mod" Name [ StringLit ] NEWLINE ;
 
 Task        = { Attribute } Signature ":" [ Deps ] [ "&&" PostHooks ]
-              NEWLINE INDENT Body DEDENT ;
+              [ "||" FailHooks ] NEWLINE INDENT Body DEDENT ;
 Signature   = Name { Param } [ "(" Executor ")" ] ;
 Param       = Name [ "=" Expr ]            (* defaulted *)
             | "+" Name                     (* variadic, one-or-more *)
             | "*" Name ;                   (* variadic, zero-or-more *)
 Executor    = "sh" | "python" | "node" | "agent" | Name ;
 Deps        = DepCall { DepCall } ;
-PostHooks   = DepCall { DepCall } ;
+PostHooks   = DepCall { DepCall } ;               (* run after, on success *)
+FailHooks   = DepCall { DepCall } ;               (* run after, on failure *)
 DepCall     = Name | "(" Name { Expr } ")" ;     (* parenthesized form passes args *)
 
 Body        = { BodyLine } ;

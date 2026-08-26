@@ -53,3 +53,26 @@ func TestDumpAvailabilityVerdict(t *testing.T) {
 		t.Error("[linux] task must dump available:false on windows")
 	}
 }
+
+// Spec 022: --dump carries failure hooks in a dedicated failHooks field.
+func TestDumpFailHooks(t *testing.T) {
+	src := "test: build && notify || diagnose\n    @echo t\n" +
+		"build:\n    @echo b\nnotify:\n    @echo n\ndiagnose:\n    @echo d\n"
+	f, diags := parser.Parse("Runefile", src)
+	if diags.HasErrors() {
+		t.Fatalf("parse: %v", diags)
+	}
+	for _, td := range toDTO(f, "linux").Tasks {
+		if td.Name != "test" {
+			continue
+		}
+		if len(td.PostHooks) != 1 || td.PostHooks[0] != "notify" {
+			t.Errorf("postHooks = %v", td.PostHooks)
+		}
+		if len(td.FailHooks) != 1 || td.FailHooks[0] != "diagnose" {
+			t.Errorf("failHooks = %v", td.FailHooks)
+		}
+		return
+	}
+	t.Fatal("task 'test' not found in dump")
+}

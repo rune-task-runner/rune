@@ -12,3 +12,10 @@ File
     Body
       @"echo \"building {{build_dir}}...\""
       "go build ./..."
+  Task deploy
+    doc: "Deploy with post-mortem diagnostics."
+    Deps: build
+    PostHooks: notify
+    FailHooks: (diagnose "verbose")
+    Body
+      @"echo \"deploying\""

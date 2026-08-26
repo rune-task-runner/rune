@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -17,13 +18,19 @@ type mockEngine struct {
 	tasks       map[string]*ast.Task
 	failOn      string
 	execErr     error
+	failErrs    map[string]error // per-task body errors (multi-failure tests)
+	hookFailOn  string           // ExecuteFailHook fails for this hook name
+	hookErr     error            // error for hookFailOn (default "hook boom")
+	hookGate    func()           // called inside ExecuteFailHook (concurrency probes)
 	delay       time.Duration
 	unavailable map[string]bool // tasks Available reports false for
 
-	mu      sync.Mutex
-	order   []string
-	running int
-	maxConc int
+	mu       sync.Mutex
+	order    []string
+	failures []Failure // failure contexts seen by ExecuteFailHook
+	warnings []string
+	running  int
+	maxConc  int
 }
 
 func (m *mockEngine) ResolveDep(_ *ast.Task, _ map[string]string, dep *ast.DepCall) (*ast.Task, map[string]string, error) {
@@ -54,7 +61,35 @@ func (m *mockEngine) Execute(task *ast.Task, _ map[string]string) error {
 	if task.Name == m.failOn {
 		return m.execErr
 	}
+	if err, ok := m.failErrs[task.Name]; ok {
+		return err
+	}
 	return nil
+}
+
+// ExecuteFailHook records the hook run as "||<name>" plus the failure context
+// it observed; the memo-bypass tests count these entries.
+func (m *mockEngine) ExecuteFailHook(task *ast.Task, _ map[string]string, f Failure) error {
+	m.mu.Lock()
+	m.order = append(m.order, "||"+task.Name)
+	m.failures = append(m.failures, f)
+	m.mu.Unlock()
+	if m.hookGate != nil {
+		m.hookGate()
+	}
+	if task.Name == m.hookFailOn {
+		if m.hookErr != nil {
+			return m.hookErr
+		}
+		return errors.New("hook boom")
+	}
+	return nil
+}
+
+func (m *mockEngine) Warnf(format string, args ...any) {
+	m.mu.Lock()
+	m.warnings = append(m.warnings, fmt.Sprintf(format, args...))
+	m.mu.Unlock()
 }
 
 func (m *mockEngine) Namespace(_ *ast.Task) string { return "" }

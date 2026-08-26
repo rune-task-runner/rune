@@ -111,3 +111,29 @@ func TestComposeModNamespacing(t *testing.T) {
 		}
 	}
 }
+
+// Spec 022: || failure-hook references into module-local tasks are
+// namespace-rewritten exactly like deps and && post-hooks.
+func TestComposeImportRewritesFailHooks(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "ci.rune", "test: || diagnose\n    @echo t\ndiagnose:\n    @echo d\n")
+	main := writeFile(t, dir, "Runefile", "mod ci \"ci.rune\"\n\nall: ci::test\n    @echo all\n")
+
+	src, _ := os.ReadFile(main)
+	f, pd := parser.Parse(main, string(src))
+	if pd.HasErrors() {
+		t.Fatal(pd)
+	}
+	if diags := Compose(f, diag.SourceProvider(srcProvider)); diags.HasErrors() {
+		t.Fatalf("unexpected: %v", diags)
+	}
+	for _, tk := range f.Tasks {
+		if tk.Name == "ci::test" {
+			if len(tk.FailHooks) != 1 || tk.FailHooks[0].Name != "ci::diagnose" {
+				t.Fatalf("fail hook not rewritten: %+v", tk.FailHooks)
+			}
+			return
+		}
+	}
+	t.Fatal("ci::test not found after compose")
+}

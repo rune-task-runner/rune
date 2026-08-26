@@ -86,6 +86,38 @@ normal semantics — prefix the line with `-` (continue on error) to deliver the
 findings as context instead. The hook itself is never exposed as a tool; it stays
 runnable by name from the CLI for debugging.
 
+## Fix suggestions on failure
+
+Give a task a `||` [failure hook](how-to/dependencies-and-hooks.md) and a failing
+tool call returns more than a raw exit code — the hook runs a diagnostic and its
+output arrives in the **same tool response** as the failure, under a delimited
+section:
+
+```text
+running tests
+[exit 1]
+[fix suggestion - from Runefile || failure hooks]
+SUGGESTION: re-run go test -v ./pkg/... — 2 fixtures out of date
+```
+
+```rune
+test: || diagnose
+    go test ./...
+
+diagnose:
+    @echo "post-mortem for $RUNE_FAILED_TASK (exit $RUNE_FAILED_EXIT_CODE)"
+    -go vet ./...
+```
+
+The agent needs no extra round trip to learn what broke. The suggestion is the
+hooks' standard output only, passed through the same
+[secret masking](how-to/secret-masking.md) as every other agent-facing surface and
+capped at 8 KiB (a `[truncated]` marker closes an over-long suggestion). Hook
+outcomes never change the reported exit code, and a hook that fails or is
+OS-skipped degrades to a one-line warning in the response's stderr portion. An
+`agent`-executor task cannot be a failure hook — the analyzer rejects it
+(RUNE2011) so a post-mortem can never spawn an agent session.
+
 ## Security model (secure by default)
 
 Exposing tasks to an agent grants execution capability, so Rune is conservative by default:

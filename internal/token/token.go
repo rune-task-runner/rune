@@ -39,6 +39,7 @@ const (
 	STAR       // *  (variadic-star)
 	SLASH      // /  (path join)
 	AMPAMP     // &&
+	PIPEPIPE   // ||
 	EQ         // ==
 	NEQ        // !=
 	MATCH      // =~
@@ -78,6 +79,7 @@ var kindNames = map[Kind]string{
 	STAR:       "STAR",
 	SLASH:      "SLASH",
 	AMPAMP:     "AMPAMP",
+	PIPEPIPE:   "PIPEPIPE",
 	EQ:         "EQ",
 	NEQ:        "NEQ",
 	MATCH:      "MATCH",

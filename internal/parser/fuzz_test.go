@@ -12,6 +12,8 @@ func FuzzParser(f *testing.F) {
 		"build: greet\n    echo build\n",
 		"[cache(inputs=[\"a\"], outputs=[\"b\"])]\nx:\n    echo x\n",
 		"a: (b \"arg\") c && d\n    echo a\n",
+		"a: b && c || (d \"verbose\")\n    echo a\n",
+		"a: || b\n    echo a\n",
 		"x := if a == \"1\" { \"y\" } else { \"z\" }\n",
 		"deploy: docker::push\n    echo done\n",
 		"mod sub \"sub.rune\"\nimport? \"opt.rune\"\n",

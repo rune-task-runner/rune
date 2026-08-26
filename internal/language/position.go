@@ -89,8 +89,9 @@ func TargetAt(f *ast.File, file string, offset int) (Target, bool) {
 			return Target{Kind: TargetTaskName, Name: tk.Name, Span: ns}, true
 		}
 
-		// Dependencies + post-hooks: arguments (expressions) beat the name.
-		for _, dep := range append(append([]*ast.DepCall{}, tk.Deps...), tk.PostHooks...) {
+		// Dependencies + post-hooks + failure hooks: arguments (expressions)
+		// beat the name.
+		for _, dep := range tk.Edges() {
 			for _, arg := range dep.Args {
 				if t, ok := exprAt(arg, offset, scope); ok {
 					return t, ok

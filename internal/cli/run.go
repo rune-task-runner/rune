@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -195,6 +196,12 @@ type engine struct {
 	ctx       context.Context
 	src       diag.SourceProvider
 	goos      string // host OS for availability checks; runtime.GOOS outside tests
+
+	// failHookOut, when set (MCP path), receives || failure-hook body stdout
+	// instead of opts.Stdout, so the adapter can deliver it as a delimited
+	// fix-suggestion section (spec 022). Nil on the CLI path: hook output
+	// streams to the terminal like any task's.
+	failHookOut io.Writer
 }
 
 // resolveRoots turns CLI task invocations into scheduler roots. Bare `rune`
@@ -289,7 +296,10 @@ func (e *engine) Execute(task *ast.Task, params map[string]string) error {
 
 	if c := task.Attr(ast.AttrConfirm); c != nil && e.plan == planRun {
 		if !e.opts.Yes && !e.confirm(task, c.Str) {
-			return &TaskFailure{Err: errorf("task %q was not confirmed", task.Name), Silent: true}
+			// The body never started, so || failure hooks must not fire
+			// (FR-003): the wrapper lets the scheduler recognize this via
+			// scheduler.ErrBodyNotRun without changing the rendered message.
+			return &TaskFailure{Err: &bodyNotRunError{err: errorf("task %q was not confirmed", task.Name)}, Silent: true}
 		}
 	}
 
@@ -331,8 +341,66 @@ func (e *engine) Execute(task *ast.Task, params map[string]string) error {
 	return e.runBody(task, params)
 }
 
+// ExecuteFailHook runs a || failure-hook body (spec 022). Hooks bypass the
+// cache deliberately — a "cached" diagnostic would skip the one run whose
+// output is wanted — but keep the [confirm] gate: an unconfirmable hook
+// declines, fails, and surfaces as a one-line warning upstream.
+func (e *engine) ExecuteFailHook(task *ast.Task, params map[string]string, f scheduler.Failure) error {
+	if e.plan != planRun {
+		return nil // plan modes never execute bodies, so no failure can reach here
+	}
+	// User cancellation fires no post-mortems (FR-002). The scheduler filters
+	// a bare context.Canceled body error, but Ctrl-C usually reaches the
+	// child process first, so the body error is an executor ExecError (exit
+	// 130 / killed) — the run context is the reliable signal.
+	if e.ctx.Err() != nil {
+		return e.ctx.Err()
+	}
+	if c := task.Attr(ast.AttrConfirm); c != nil {
+		if !e.opts.Yes && !e.confirm(task, c.Str) {
+			return &TaskFailure{Err: errorf("task %q was not confirmed", task.Name), Silent: true}
+		}
+	}
+	// "diagnosing" is an active status label like "running:" (label styled,
+	// name plain) so the post-mortem is visible at the point of failure.
+	fmt.Fprintf(e.opts.Stderr, "%s: %s\n", e.theme.Warning.Render("diagnosing"), task.Name)
+
+	stdout := io.Writer(e.opts.Stdout)
+	if e.failHookOut != nil {
+		stdout = e.failHookOut
+	}
+	failEnv := []string{
+		"RUNE_FAILED_TASK=" + f.TaskName,
+		fmt.Sprintf("RUNE_FAILED_EXIT_CODE=%d", f.ExitCode),
+	}
+	return e.runBodyTo(task, params, stdout, failEnv)
+}
+
+// bodyNotRunError wraps a pre-body failure so the scheduler can recognize it
+// (errors.Is(err, scheduler.ErrBodyNotRun) suppresses || failure hooks)
+// while the rendered message stays exactly the wrapped error's.
+type bodyNotRunError struct{ err error }
+
+func (e *bodyNotRunError) Error() string   { return e.err.Error() }
+func (e *bodyNotRunError) Unwrap() []error { return []error{e.err, scheduler.ErrBodyNotRun} }
+
+// Warnf prints the standard one-line warning to stderr (label styled, text
+// plain). The scheduler uses it for failure-hook skips and failures.
+func (e *engine) Warnf(format string, args ...any) {
+	fmt.Fprintf(e.opts.Stderr, "%s: %s\n", e.theme.Warning.Render("warning"), fmt.Sprintf(format, args...))
+}
+
 // runBody interpolates and runs a task body via the selected executor.
 func (e *engine) runBody(task *ast.Task, params map[string]string) error {
+	return e.runBodyTo(task, params, e.opts.Stdout, nil)
+}
+
+// runBodyTo is runBody with an explicit stdout sink and optional extra
+// environment entries; || failure hooks on the MCP path redirect their body
+// stdout into the fix-suggestion capture, and every hook run appends the
+// failure context (contracts/failure-env.md). extraEnv comes last so it wins
+// over static declarations of the same names.
+func (e *engine) runBodyTo(task *ast.Task, params map[string]string, stdout io.Writer, extraEnv []string) error {
 	ev := eval.New(e.scope.WithParams(params))
 
 	lines := make([]shell.Line, 0, len(task.Body))
@@ -351,6 +419,14 @@ func (e *engine) runBody(task *ast.Task, params map[string]string) error {
 
 	dir := e.taskDir(task)
 	env := e.taskEnv(task)
+	if len(extraEnv) > 0 {
+		// A nil env means "inherit the process environment" to the executors;
+		// adding entries must not silently drop that inheritance.
+		if env == nil {
+			env = os.Environ()
+		}
+		env = append(env[:len(env):len(env)], extraEnv...)
+	}
 
 	sel := rt.Select(task, e.settings)
 	var err error
@@ -360,7 +436,7 @@ func (e *engine) runBody(task *ast.Task, params map[string]string) error {
 	case rt.KindShell:
 		err = shell.Run(e.ctx, task.Name, lines, shell.Options{
 			Stdin:     e.opts.Stdin,
-			Stdout:    e.opts.Stdout,
+			Stdout:    stdout,
 			Stderr:    e.opts.Stderr,
 			Dir:       dir,
 			Env:       env,
@@ -375,7 +451,7 @@ func (e *engine) runBody(task *ast.Task, params map[string]string) error {
 		}
 		err = interp.Run(e.ctx, task.Name, script, sel.Command, span, interp.Options{
 			Stdin:  e.opts.Stdin,
-			Stdout: e.opts.Stdout,
+			Stdout: stdout,
 			Stderr: e.opts.Stderr,
 			Dir:    dir,
 			Env:    env,

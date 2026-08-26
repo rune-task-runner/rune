@@ -38,6 +38,7 @@ type taskDTO struct {
 	Params     []paramDTO `json:"params,omitempty"`
 	Deps       []string   `json:"deps,omitempty"`
 	PostHooks  []string   `json:"postHooks,omitempty"`
+	FailHooks  []string   `json:"failHooks,omitempty"`
 	Attributes []string   `json:"attributes,omitempty"`
 	Body       []string   `json:"body,omitempty"`
 }
@@ -77,6 +78,9 @@ func toDTO(f *ast.File, goos string) fileDTO {
 		}
 		for _, d := range t.PostHooks {
 			td.PostHooks = append(td.PostHooks, d.Name)
+		}
+		for _, d := range t.FailHooks {
+			td.FailHooks = append(td.FailHooks, d.Name)
 		}
 		for _, a := range t.Attributes {
 			td.Attributes = append(td.Attributes, a.Kind)

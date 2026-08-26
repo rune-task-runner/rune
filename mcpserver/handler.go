@@ -75,6 +75,10 @@ func formatResult(r Result) string {
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "[exit %d]", r.ExitCode)
+	if r.FixSuggestion != "" {
+		b.WriteString("\n[fix suggestion - from Runefile || failure hooks]\n")
+		b.WriteString(r.FixSuggestion)
+	}
 	return b.String()
 }
 

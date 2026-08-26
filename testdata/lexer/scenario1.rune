@@ -6,3 +6,6 @@ greet name="world":
 
 build: greet
     @echo "building..."
+
+deploy: build && notify || diagnose
+    @echo "deploying"

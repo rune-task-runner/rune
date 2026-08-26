@@ -89,3 +89,17 @@ func TestDefinitionNoTargetReturnsFalse(t *testing.T) {
 		t.Error("plain body text should not resolve to a definition")
 	}
 }
+
+// Spec 022: go-to-definition works on a || failure-hook reference.
+func TestDefinitionFailHookToTask(t *testing.T) {
+	src := "# Diagnose.\ndiagnose:\n    @echo d\ntest: || diagnose\n    @echo t\n"
+	f, ix := resolve(t, src)
+	offset := at(src, "test: || diagnose") + len("test: || ")
+	spans, ok := Definition(ix, f, "Runefile", offset)
+	if !ok || len(spans) != 1 {
+		t.Fatalf("definition not resolved: ok=%v spans=%v", ok, spans)
+	}
+	if wantLine := 2; spans[0].Start.Line != wantLine {
+		t.Errorf("definition line = %d, want %d", spans[0].Start.Line, wantLine)
+	}
+}

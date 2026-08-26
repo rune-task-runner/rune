@@ -1,0 +1,2 @@
+test:    build   &&   notify   ||   (diagnose "verbose")
+    @echo t

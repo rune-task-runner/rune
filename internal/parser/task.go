@@ -72,6 +72,17 @@ execclause:
 		}
 	}
 
+	// Failure hooks (|| run after, on failure). Clause order is fixed:
+	// deps, then &&, then || — a && after || falls through to the NEWLINE
+	// expectation below and is a parse error.
+	if _, ok := p.accept(token.PIPEPIPE); ok {
+		for p.atDepStart() {
+			if d := p.parseDepCall(); d != nil {
+				t.FailHooks = append(t.FailHooks, d)
+			}
+		}
+	}
+
 	p.expect(token.NEWLINE, "after task header")
 
 	// Body.

@@ -52,3 +52,9 @@ deploy: build && notify
 
 notify:
     @echo notified
+
+test: build || (diagnose "verbose")
+    @echo testing
+
+diagnose mode="quick":
+    @echo diagnosing {{mode}}

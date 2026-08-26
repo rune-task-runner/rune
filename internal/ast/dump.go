@@ -73,6 +73,9 @@ func dumpTask(b *strings.Builder, t *Task) {
 	if len(t.PostHooks) > 0 {
 		fmt.Fprintf(b, "    PostHooks: %s\n", dumpDeps(t.PostHooks))
 	}
+	if len(t.FailHooks) > 0 {
+		fmt.Fprintf(b, "    FailHooks: %s\n", dumpDeps(t.FailHooks))
+	}
 	if len(t.Body) > 0 {
 		b.WriteString("    Body\n")
 		for _, bl := range t.Body {
