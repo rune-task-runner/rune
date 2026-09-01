@@ -31,9 +31,12 @@ Mod         = "mod" Name [ StringLit ] NEWLINE ;
 Task        = { Attribute } Signature ":" [ Deps ] [ "&&" PostHooks ]
               [ "||" FailHooks ] NEWLINE INDENT Body DEDENT ;
 Signature   = Name { Param } [ "(" Executor ")" ] ;
-Param       = Name [ "=" Expr ]            (* defaulted *)
-            | "+" Name                     (* variadic, one-or-more *)
-            | "*" Name ;                   (* variadic, zero-or-more *)
+Param       = Name [ TypeAnno ] [ "=" Expr ]   (* required or defaulted *)
+            | "+" Name [ TypeAnno ]            (* variadic, one-or-more *)
+            | "*" Name [ TypeAnno ] ;          (* variadic, zero-or-more *)
+TypeAnno    = ":" KindName [ EnumValues ] ;    (* spec 023: tokens must be offset-adjacent *)
+KindName    = "string" | "number" | "boolean" | "path" | "enum" ;
+EnumValues  = "(" StringLit { "," StringLit } ")" ;   (* enum only; >=1 value *)
 Executor    = "sh" | "python" | "node" | "agent" | Name ;
 Deps        = DepCall { DepCall } ;
 PostHooks   = DepCall { DepCall } ;               (* run after, on success *)
@@ -59,6 +62,8 @@ AttrItem    = "private"
             | "env" "(" StringLit "," StringLit ")"
             | "doc" "(" StringLit ")"
             | "script" "(" StringLit ")"
+            | "returns" "(" StringLit ")"    (* task outcome description, surfaced to agents *)
+            | "param-doc" "(" StringLit "," StringLit ")"  (* parameter description for tool schemas *)
             | "cache" "(" "inputs" "=" List [ "," "outputs" "=" List ] ")" ;
 
 (* ---- Expression sublanguage (Pratt-parsed; total, non-Turing-complete) ---- *)
@@ -76,6 +81,24 @@ StringLit   = "'" { ch } "'" | "\"" { ch } "\""
             | "'''" { ch } "'''" | "\"\"\"" { ch } "\"\"\"" ;  (* triple = de-dented *)
 Name        = letter { letter | digit | "_" | "-" } ;
 ```
+
+## Parameter type annotations (spec 023)
+
+`TypeAnno` has lexical side conditions the EBNF cannot express: the `:` must be
+**offset-adjacent** on both sides (`env:enum(...)`, never `env : enum`), and an
+`EnumValues` list must be adjacent to its kind name (a spaced `(` after the
+parameter list is the executor clause). A spaced colon is always the task-header
+colon, so every pre-023 spaced form keeps its meaning. Kind names are contextual
+keywords — `string` remains a valid task/parameter/variable name elsewhere.
+Unknown kind names are a semantic error (RUNE2012); malformed value lists are a
+parse error (RUNE1006).
+
+One narrow re-parse ships under the constitution v1.1.0 backward-compat
+exception: a legacy **unspaced** header like `deploy env:build` now reads its
+only colon as an annotation and fails RUNE1005 with the exact fix ("add a
+space: `env: build`"); an annotated kind that shadows a task name draws the
+RUNE2016 warning. The canonical formatter has only ever emitted the spaced
+form.
 
 ## Backward compatibility
 

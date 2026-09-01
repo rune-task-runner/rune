@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/diag"
@@ -22,6 +23,7 @@ func Analyze(f *ast.File) diag.List {
 		tasks: map[string]*ast.Task{},
 	}
 	a.collect()
+	a.checkConstraints()
 	a.checkContext()
 	a.checkExpressions()
 	a.checkDependencies()
@@ -88,6 +90,111 @@ func (a *analyzer) checkParams(t *ast.Task) {
 			if sawDefaulted {
 				a.diags.Errorf(p.Sp, "required parameter %q cannot follow a defaulted parameter", p.Name)
 			}
+		}
+	}
+}
+
+// checkConstraints validates inline parameter type annotations (spec 023
+// FR-007). It runs after collect so the full task table is available for the
+// dependency-spacing hint. Unknown kinds are hard errors: no unresolved
+// constraint can ever reach the execution path, so Constraint.Check never
+// sees one.
+func (a *analyzer) checkConstraints() {
+	for _, t := range a.file.Tasks {
+		for _, p := range t.Params {
+			c := p.Constraint
+			if c == nil {
+				continue
+			}
+			if _, ok := ast.ConstraintKindFromName(c.KindName); !ok {
+				d := diag.New(c.Sp, fmt.Sprintf("unknown parameter type %q (supported: %s)",
+					c.KindName, strings.Join(ast.SupportedConstraintKinds, ", "))).
+					WithCode(diag.CodeUnknownParamType)
+				// The dependency-spacing hint only makes sense for a bare
+				// kind word: a value list could never have parsed as a
+				// pre-023 dependency, so suggesting "name: kind" there
+				// would change the task's meaning.
+				if shadow, exists := a.tasks[c.KindName]; exists && len(c.Values) == 0 {
+					d = d.WithRelated(diag.RelatedLocation{
+						Span: shadow.Sp,
+						Message: fmt.Sprintf("a task named %q exists; if it was meant as a dependency, add a space: \"%s: %s\"",
+							c.KindName, p.Name, c.KindName),
+					})
+				}
+				a.diags.Add(d)
+				continue
+			}
+
+			// RUNE2016 (warning): a valid kind name that is also a task name —
+			// an unspaced legacy header may have silently re-parsed. This is
+			// what keeps the constitution v1.1.0 re-parse exception's "never
+			// silent" condition true for the kind-word shadow case. A value
+			// list rules the legacy reading out (no pre-023 header could
+			// carry one), so enum("...") forms never warn.
+			if shadow, exists := a.tasks[c.KindName]; exists && len(c.Values) == 0 {
+				a.diags.Add(diag.Warn(c.Sp, fmt.Sprintf(
+					"parameter type %q shadows task %q; if a dependency was intended, write \"%s: %s\"",
+					c.KindName, c.KindName, p.Name, c.KindName,
+				)).
+					WithCode(diag.CodeKindShadowsTask).
+					WithRelated(diag.RelatedLocation{Span: shadow.Sp, Message: fmt.Sprintf("task %q declared here", shadow.Name)}))
+			}
+
+			// RUNE2013: duplicate enum values.
+			seen := map[string]bool{}
+			for _, v := range c.Values {
+				if seen[v] {
+					a.diags.Codef(diag.CodeInvalidEnumValues, c.Sp,
+						"duplicate enum value %q for parameter %q", v, p.Name)
+					break
+				}
+				seen[v] = true
+			}
+
+			// RUNE2014: a literal default must satisfy its own constraint.
+			// Non-literal defaults get the identical check at bind time.
+			if lit, ok := p.Default.(*ast.StringLit); ok && p.Kind == ast.ParamDefaulted {
+				if err := c.Check(lit.Value); err != nil {
+					a.diags.Codef(diag.CodeDefaultViolatesType, lit.Sp,
+						"default %q is not a valid %s for parameter %q (%s)",
+						lit.Value, c.KindName, p.Name, err)
+				}
+			}
+		}
+		a.checkAnnotationAttrs(t)
+	}
+}
+
+// checkAnnotationAttrs validates [param-doc] and [returns] usage on one task
+// (RUNE2015): param-doc must name a declared parameter, at most one param-doc
+// per parameter, at most one returns per task.
+func (a *analyzer) checkAnnotationAttrs(t *ast.Task) {
+	params := paramSet(t)
+	docSeen := map[string]token.Span{}
+	var returnsSeen *ast.Attribute
+	for _, attr := range t.Attributes {
+		switch attr.Kind {
+		case ast.AttrParamDoc:
+			if !params[attr.Str] {
+				a.diags.Codef(diag.CodeInvalidAnnotation, attr.Sp,
+					"param-doc names unknown parameter %q of task %q", attr.Str, t.Name)
+				continue
+			}
+			if prev, dup := docSeen[attr.Str]; dup {
+				a.diags.Add(diag.New(attr.Sp, fmt.Sprintf("duplicate param-doc for parameter %q", attr.Str)).
+					WithCode(diag.CodeInvalidAnnotation).
+					WithRelated(diag.RelatedLocation{Span: prev, Message: "first param-doc declared here"}))
+				continue
+			}
+			docSeen[attr.Str] = attr.Sp
+		case ast.AttrReturns:
+			if returnsSeen != nil {
+				a.diags.Add(diag.New(attr.Sp, fmt.Sprintf("duplicate [returns] on task %q", t.Name)).
+					WithCode(diag.CodeInvalidAnnotation).
+					WithRelated(diag.RelatedLocation{Span: returnsSeen.Sp, Message: "first [returns] declared here"}))
+				continue
+			}
+			returnsSeen = attr
 		}
 	}
 }

@@ -74,15 +74,19 @@ func TaskSignature(t *ast.Task) string {
 		case ast.ParamVariadicPlus:
 			b.WriteByte('+')
 			b.WriteString(p.Name)
+			b.WriteString(p.Constraint.String())
 		case ast.ParamVariadicStar:
 			b.WriteByte('*')
 			b.WriteString(p.Name)
+			b.WriteString(p.Constraint.String())
 		case ast.ParamDefaulted:
 			b.WriteString(p.Name)
+			b.WriteString(p.Constraint.String())
 			b.WriteByte('=')
 			b.WriteString(defaultLiteral(p.Default))
 		default:
 			b.WriteString(p.Name)
+			b.WriteString(p.Constraint.String())
 		}
 	}
 	if t.Executor != "" {

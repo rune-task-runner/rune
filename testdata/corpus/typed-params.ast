@@ -1,0 +1,34 @@
+File
+  Task deploy
+    doc: "Typed parameter annotations (spec 023): inline `name:kind` constraints."
+    Param env required :enum("staging","prod")
+    Param replicas defaulted :number = "2"
+    Body
+      "./deploy.sh {{env}} {{replicas}}"
+  Task build
+    Param target defaulted :path = "./dist"
+    Param flag defaulted :boolean = "false"
+    Param note defaulted :string = ""
+    Body
+      "go build -o {{target}} ./..."
+  Task test
+    Param packages variadic+ :path
+    Body
+      "go test {{packages}}"
+  Task lint
+    Param paths variadic* :string
+    Body
+      "lint {{paths}}"
+  Task legacy
+    doc: "A spaced colon is always the task header colon: `build` is a dependency."
+    Param env required
+    Deps: build
+    Body
+      @"echo {{env}}"
+  Task list-artifacts
+    doc: "Annotation attributes (spec 023): outcome + per-parameter descriptions."
+    Attr returns("JSON array of artifact IDs")
+    Attr param-doc("channel", "Release channel to query")
+    Param channel required :enum("stable","beta")
+    Body
+      @"echo {{channel}}"

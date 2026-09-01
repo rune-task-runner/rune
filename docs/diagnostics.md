@@ -45,8 +45,9 @@ filtering and CI.
 | `RUNE1003` | Unterminated string |
 | `RUNE1004` | Incomplete expression |
 | `RUNE1005` | Malformed task declaration |
+| `RUNE1006` | Malformed parameter constraint (`enum` without a value list, empty `enum()`, a non-string enum value, or a value list on a non-`enum` kind) |
 
-### Semantic (RUNE2xxx) — errors, except `RUNE2010` (warning)
+### Semantic (RUNE2xxx) — errors, except `RUNE2010` and `RUNE2016` (warnings)
 
 | Code | Condition |
 |------|-----------|
@@ -61,6 +62,11 @@ filtering and CI.
 | `RUNE2009` | Invalid executor *(reserved; executors are open-ended custom interpreters)* |
 | `RUNE2010` | Public task lacks documentation — **warning**, never gates execution or exit code |
 | `RUNE2011` | Invalid failure hook (a `\|\|` hook targets — or reaches through its dependencies — an `agent`-executor task) |
+| `RUNE2012` | Unknown parameter type (supported kinds: `string`, `number`, `boolean`, `path`, `enum`) |
+| `RUNE2013` | Invalid enum values (duplicate value in a parameter's `enum(...)` list) |
+| `RUNE2014` | A parameter's literal default violates its own type constraint |
+| `RUNE2015` | Invalid annotation attribute (`[param-doc]` names an unknown parameter, duplicate `[param-doc]` for one parameter, or more than one `[returns]` on a task) |
+| `RUNE2016` | Annotated kind name shadows a task name — **warning**: an unspaced legacy header may have re-parsed as a type annotation; write `name: task` for a dependency |
 
 ### Project (RUNE3xxx) — errors
 

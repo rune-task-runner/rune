@@ -62,6 +62,9 @@ func dumpTask(b *strings.Builder, t *Task) {
 	}
 	for _, par := range t.Params {
 		fmt.Fprintf(b, "    Param %s %s", par.Name, paramKindName(par.Kind))
+		if par.Constraint != nil {
+			fmt.Fprintf(b, " %s", par.Constraint.String())
+		}
 		if par.Default != nil {
 			fmt.Fprintf(b, " = %s", dumpExpr(par.Default))
 		}
@@ -99,8 +102,8 @@ func dumpAttr(b *strings.Builder, a *Attribute) {
 			fmt.Fprintf(b, ", outputs=[%s]", dumpExprs(a.Outputs))
 		}
 		b.WriteString(")\n")
-	case AttrEnv:
-		fmt.Fprintf(b, "    Attr env(%s, %s)\n", strconv.Quote(a.Str), strconv.Quote(a.Str2))
+	case AttrEnv, AttrParamDoc:
+		fmt.Fprintf(b, "    Attr %s(%s, %s)\n", a.Kind, strconv.Quote(a.Str), strconv.Quote(a.Str2))
 	default:
 		if a.Str != "" {
 			fmt.Fprintf(b, "    Attr %s(%s)\n", a.Kind, strconv.Quote(a.Str))

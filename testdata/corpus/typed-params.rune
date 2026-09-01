@@ -1,0 +1,22 @@
+# Typed parameter annotations (spec 023): inline `name:kind` constraints.
+deploy env:enum("staging","prod") replicas:number="2":
+    ./deploy.sh {{env}} {{replicas}}
+
+build target:path="./dist" flag:boolean="false" note:string="":
+    go build -o {{target}} ./...
+
+test +packages:path:
+    go test {{packages}}
+
+lint *paths:string:
+    lint {{paths}}
+
+# A spaced colon is always the task header colon: `build` is a dependency.
+legacy env: build
+    @echo {{env}}
+
+# Annotation attributes (spec 023): outcome + per-parameter descriptions.
+[returns("JSON array of artifact IDs")]
+[param-doc("channel", "Release channel to query")]
+list-artifacts channel:enum("stable","beta"):
+    @echo {{channel}}

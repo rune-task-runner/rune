@@ -55,6 +55,35 @@ _internal-helper:
 Here `build` is offered to the agent as a tool with a `target` argument; `_internal-helper`
 is not.
 
+## Typed tool schemas
+
+Inline [parameter type annotations](runefile.md#typed-parameters) become a
+**strictly typed** input schema, so an agent knows exactly what inputs are valid
+before its first call — no malformed-argument round trips:
+
+```rune
+# Deploy the service.
+[returns("URL of the deployed environment on stdout")]
+[param-doc("env", "Target environment")]
+deploy env:enum("staging","prod") replicas:number="2":
+    ./deploy.sh {{env}} {{replicas}}
+```
+
+The `deploy` tool advertises `env` as `{"type":"string","enum":["staging","prod"],
+"description":"Target environment"}` and `replicas` as `{"type":"number"}`;
+`path`-typed parameters are format-tagged strings, and a typed variadic becomes
+an array of the mapped type. Constraints are **enforced**, not just advertised:
+a violating call returns a tool error naming the parameter, the rejected value,
+and the accepted set — before anything executes — and array (variadic) values
+are validated per element. The same rules bind CLI and dependency invocations,
+so a constraint is a property of the task, not of the transport.
+
+`[returns("…")]` gives the agent a success criterion: it is appended to the tool
+description as a `Returns:` trailer (and shown in `--list` and the JSON dump),
+so the agent can verify a task's output against the expected shape. Both
+annotations are static Runefile string literals — no environment value can ever
+reach a schema.
+
 ## Project context for agents
 
 Mark one task with `[context]` to hand agents the project's current state — branch,

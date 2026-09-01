@@ -1,0 +1,18 @@
+# Deploy the service.
+deploy env:enum("staging","prod")   replicas:number="2":
+    ./deploy.sh {{env}} {{replicas}}
+
+build target:path="./dist" verbose:boolean="false":
+    go build -o {{target}} ./...
+
+test +packages:path:
+    go test {{packages}}
+
+pick *names:enum("a","b"):
+    @echo {{names}}
+
+# List artifact IDs.
+[returns("JSON array of artifact IDs")]
+[param-doc("channel", "Release channel to query")]
+list-artifacts channel:enum("stable","beta"):
+    @echo {{channel}}

@@ -21,7 +21,7 @@ func Hover(f *ast.File, file string, offset int) (markdown string, span token.Sp
 			return md, target.Span, true
 		}
 	case TargetVarRef, TargetParamDecl:
-		return varHover(target.Name, target.Scope), target.Span, true
+		return varHover(f, target.Name, target.Scope), target.Span, true
 	case TargetAttribute:
 		if b, ok := Lookup(BuiltinAttribute, target.Name); ok {
 			return builtinHover(b), target.Span, true
@@ -59,9 +59,26 @@ func taskHover(f *ast.File, name string) (string, bool) {
 	return b.String(), true
 }
 
-func varHover(name string, scope ScopeID) string {
+// varHover renders a variable or parameter hover. A parameter's hover carries
+// its declared type annotation and [param-doc] description (spec 023).
+func varHover(f *ast.File, name string, scope ScopeID) string {
 	if scope != ModuleScope {
-		return fmt.Sprintf("```rune\n%s\n```\nparameter of task `%s`", name, string(scope))
+		sig := name
+		desc := ""
+		if t := findTask(f, string(scope)); t != nil {
+			for _, p := range t.Params {
+				if p.Name == name {
+					sig = name + p.Constraint.String()
+					break
+				}
+			}
+			desc = t.ParamDoc(name)
+		}
+		out := fmt.Sprintf("```rune\n%s\n```\nparameter of task `%s`", sig, string(scope))
+		if desc != "" {
+			out += "\n\n" + desc
+		}
+		return out
 	}
 	return fmt.Sprintf("```rune\n%s\n```\nvariable", name)
 }

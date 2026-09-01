@@ -189,7 +189,17 @@ func expressionCompletions(ix *Index, scope ScopeID, prefix string) []Completion
 	if scope != ModuleScope {
 		for _, s := range ix.byKind(SymbolParameter) {
 			if s.Scope == scope && strings.HasPrefix(s.Name, prefix) {
-				params = append(params, CompletionItem{Label: s.Name, Detail: "parameter", Kind: CompletionParameter})
+				detail := "parameter"
+				// The signature carries the inline type annotation (spec 023),
+				// e.g. `env:enum("a","b")` — show it so the agent-facing
+				// contract is visible while authoring. CutPrefix (not
+				// TrimPrefix) so a signature that ever stops starting with
+				// the bare name degrades to the plain detail instead of
+				// echoing the whole signature.
+				if anno, ok := strings.CutPrefix(s.Signature, s.Name); ok && anno != "" {
+					detail = "parameter " + anno
+				}
+				params = append(params, CompletionItem{Label: s.Name, Detail: detail, Kind: CompletionParameter})
 			}
 		}
 	}

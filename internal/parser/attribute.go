@@ -52,20 +52,20 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 		}
 		return a
 
-	case ast.AttrGroup, ast.AttrDoc, ast.AttrScript, ast.AttrWorkingDirectory:
+	case ast.AttrGroup, ast.AttrDoc, ast.AttrScript, ast.AttrWorkingDirectory, ast.AttrReturns:
 		a.Str = p.parseSingleStringArg(name.Lit)
 		return a
 
-	case ast.AttrEnv:
-		p.expect(token.LPAREN, "to open env(...)")
+	case ast.AttrEnv, ast.AttrParamDoc:
+		p.expect(token.LPAREN, "to open "+name.Lit+"(...)")
 		if s, ok := p.accept(token.STRING); ok {
 			a.Str = s.Lit
 		}
-		p.expect(token.COMMA, "between env name and value")
+		p.expect(token.COMMA, "between "+name.Lit+" arguments")
 		if s, ok := p.accept(token.STRING); ok {
 			a.Str2 = s.Lit
 		}
-		rp, _ := p.expect(token.RPAREN, "to close env(...)")
+		rp, _ := p.expect(token.RPAREN, "to close "+name.Lit+"(...)")
 		a.Sp = name.Span.To(rp.Span)
 		return a
 

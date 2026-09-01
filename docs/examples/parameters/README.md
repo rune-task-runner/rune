@@ -25,3 +25,10 @@ Try the variations: `rune greet Ada` → `hello Ada`; `rune deploy prod` → `de
 
 `greet name="world"` has a default; `deploy env` is required; `test +packages` is variadic
 (one or more). `{{name}}` interpolates a value into the command.
+
+`release channel:enum("stable","beta") builds:number="1"` adds inline **type
+annotations**: `rune release beta` runs, while `rune release nightly` is rejected
+before anything executes, with the allowed values in the error. The same
+constraints appear in the MCP tool schema, `[param-doc]` describes the parameter
+to agents, and `[returns]` states the expected output (also shown by
+`rune --list`). See the [typed parameters guide](../../runefile.md#typed-parameters).

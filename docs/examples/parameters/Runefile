@@ -8,6 +8,13 @@ greet name="world":
 deploy env:
     @echo "deploying to {{env}}"
 
+# Typed parameters (spec 023): the enum and number are enforced before the
+# body runs, and agents see them in the MCP tool schema.
+[returns("the release plan on stdout")]
+[param-doc("channel", "Release channel to publish")]
+release channel:enum("stable","beta") builds:number="1":
+    @echo "releasing {{builds}} build(s) to {{channel}}"
+
 # Variadic, one-or-more (rune test ./... ./cmd/...).
 test +packages:
     @echo "go test {{packages}}"
