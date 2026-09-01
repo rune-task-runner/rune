@@ -812,13 +812,13 @@ func visibleTasksByGroup(f *ast.File) (order []string, groups map[string][]*ast.
 // listTasks prints non-private tasks, grouped by [group("...")], excluding tasks
 // filtered out by an OS attribute that does not match the current platform.
 func listTasks(opts Options, f *ast.File) {
-	type row struct{ name, doc string }
+	type row struct{ name, doc, returns string }
 	order, taskGroups := visibleTasksByGroup(f)
 	groups := map[string][]row{}
 	width := 0
 	for g, tasks := range taskGroups {
 		for _, t := range tasks {
-			groups[g] = append(groups[g], row{t.Name, firstLine(t.Doc)})
+			groups[g] = append(groups[g], row{t.Name, firstLine(t.Doc), firstLine(t.Returns())})
 			if len(t.Name) > width {
 				width = len(t.Name)
 			}
@@ -848,6 +848,16 @@ func listTasks(opts Options, f *ast.File) {
 				fmt.Fprintf(opts.Stdout, "    %s%s  %s\n", th.TaskName.Render(r.name), pad, th.Muted.Render("# "+r.doc))
 			default:
 				fmt.Fprintf(opts.Stdout, "    %-*s  # %s\n", width, r.name, r.doc)
+			}
+			// The [returns] outcome description gets an aligned continuation
+			// line (spec 023 FR-010); unannotated tasks stay byte-identical.
+			if r.returns != "" {
+				if opts.ColorStdout {
+					pad := strings.Repeat(" ", width)
+					fmt.Fprintf(opts.Stdout, "    %s  %s\n", pad, th.Muted.Render("# returns: "+r.returns))
+				} else {
+					fmt.Fprintf(opts.Stdout, "    %-*s  # returns: %s\n", width, "", r.returns)
+				}
 			}
 		}
 	}

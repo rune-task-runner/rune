@@ -1,17 +1,19 @@
 <!--
 Sync Impact Report
-- Version: (unversioned template) → 1.0.0
-- Rationale: Initial ratification. Codifies the eight principles already enforced
-  across specs/ (canonical source: specs/001-rune-task-runner/plan.md Constitution
-  Check table, Principles I–VII) and the Go engineering discipline cited in
-  CONTRIBUTING.md and .golangci.yml (Principle VIII).
-- Principles: I Command Runner, Not a Build System · II Errors Are a Feature ·
-  III Minimal, Total DSL · IV Hand-Written Front End, Idiomatic Go ·
-  V Boringly Portable · VI Test-First, Multi-Layer Verification ·
-  VII AI-Native, Secure by Default · VIII Go Engineering Discipline
-- Added sections: Engineering Constraints; Quality Gates; Governance.
+- Version: 1.0.0 → 1.1.0
+- Rationale: MINOR amendment. (1) Principle III now states explicitly what is
+  frozen: the expression sublanguage. Declarative surface (task attributes,
+  parameter annotations, header clauses) may grow through the normal spec process
+  under stated conditions — formalizing the practice already established by
+  specs 021 ([context]) and 022 (|| failure hooks). (2) The Backward-compatibility
+  Engineering Constraint gains a narrow re-parse exception with four mandatory
+  conditions; silent meaning changes remain forbidden. Prompted by /speckit-analyze
+  findings C1/C2 on spec 023 (typed parameter schemas).
+- Modified principles: III Minimal, Total DSL (freeze scope clarified).
+- Modified sections: Engineering Constraints (Backward compatibility bullet).
+- Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
-  Check gate references these principles).
+  Check gate references these principles) — no structural change needed.
 - Follow-ups: none.
 -->
 
@@ -39,8 +41,12 @@ part of the product, not an afterthought.
 ### III. Minimal, Total DSL
 The expression sublanguage has no loops and no recursion, and every program
 terminates. Real logic lives in task bodies (shell, Python, Node), never in the
-expression language. The DSL surface is intentionally small and frozen; growing it
-requires amending this constitution, not an incremental feature.
+expression language. The expression sublanguage is frozen; growing it requires
+amending this constitution, not an incremental feature. Declarative surface —
+task attributes, parameter annotations, header clauses — MAY grow through the
+normal spec process, provided the addition is itself total and statically
+analyzable and ships with grammar documentation and fixtures per the Engineering
+Constraints.
 
 ### IV. Hand-Written Front End, Idiomatic Go
 The lexer (Rob Pike state-function style), recursive-descent parser, and Pratt
@@ -87,7 +93,13 @@ must report zero issues, and code must be clean under gofumpt and goimports.
   `mcpserver/` package follow the structure in Principle IV; structural changes
   require justification.
 - **Backward compatibility.** Breaking DSL changes are opt-in per file — existing
-  Runefiles keep working unless they explicitly request new behaviour.
+  Runefiles keep working unless they explicitly request new behaviour. A
+  narrowly-scoped re-parse MAY ship without an opt-in only when all of the
+  following hold: (1) the canonical formatter has never emitted the affected
+  form, (2) the compatibility corpus contains no instance of it, (3) every
+  affected file fails or warns loudly with a diagnostic naming the exact fix —
+  silent meaning changes are never permitted, and (4) the release notes call the
+  change out.
 - **Surface changes carry their docs.** Any change to DSL surface ships with an
   updated `docs/GRAMMAR.md` and the matching golden/integration fixtures in the
   same PR.
@@ -120,4 +132,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-06-10
+**Version**: 1.1.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-08-31

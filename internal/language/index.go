@@ -90,13 +90,14 @@ func BuildIndex(f *ast.File) *Index {
 		})
 		for _, p := range t.Params {
 			ix.add(Symbol{
-				Name:       p.Name,
-				Kind:       SymbolParameter,
-				Definition: p.Sp,
-				Selection:  p.Sp,
-				Scope:      ScopeID(t.Name),
-				Signature:  p.Name,
-				Exported:   false,
+				Name:          p.Name,
+				Kind:          SymbolParameter,
+				Definition:    p.Sp,
+				Selection:     p.Sp,
+				Scope:         ScopeID(t.Name),
+				Signature:     p.Name + p.Constraint.String(),
+				Documentation: t.ParamDoc(p.Name),
+				Exported:      false,
 			})
 		}
 	}

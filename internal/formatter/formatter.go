@@ -132,15 +132,16 @@ func formatTask(t *ast.Task) string {
 }
 
 func formatParam(p *ast.Param) string {
+	anno := p.Constraint.String() // "" for an unannotated param
 	switch p.Kind {
 	case ast.ParamVariadicPlus:
-		return "+" + p.Name
+		return "+" + p.Name + anno
 	case ast.ParamVariadicStar:
-		return "*" + p.Name
+		return "*" + p.Name + anno
 	case ast.ParamDefaulted:
-		return p.Name + "=" + formatExpr(p.Default)
+		return p.Name + anno + "=" + formatExpr(p.Default)
 	default:
-		return p.Name
+		return p.Name + anno
 	}
 }
 
@@ -165,8 +166,8 @@ func formatAttr(a *ast.Attribute) string {
 		}
 		b.WriteString(")]")
 		return b.String()
-	case ast.AttrEnv:
-		return fmt.Sprintf("[env(%s, %s)]", strconv.Quote(a.Str), strconv.Quote(a.Str2))
+	case ast.AttrEnv, ast.AttrParamDoc:
+		return fmt.Sprintf("[%s(%s, %s)]", a.Kind, strconv.Quote(a.Str), strconv.Quote(a.Str2))
 	default:
 		if a.Str != "" {
 			return fmt.Sprintf("[%s(%s)]", a.Kind, strconv.Quote(a.Str))

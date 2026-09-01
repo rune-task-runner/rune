@@ -4,7 +4,14 @@
 // (Principle II).
 package ast
 
-import "github.com/rune-task-runner/rune/internal/token"
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+
+	"github.com/rune-task-runner/rune/internal/token"
+)
 
 // Node is implemented by every AST node.
 type Node interface {
@@ -59,13 +66,135 @@ const (
 
 // Param is a positional task parameter.
 type Param struct {
-	Name    string
-	Kind    ParamKind
-	Default Expr // only for ParamDefaulted
-	Sp      token.Span
+	Name       string
+	Kind       ParamKind
+	Default    Expr        // only for ParamDefaulted
+	Constraint *Constraint // nil = unannotated (the pre-023 shape)
+	Sp         token.Span
 }
 
 func (p *Param) Span() token.Span { return p.Sp }
+
+// ConstraintKind classifies an inline parameter type annotation (spec 023).
+type ConstraintKind int
+
+const (
+	KindString  ConstraintKind = iota // explicit spelling of the default
+	KindNumber                        // integers and decimals (ParseFloat 64)
+	KindBoolean                       // exactly "true" | "false"
+	KindPath                          // non-empty string; role marker only
+	KindEnum                          // closed set of static string literals
+)
+
+// SupportedConstraintKinds lists the kind names accepted after `:` in a
+// parameter annotation, in the order diagnostics cite them.
+var SupportedConstraintKinds = []string{"string", "number", "boolean", "path", "enum"}
+
+// ConstraintKindFromName resolves a kind name (a contextual keyword, matched
+// case-sensitively) to its ConstraintKind.
+func ConstraintKindFromName(name string) (ConstraintKind, bool) {
+	switch name {
+	case "string":
+		return KindString, true
+	case "number":
+		return KindNumber, true
+	case "boolean":
+		return KindBoolean, true
+	case "path":
+		return KindPath, true
+	case "enum":
+		return KindEnum, true
+	default:
+		return KindString, false
+	}
+}
+
+// Constraint is an author-declared value rule on one parameter, written inline
+// as `name:kind` or `name:enum("v1","v2")`. Kind is resolved from KindName when
+// the name is a known kind; an unknown KindName is a semantic error (RUNE2012),
+// reported before anything executes, so Check never runs for one.
+type Constraint struct {
+	Kind     ConstraintKind
+	KindName string   // as written; unknown names are the analyzer's to reject
+	Values   []string // KindEnum only; ≥1 (parser), unique (analyzer), source order
+	Sp       token.Span
+}
+
+func (c *Constraint) Span() token.Span { return c.Sp }
+
+// Check validates one bound value against the constraint. It is the single
+// source of truth for every invocation path (spec 023 FR-005): CLI positional,
+// MCP named, and dependency parenthesized arguments. The error text carries the
+// accepted set; callers prefix the task, parameter, and offending value
+// (FR-006). A nil constraint accepts anything.
+func (c *Constraint) Check(value string) error {
+	if c == nil {
+		return nil
+	}
+	switch c.Kind {
+	case KindNumber:
+		if !IsDecimalNumber(value) {
+			return fmt.Errorf("expected a number")
+		}
+	case KindBoolean:
+		if value != "true" && value != "false" {
+			return fmt.Errorf(`expected "true" or "false"`)
+		}
+	case KindPath:
+		if value == "" {
+			return fmt.Errorf("expected a non-empty path")
+		}
+	case KindEnum:
+		for _, v := range c.Values {
+			if value == v {
+				return nil
+			}
+		}
+		return fmt.Errorf("allowed values: %s", quoteJoin(c.Values))
+	}
+	return nil
+}
+
+// String renders the annotation in canonical source form, e.g. `:number` or
+// `:enum("staging","prod")` — the one renderer shared by the formatter, the
+// AST dumper, and editor signatures so the three can never drift.
+func (c *Constraint) String() string {
+	if c == nil {
+		return ""
+	}
+	s := ":" + c.KindName
+	if len(c.Values) > 0 {
+		quoted := make([]string, len(c.Values))
+		for i, v := range c.Values {
+			quoted[i] = strconv.Quote(v)
+		}
+		s += "(" + strings.Join(quoted, ",") + ")"
+	}
+	return s
+}
+
+// IsDecimalNumber reports whether value is a plain decimal number — integers
+// and decimals with an optional exponent, the documented `:number` contract.
+// It rejects the extra spellings strconv.ParseFloat tolerates (NaN, ±Inf,
+// hex floats, digit-separating underscores), none of which a JSON `number`
+// can carry, so the CLI, dependency, and MCP paths accept the same set.
+// mcpserver mirrors this rule; TestParamCheckMatchesASTConstraint pins the two.
+func IsDecimalNumber(value string) bool {
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return false
+	}
+	return !strings.ContainsAny(value, "xXpP_")
+}
+
+// quoteJoin renders a value list as `"a", "b"` for diagnostics and errors.
+func quoteJoin(vals []string) string {
+	parts := make([]string, len(vals))
+	for i, v := range vals {
+		parts[i] = strconv.Quote(v)
+	}
+	return strings.Join(parts, ", ")
+}
 
 // Executor names for the built-in body languages. The empty string means the
 // default shell executor; any other non-built-in string is a custom executor.
@@ -174,6 +303,26 @@ func (t *Task) Attr(kind string) *Attribute {
 	return nil
 }
 
+// Returns reports the task's [returns("...")] outcome description, or ""
+// (spec 023 FR-009). Advisory only: Rune never compares task output to it.
+func (t *Task) Returns() string {
+	if a := t.Attr(AttrReturns); a != nil {
+		return a.Str
+	}
+	return ""
+}
+
+// ParamDoc returns the [param-doc("name","text")] description for the named
+// parameter, or "" when the parameter carries none (spec 023 FR-014).
+func (t *Task) ParamDoc(name string) string {
+	for _, a := range t.Attributes {
+		if a.Kind == AttrParamDoc && a.Str == name {
+			return a.Str2
+		}
+	}
+	return ""
+}
+
 // DepCall is a dependency or post-hook invocation.
 type DepCall struct {
 	Name string // may be namespaced (mod::task)
@@ -202,7 +351,21 @@ const (
 	AttrNetwork          = "network"         // sets MCP openWorldHint
 	AttrNoExitMessage    = "no-exit-message" // suppress the trailing error banner
 	AttrContext          = "context"         // project-health hook injected into agent context (spec 021)
+	AttrParamDoc         = "param-doc"       // per-parameter description surfaced in agent tool schemas (spec 023)
+	AttrReturns          = "returns"         // task outcome description surfaced to agents and listings (spec 023)
 )
+
+// KnownAttributes is the canonical accepted attribute set, in documentation
+// order. The language registry is checked against it (language's
+// TestRegistryMatchesASTAttributes) and so is the parser's attribute switch
+// (parser's TestParserKnowsAllASTAttributes), so neither can drift silently.
+var KnownAttributes = []string{
+	AttrPrivate, AttrConfirm, AttrGroup, AttrParallel,
+	AttrLinux, AttrMacos, AttrWindows, AttrUnix,
+	AttrNoCD, AttrWorkingDirectory, AttrEnv, AttrDoc, AttrScript,
+	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
+	AttrParamDoc, AttrReturns,
+}
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a
 // single string argument (Str); env carries two (Str, Str2); cache carries

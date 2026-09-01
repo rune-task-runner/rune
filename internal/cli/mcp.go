@@ -52,13 +52,26 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 			Doc:         t.Doc,
 			Destructive: t.Attr(ast.AttrConfirm) != nil,
 			Network:     t.Attr(ast.AttrNetwork) != nil,
+			// Static Runefile text, but capped like every agent-facing string
+			// so an absurd [returns] cannot bloat the tool list (FR-011).
+			Returns: capAgentText(t.Returns()),
 		}
 		for _, p := range t.Params {
-			info.Params = append(info.Params, mcpserver.ParamInfo{
+			pi := mcpserver.ParamInfo{
 				Name:     p.Name,
 				Required: p.Kind == ast.ParamRequired || p.Kind == ast.ParamVariadicPlus,
 				Variadic: p.Kind == ast.ParamVariadicPlus || p.Kind == ast.ParamVariadicStar,
-			})
+				// Capped for the same FR-011 reason as Returns above: an
+				// absurd [param-doc] must not bloat every tools/list reply.
+				Description: capAgentText(t.ParamDoc(p.Name)),
+			}
+			// Constraint kinds/values are static Runefile string literals, so
+			// no environment value can reach the schema (FR-011).
+			if c := p.Constraint; c != nil {
+				pi.Kind = c.KindName
+				pi.Enum = c.Values
+			}
+			info.Params = append(info.Params, pi)
 		}
 		out = append(out, info)
 	}

@@ -11,8 +11,9 @@ Per the 2026-07-10 clarification and FR-010, these codes are a **stable public c
 | `RUNE1003` | Unterminated string |
 | `RUNE1004` | Incomplete expression |
 | `RUNE1005` | Malformed task declaration |
+| `RUNE1006` | Malformed parameter constraint — `enum` without a value list, empty `enum()`, a non-string enum value, or a value list on a non-`enum` kind (spec 023) |
 
-## Semantic diagnostics (RUNE2xxx) — severity: error (except RUNE2010)
+## Semantic diagnostics (RUNE2xxx) — severity: error (except RUNE2010, RUNE2016)
 
 | Code | Condition | Related locations |
 |------|-----------|-------------------|
@@ -27,6 +28,11 @@ Per the 2026-07-10 clarification and FR-010, these codes are a **stable public c
 | `RUNE2009` | Invalid executor | — |
 | `RUNE2010` | **Public task lacks documentation** — severity: **warning** (FR-008a); never causes exit 3 | task declaration |
 | `RUNE2011` | Invalid failure hook — a `\|\|` hook targets, or reaches through its dependency closure, an `agent`-executor task (spec 022 FR-011) | — |
+| `RUNE2012` | Unknown parameter type kind — message lists the supported kinds (spec 023) | — |
+| `RUNE2013` | Duplicate enum value in a parameter's `enum(...)` list (spec 023) | first occurrence |
+| `RUNE2014` | A parameter's literal default violates its own constraint (spec 023) | — |
+| `RUNE2015` | Annotation-attribute misuse — `[param-doc]` names an unknown parameter, duplicate `[param-doc]` per parameter, or duplicate `[returns]` per task (spec 023) | first occurrence for duplicates |
+| `RUNE2016` | Annotated kind name is also a task name — severity: **warning** (spec 023, constitution v1.1.0 re-parse exception condition 3); never causes exit 3 | — |
 
 ## Project diagnostics (RUNE3xxx) — severity: error
 

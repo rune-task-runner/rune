@@ -6,6 +6,10 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -28,6 +32,14 @@ type ParamInfo struct {
 	Name     string
 	Required bool
 	Variadic bool
+	// Kind is the declared constraint kind: "", "string", "number", "boolean",
+	// "path", or "enum". "" means unannotated and produces the pre-023 schema
+	// byte-for-byte (spec 023).
+	Kind string
+	// Enum is the closed value list when Kind is "enum", in source order.
+	Enum []string
+	// Description is the author's [param-doc] text for this parameter.
+	Description string
 }
 
 // TaskInfo is the agent-facing view of a task. Private tasks are never included.
@@ -37,6 +49,59 @@ type TaskInfo struct {
 	Params      []ParamInfo
 	Destructive bool // has [confirm]/destructive => DestructiveHint
 	Network     bool // has [network] => OpenWorldHint
+	// Returns is the task's [returns] outcome description (spec 023 US3),
+	// composed into the tool description as a "Returns:" trailer so agents can
+	// verify results against it. Like Doc and Instructions, it must already be
+	// masked and size-capped by the engine; this package never processes it.
+	Returns string
+}
+
+// check validates one string value against the parameter's advertised
+// constraint — the server-side half of spec 023 FR-005, run before the engine
+// sees the call (the engine re-validates at bind time as defense in depth).
+// The message carries the parameter, the quoted value, and the accepted set
+// (FR-006).
+func (p ParamInfo) check(value string) error {
+	switch p.Kind {
+	case "number":
+		if !validNumber(value) {
+			return fmt.Errorf("parameter %q: invalid value %q (expected a number)", p.Name, value)
+		}
+	case "boolean":
+		if value != "true" && value != "false" {
+			return fmt.Errorf(`parameter %q: invalid value %q (expected "true" or "false")`, p.Name, value)
+		}
+	case "path":
+		if value == "" {
+			return fmt.Errorf("parameter %q: invalid value %q (expected a non-empty path)", p.Name, value)
+		}
+	case "enum":
+		for _, v := range p.Enum {
+			if value == v {
+				return nil
+			}
+		}
+		quoted := make([]string, len(p.Enum))
+		for i, v := range p.Enum {
+			quoted[i] = strconv.Quote(v)
+		}
+		return fmt.Errorf("parameter %q: invalid value %q (allowed values: %s)",
+			p.Name, value, strings.Join(quoted, ", "))
+	}
+	return nil
+}
+
+// validNumber mirrors ast.IsDecimalNumber — integers and decimals with an
+// optional exponent, rejecting the extra spellings strconv.ParseFloat
+// tolerates (NaN, ±Inf, hex floats, digit-separating underscores). The two
+// must stay identical so no value is accepted on one transport and rejected
+// on another; TestParamCheckMatchesASTConstraint pins them together.
+func validNumber(value string) bool {
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return false
+	}
+	return !strings.ContainsAny(value, "xXpP_")
 }
 
 // Engine is the host the MCP server runs tasks against. The CLI implements it.
@@ -80,7 +145,7 @@ func New(engine Engine, opts Options) *Server {
 		&mcp.ServerOptions{Instructions: opts.Instructions},
 	)
 	for _, t := range engine.Tasks() {
-		srv.mcp.AddTool(toolFor(t), srv.handler(t.Name))
+		srv.mcp.AddTool(toolFor(t), srv.handler(t))
 	}
 	return srv
 }
@@ -107,9 +172,17 @@ func toolName(name string) string {
 func toolFor(t TaskInfo) *mcp.Tool {
 	destructive := t.Destructive
 	network := t.Network
+	desc := t.Doc
+	if t.Returns != "" {
+		// No trailer is invented when [returns] is absent (spec 023 US3).
+		if desc != "" {
+			desc += "\n\n"
+		}
+		desc += "Returns: " + t.Returns
+	}
 	return &mcp.Tool{
 		Name:        toolName(t.Name),
-		Description: t.Doc,
+		Description: desc,
 		InputSchema: inputSchema(t.Params),
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
@@ -120,19 +193,28 @@ func toolFor(t TaskInfo) *mcp.Tool {
 }
 
 // inputSchema derives a JSON Schema (2020-12) object from task parameters:
-// required→required, defaulted→optional, variadic→array.
+// required→required, defaulted→optional, variadic→array. Declared constraint
+// kinds map per specs/023-mcp-typed-schemas/contracts/mcp-schema.md: enum
+// value lists are enumerated, numbers/booleans typed, paths format-tagged —
+// so a conforming client can construct only valid calls (SC-001).
 func inputSchema(params []ParamInfo) map[string]any {
 	properties := map[string]any{}
 	var required []string
 	for _, p := range params {
-		if p.Variadic {
-			properties[p.Name] = map[string]any{
-				"type":  "array",
-				"items": map[string]any{"type": "string"},
-			}
-		} else {
-			properties[p.Name] = map[string]any{"type": "string"}
+		prop := map[string]any{"type": scalarType(p.Kind)}
+		switch p.Kind {
+		case "path":
+			prop["format"] = "path"
+		case "enum":
+			prop["enum"] = p.Enum
 		}
+		if p.Variadic {
+			prop = map[string]any{"type": "array", "items": prop}
+		}
+		if p.Description != "" {
+			prop["description"] = p.Description
+		}
+		properties[p.Name] = prop
 		if p.Required {
 			required = append(required, p.Name)
 		}
@@ -145,4 +227,18 @@ func inputSchema(params []ParamInfo) map[string]any {
 		schema["required"] = required
 	}
 	return schema
+}
+
+// scalarType maps a constraint kind to its JSON Schema scalar type. Unknown
+// and empty kinds are strings — the analyzer rejects unknown kinds before a
+// server is ever built, so this is only a defensive default.
+func scalarType(kind string) string {
+	switch kind {
+	case "number":
+		return "number"
+	case "boolean":
+		return "boolean"
+	default:
+		return "string"
+	}
 }

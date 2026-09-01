@@ -57,6 +57,37 @@ lint *paths:
 
 Run them: `rune greet Ada`, `rune deploy prod`, `rune test ./... ./cmd/...`.
 
+#### Typed parameters
+
+A parameter can carry an inline **type annotation** — `name:kind`, written with
+no spaces around the colon (a spaced colon is always the task-header colon):
+
+```rune
+# Deploy the service.
+deploy env:enum("staging","prod") replicas:number="2":
+    ./deploy.sh {{env}} {{replicas}}
+
+build target:path="./dist" verbose:boolean="false":
+    go build -o {{target}} ./...
+
+test +packages:path:
+    go test {{packages}}
+```
+
+The kinds are `string` (the default, spelled out), `number` (integers and
+decimals), `boolean` (exactly `true`/`false`), `path` (any non-empty string —
+a role marker, never an existence check), and `enum("v1","v2")` (a closed,
+case-sensitive set of static string values; variadic values are checked one by
+one). Every invocation path enforces the constraint **before anything runs** —
+CLI arguments, dependency arguments like `(deploy "staging")`, and MCP tool
+calls — with an error naming the parameter, the rejected value, and the
+accepted set. Agents see the constraints in the tool schema (see
+[mcp.md](mcp.md#typed-tool-schemas)), so they compose valid calls on the first
+attempt. Mistakes in the annotations themselves (unknown kind, empty or
+duplicate enum values, a default that violates its own constraint) are static
+errors with caret diagnostics (RUNE1006, RUNE2012–RUNE2015; see
+[diagnostics](diagnostics.md)).
+
 ### Dependencies and post-hooks
 
 Dependencies run **before** the task; post-hooks (after `&&`) run **after** it succeeds;
@@ -252,6 +283,8 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [working-directory("./sub")]    # run the body from a specific directory
 [env("KEY", "value")]           # set an environment variable for the body
 [doc("Custom one-line doc")]    # override the doc string
+[returns("JSON array of IDs")]  # outcome description: shown to agents and in --list
+[param-doc("env", "Target environment")]  # describe one parameter for the tool schema
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
 [cache(inputs = ["go.mod", "src/**/*.go"], outputs = ["dist/app"])]  # content-hash caching
 ```

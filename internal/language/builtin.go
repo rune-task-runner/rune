@@ -95,6 +95,11 @@ var builtinAttributes = []Builtin{
 	{Name: "macos", Kind: BuiltinAttribute, Signature: "[macos]", Documentation: "Only available on macOS."},
 	{Name: "windows", Kind: BuiltinAttribute, Signature: "[windows]", Documentation: "Only available on Windows."},
 	{Name: "unix", Kind: BuiltinAttribute, Signature: "[unix]", Documentation: "Only available on Unix-like systems (not Windows)."},
+	{Name: "doc", Kind: BuiltinAttribute, Signature: "[doc(\"One-line doc\")]", Documentation: "Override the task's doc comment."},
+	{Name: "script", Kind: BuiltinAttribute, Signature: "[script(\"/usr/bin/env python3\")]", Documentation: "Run the whole body as a script under this interpreter."},
+	{Name: "context", Kind: BuiltinAttribute, Signature: "[context]", Documentation: "Project-health hook: output is injected into agent context at session start."},
+	{Name: "param-doc", Kind: BuiltinAttribute, Signature: "[param-doc(\"name\", \"description\")]", Documentation: "Describe one parameter; surfaced to agents in the tool schema (spec 023)."},
+	{Name: "returns", Kind: BuiltinAttribute, Signature: "[returns(\"expected output\")]", Documentation: "Describe the task's successful output; surfaced to agents and listings (spec 023)."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

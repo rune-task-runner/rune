@@ -32,6 +32,7 @@ type fileDTO struct {
 type taskDTO struct {
 	Name       string     `json:"name"`
 	Doc        string     `json:"doc,omitempty"`
+	Returns    string     `json:"returns,omitempty"` // [returns] outcome description (spec 023)
 	Executor   string     `json:"executor,omitempty"`
 	Private    bool       `json:"private"`
 	Available  bool       `json:"available"` // computed for the dumping host; false is the signal, so no omitempty
@@ -46,6 +47,12 @@ type taskDTO struct {
 type paramDTO struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
+	// Spec 023 annotations. omitempty is correct here (unlike `available`):
+	// absence reproduces the pre-023 document exactly, which is the
+	// compatibility signal (SC-003).
+	Type        string   `json:"type,omitempty"`        // constraint kind name
+	Values      []string `json:"values,omitempty"`      // enum value list, source order
+	Description string   `json:"description,omitempty"` // [param-doc] text
 }
 
 // toDTO projects the parsed file for JSON consumption. goos parameterizes
@@ -66,12 +73,18 @@ func toDTO(f *ast.File, goos string) fileDTO {
 		td := taskDTO{
 			Name:      t.Name,
 			Doc:       t.Doc,
+			Returns:   t.Returns(),
 			Executor:  t.Executor,
 			Private:   t.IsPrivate(),
 			Available: t.AvailableOn(goos),
 		}
 		for _, p := range t.Params {
-			td.Params = append(td.Params, paramDTO{Name: p.Name, Kind: paramKind(p.Kind)})
+			pd := paramDTO{Name: p.Name, Kind: paramKind(p.Kind), Description: t.ParamDoc(p.Name)}
+			if c := p.Constraint; c != nil {
+				pd.Type = c.KindName
+				pd.Values = c.Values
+			}
+			td.Params = append(td.Params, pd)
 		}
 		for _, d := range t.Deps {
 			td.Deps = append(td.Deps, d.Name)

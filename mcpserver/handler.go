@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,14 +11,16 @@ import (
 )
 
 // handler builds the tool-call handler for a task: it enforces authorization,
-// unmarshals arguments, runs the task through the shared engine, and returns
-// {stdout, stderr, exitCode} as the tool result.
-func (s *Server) handler(taskName string) mcp.ToolHandler {
+// unmarshals and validates arguments against the advertised schema (spec 023
+// FR-005 — a violation never reaches the engine), runs the task through the
+// shared engine, and returns {stdout, stderr, exitCode} as the tool result.
+func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
+	taskName := t.Name
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		if !s.authorized(taskName) {
 			return errorResult(fmt.Sprintf("task %q requires explicit approval and is not authorized for this session", taskName)), nil
 		}
-		args, err := decodeArgs(req.Params.Arguments)
+		args, err := decodeArgs(req.Params.Arguments, t.Params)
 		if err != nil {
 			return errorResult("invalid arguments: " + err.Error()), nil
 		}
@@ -32,30 +35,57 @@ func (s *Server) handler(taskName string) mcp.ToolHandler {
 	}
 }
 
-// decodeArgs converts the raw JSON arguments into string parameters. Array
-// (variadic) values are space-joined.
-func decodeArgs(raw json.RawMessage) (map[string]string, error) {
+// decodeArgs converts the raw JSON arguments into string parameters and
+// validates each against its declared constraint (spec 023 FR-005 — a
+// violation never reaches the engine). Array (variadic) values are validated
+// PER ELEMENT and then space-joined — the join destroys element boundaries,
+// so this is the only point where per-value semantics exist on the MCP path
+// (spec 023 FR-008). A scalar supplied for a variadic parameter is validated
+// as a single element, exactly as the CLI treats one quoted argument, so no
+// value form bypasses the constraint. Numbers are decoded with UseNumber so
+// their source spelling survives verbatim (fmt.Sprint on a float64 would
+// render 1000000 as "1e+06").
+func decodeArgs(raw json.RawMessage, params []ParamInfo) (map[string]string, error) {
 	out := map[string]string{}
 	if len(raw) == 0 {
 		return out, nil
 	}
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
+	byName := make(map[string]ParamInfo, len(params))
+	for _, p := range params {
+		byName[p.Name] = p
+	}
 	for k, v := range m {
-		switch x := v.(type) {
-		case string:
-			out[k] = x
-		case []any:
-			parts := make([]string, 0, len(x))
-			for _, e := range x {
-				parts = append(parts, fmt.Sprint(e))
+		p, known := byName[k]
+		if arr, isArr := v.([]any); isArr {
+			parts := make([]string, 0, len(arr))
+			for _, e := range arr {
+				s := fmt.Sprint(e)
+				if known {
+					if err := p.check(s); err != nil {
+						return nil, err
+					}
+				}
+				parts = append(parts, s)
 			}
 			out[k] = strings.Join(parts, " ")
-		default:
-			out[k] = fmt.Sprint(x)
+			continue
 		}
+		s, isStr := v.(string)
+		if !isStr {
+			s = fmt.Sprint(v) // json.Number, bool, or null
+		}
+		if known {
+			if err := p.check(s); err != nil {
+				return nil, err
+			}
+		}
+		out[k] = s
 	}
 	return out, nil
 }

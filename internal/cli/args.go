@@ -74,9 +74,20 @@ func paramCapacity(t *ast.Task) int {
 	return len(t.Params)
 }
 
+// checkParamValue validates one bound value against the parameter's declared
+// constraint (spec 023 FR-005). The error carries the task, parameter, quoted
+// value, and accepted set (FR-006) as a usage error: exit 2, zero side effects.
+func checkParamValue(t *ast.Task, p *ast.Param, val string) error {
+	if err := p.Constraint.Check(val); err != nil {
+		return usagef("task %q: invalid value %q for parameter %q (%s)", t.Name, val, p.Name, err)
+	}
+	return nil
+}
+
 // bindParams binds positional arguments to a task's parameters, evaluating
 // defaults (which may reference earlier params) against scope. It enforces the
-// task's arity.
+// task's arity and every declared constraint — variadic values are validated
+// per element BEFORE the space-join collapses them (spec 023 FR-008).
 func bindParams(t *ast.Task, pos []string, scope *eval.Scope) (map[string]string, error) {
 	params := map[string]string{}
 	i := 0
@@ -86,10 +97,16 @@ func bindParams(t *ast.Task, pos []string, scope *eval.Scope) (map[string]string
 			if i >= len(pos) {
 				return nil, usagef("task %q is missing required argument %q", t.Name, p.Name)
 			}
+			if err := checkParamValue(t, p, pos[i]); err != nil {
+				return nil, err
+			}
 			params[p.Name] = pos[i]
 			i++
 		case ast.ParamDefaulted:
 			if i < len(pos) {
+				if err := checkParamValue(t, p, pos[i]); err != nil {
+					return nil, err
+				}
 				params[p.Name] = pos[i]
 				i++
 			} else {
@@ -97,15 +114,30 @@ func bindParams(t *ast.Task, pos []string, scope *eval.Scope) (map[string]string
 				if err != nil {
 					return nil, &ValidationError{Err: err}
 				}
+				// Literal defaults are checked statically (RUNE2014); this is
+				// the identical runtime check for defaults that evaluate.
+				if err := checkParamValue(t, p, v); err != nil {
+					return nil, err
+				}
 				params[p.Name] = v
 			}
 		case ast.ParamVariadicPlus:
 			if i >= len(pos) {
 				return nil, usagef("task %q expects at least one %q argument", t.Name, p.Name)
 			}
+			for _, v := range pos[i:] {
+				if err := checkParamValue(t, p, v); err != nil {
+					return nil, err
+				}
+			}
 			params[p.Name] = strings.Join(pos[i:], " ")
 			i = len(pos)
 		case ast.ParamVariadicStar:
+			for _, v := range pos[i:] {
+				if err := checkParamValue(t, p, v); err != nil {
+					return nil, err
+				}
+			}
 			params[p.Name] = strings.Join(pos[i:], " ")
 			i = len(pos)
 		}
@@ -117,13 +149,24 @@ func bindParams(t *ast.Task, pos []string, scope *eval.Scope) (map[string]string
 }
 
 // bindNamedParams binds named arguments (from an MCP tool call) to a task's
-// parameters, evaluating defaults for any omitted optional parameter.
+// parameters, evaluating defaults for any omitted optional parameter. Scalar
+// constraints are enforced here (defense in depth behind the MCP server's own
+// schema check); variadic values arrive already space-joined, so their
+// per-element validation happens in mcpserver before the join (spec 023 R6).
 func bindNamedParams(t *ast.Task, named map[string]string, scope *eval.Scope) (map[string]string, error) {
 	params := map[string]string{}
 	for _, p := range t.Params {
 		val, provided := named[p.Name]
 		switch p.Kind {
-		case ast.ParamRequired, ast.ParamVariadicPlus:
+		case ast.ParamRequired:
+			if !provided || val == "" {
+				return nil, usagef("task %q is missing required argument %q", t.Name, p.Name)
+			}
+			if err := checkParamValue(t, p, val); err != nil {
+				return nil, err
+			}
+			params[p.Name] = val
+		case ast.ParamVariadicPlus:
 			if !provided || val == "" {
 				return nil, usagef("task %q is missing required argument %q", t.Name, p.Name)
 			}
@@ -132,11 +175,17 @@ func bindNamedParams(t *ast.Task, named map[string]string, scope *eval.Scope) (m
 			params[p.Name] = val // may be empty
 		case ast.ParamDefaulted:
 			if provided {
+				if err := checkParamValue(t, p, val); err != nil {
+					return nil, err
+				}
 				params[p.Name] = val
 			} else {
 				v, err := eval.New(scope.WithParams(copyMap(params))).Eval(p.Default)
 				if err != nil {
 					return nil, &ValidationError{Err: err}
+				}
+				if err := checkParamValue(t, p, v); err != nil {
+					return nil, err
 				}
 				params[p.Name] = v
 			}
