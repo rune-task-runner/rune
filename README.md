@@ -18,6 +18,8 @@
   <a href="https://rune-task-runner.github.io/rune/"><img alt="Docs" src="https://img.shields.io/badge/docs-site-blue"></a>
 </p>
 
+**📖 Read the docs: [rune-task-runner.github.io/rune](https://rune-task-runner.github.io/rune/)**
+
 **[Docs](docs/README.md)** · **[Getting started](docs/getting-started.md)** · **[Examples](docs/examples/README.md)** · **[CLI reference](docs/cli.md)**
 
 </div>
