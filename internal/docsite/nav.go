@@ -144,7 +144,36 @@ func (p *navParser) splitKey(ln navLine) (key, value string, err error) {
 	if i < 0 {
 		return "", "", p.errf(ln, "expected %q", "key: value")
 	}
-	return strings.TrimSpace(text[:i]), unquoteNav(strings.TrimSpace(text[i+1:])), nil
+	return strings.TrimSpace(text[:i]), scalarValue(text[i+1:]), nil
+}
+
+// scalarValue turns the raw text after a "key:" into its value: an inline
+// comment is stripped, then surrounding quotes are removed. A value that must
+// itself contain " #" (a URL fragment, say) has to be double-quoted.
+func scalarValue(raw string) string {
+	return unquoteNav(stripInlineComment(strings.TrimSpace(raw)))
+}
+
+// stripInlineComment removes a trailing "# …" comment. Inside a double-quoted
+// scalar the "#" is data, so only text after the closing quote is considered.
+func stripInlineComment(s string) string {
+	if strings.HasPrefix(s, `"`) {
+		if end := strings.Index(s[1:], `"`); end >= 0 {
+			quoted, rest := s[:end+2], s[end+2:]
+			if i := strings.Index(rest, "#"); i >= 0 {
+				return strings.TrimSpace(quoted)
+			}
+			return strings.TrimSpace(quoted + rest)
+		}
+		return s
+	}
+	if strings.HasPrefix(s, "#") {
+		return ""
+	}
+	if i := strings.Index(s, " #"); i >= 0 {
+		return strings.TrimSpace(s[:i])
+	}
+	return s
 }
 
 // unquoteNav strips surrounding double quotes, honouring Go-compatible escapes.
@@ -169,7 +198,7 @@ func (p *navParser) scalarList(parentIndent int) ([]string, error) {
 		if !strings.HasPrefix(ln.text, "- ") {
 			return nil, p.errf(ln, "expected a list item %q", "- value")
 		}
-		out = append(out, unquoteNav(strings.TrimSpace(strings.TrimPrefix(ln.text, "- "))))
+		out = append(out, scalarValue(strings.TrimPrefix(ln.text, "- ")))
 		p.next()
 	}
 }
@@ -241,7 +270,7 @@ func (p *navParser) pages(parentIndent int) ([]Page, error) {
 		if !strings.HasPrefix(ln.text, "- ") {
 			return nil, p.errf(ln, "expected a list item %q", "- <path>")
 		}
-		body := strings.TrimSpace(strings.TrimPrefix(ln.text, "- "))
+		body := stripInlineComment(strings.TrimSpace(strings.TrimPrefix(ln.text, "- ")))
 		itemIndent := ln.indent
 		p.next()
 

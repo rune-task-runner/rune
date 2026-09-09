@@ -74,6 +74,49 @@ groups:
 	}
 }
 
+// TestParseNavStripsInlineComments covers the manifest as it is actually
+// written: values carry trailing "# why" comments, and a value read with its
+// comment attached would silently match nothing.
+func TestParseNavStripsInlineComments(t *testing.T) {
+	src := `base: /rune   # the site's base path
+exclude:
+  - guides/**        # "Moved" redirect stubs, not published
+  - release-guru/**  # an agent skill
+groups:
+  - group: Start here   # the first group
+    pages:
+      - overview.md     # the elevator pitch
+      - path: cli.md    # the reference
+        label: CLI      # shown in the sidebar
+  - group: Editors
+    links:
+      - label: Editor setup
+        url: "https://example.invalid/x#frag"   # a quoted URL keeps its fragment
+`
+	nav, err := ParseNav([]byte(src), "docs/nav.yaml")
+	if err != nil {
+		t.Fatalf("ParseNav: %v", err)
+	}
+	if nav.Base != "/rune" {
+		t.Errorf("Base = %q, want %q", nav.Base, "/rune")
+	}
+	if nav.Exclude[0] != "guides/**" || nav.Exclude[1] != "release-guru/**" {
+		t.Errorf("Exclude = %q, want the patterns without their comments", nav.Exclude)
+	}
+	if nav.Groups[0].Label != "Start here" {
+		t.Errorf("Groups[0].Label = %q", nav.Groups[0].Label)
+	}
+	if nav.Groups[0].Pages[0].Path != "overview.md" {
+		t.Errorf("Pages[0].Path = %q", nav.Groups[0].Pages[0].Path)
+	}
+	if got := nav.Groups[0].Pages[1]; got.Path != "cli.md" || got.Label != "CLI" {
+		t.Errorf("Pages[1] = %+v, want path cli.md label CLI", got)
+	}
+	if got := nav.Groups[1].Links[0].URL; got != "https://example.invalid/x#frag" {
+		t.Errorf("quoted URL = %q, want its fragment preserved", got)
+	}
+}
+
 func TestParseNavErrors(t *testing.T) {
 	tests := []struct {
 		name string
