@@ -20,6 +20,21 @@ services:
       - go-build-cache:/root/.cache/go-build
     command: ["go", "test", "./..."]
 
+  # Documentation site toolchain. Node runs in a container so the site builds
+  # without a host Node install, matching the test service's policy.
+  website:
+    image: node:22
+    working_dir: /src/website
+    environment:
+      npm_config_cache: /npm-cache
+    volumes:
+      - .:/src
+      - npm-cache:/npm-cache
+    ports:
+      - "4321:4321"
+    command: ["npm", "run", "dev"]
+
 volumes:
   go-mod-cache:
   go-build-cache:
+  npm-cache:
