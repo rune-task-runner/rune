@@ -11,6 +11,10 @@ import (
 type Front struct {
 	Title       string
 	Description string
+	// EditURL points at the real source file under docs/. It is set per page
+	// because a generated path (index.md, how-to.md) does not always match its
+	// source (README.md, how-to/README.md), so Starlight cannot infer it.
+	EditURL string
 }
 
 // Frontmatter renders f as a YAML header, terminated by the closing delimiter
@@ -22,6 +26,9 @@ func Frontmatter(f Front) string {
 	b.WriteString("title: " + strconv.Quote(f.Title) + "\n")
 	if f.Description != "" {
 		b.WriteString("description: " + strconv.Quote(f.Description) + "\n")
+	}
+	if f.EditURL != "" {
+		b.WriteString("editUrl: " + strconv.Quote(f.EditURL) + "\n")
 	}
 	b.WriteString("---\n\n")
 	return b.String()
@@ -39,5 +46,8 @@ func Transform(src, fromPath string, cfg Config) (string, Front) {
 		title = path.Base(Slug(fromPath))
 	}
 	front := Front{Title: title, Description: Description(body)}
+	if cfg.EditBase != "" {
+		front.EditURL = cfg.EditBase + "/" + fromPath
+	}
 	return Frontmatter(front) + RewriteLinks(body, fromPath, cfg), front
 }

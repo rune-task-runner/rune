@@ -16,6 +16,11 @@ type Config struct {
 	// BlobBase is the GitHub blob root for files the site does not host, e.g.
 	// "https://github.com/rune-task-runner/rune/blob/main".
 	BlobBase string
+	// EditBase is the GitHub edit root for docs/, e.g.
+	// "https://github.com/rune-task-runner/rune/edit/main/docs". Each generated
+	// page carries its own editUrl built from this plus its true source path,
+	// which is why output paths need not mirror docs/'s layout.
+	EditBase string
 	// Excluded reports whether a docs/-relative page is unpublished. Links to
 	// such pages become blob URLs, since a site path would 404.
 	Excluded func(relPath string) bool
