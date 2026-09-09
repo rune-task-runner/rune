@@ -75,7 +75,9 @@ Pure functions over Markdown text; all filesystem access lives in `cmd/docsite`.
 | `Frontmatter(f Front) string` | Emits the Starlight YAML header. |
 | `Slug(relPath) string` | Maps a `docs/`-relative path to a site path segment: lowercased, `.md` stripped, `README.md` → the directory itself. |
 
-`Front` carries `Title`, `Description`, and an optional `SidebarOrder`.
+`Front` carries `Title` and `Description`. Sidebar ordering is *not* frontmatter: it lives
+in `docs/nav.yaml` (§4.4), so order is reviewable in one place instead of scattered across
+28 pages.
 
 ### 4.2 Link-rewriting contract
 
@@ -298,8 +300,10 @@ Runs with the existing docs suite (`rune docs-check`), in Docker:
 - **Frontmatter:** every generated file carries a non-empty `title`.
 - **No surviving `.md` links:** no generated file contains a relative link target ending in
   `.md` (the §4.2 invariant).
-- **Golden test:** a small fixture tree under `testdata/` generates byte-identical expected
-  output, covering frontmatter, H1 removal, and each link class.
+- **Fixture-tree test:** a small tree under `internal/docsite/testdata/` is generated in
+  full and asserted on — frontmatter shape, H1 removal, each link class, exclusion, and a
+  `Write`-then-`Check` round trip that also proves a stale file is reported and then cleaned
+  up.
 
 ### 8.3 CI gates
 
