@@ -15,7 +15,7 @@
   <img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/rune-task-runner/rune">
   <a href="https://goreportcard.com/report/github.com/rune-task-runner/rune"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/rune-task-runner/rune"></a>
   <a href="https://pkg.go.dev/github.com/rune-task-runner/rune"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/rune-task-runner/rune.svg"></a>
-  <a href="https://github.com/rune-task-runner/rune/blob/main/docs/README.md"><img alt="Docs" src="https://img.shields.io/badge/docs-README-blue"></a>
+  <a href="https://rune-task-runner.github.io/rune/"><img alt="Docs" src="https://img.shields.io/badge/docs-site-blue"></a>
 </p>
 
 **[Docs](docs/README.md)** · **[Getting started](docs/getting-started.md)** · **[Examples](docs/examples/README.md)** · **[CLI reference](docs/cli.md)**
