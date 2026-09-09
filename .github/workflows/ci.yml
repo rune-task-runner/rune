@@ -43,6 +43,30 @@ jobs:
         with:
           version: v2.12
 
+  docs-site:
+    name: docs-site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          check-latest: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      # Generate the content tree from docs/, then build the real site: this
+      # catches a bad rewrite, missing frontmatter or a broken grammar before
+      # anything reaches main.
+      - name: Generate site content
+        run: go run ./cmd/docsite
+      - name: Install site dependencies
+        run: npm ci --prefix website
+      - name: Build site
+        run: npm run build --prefix website
+
   release-dryrun:
     name: release-dryrun
     runs-on: ubuntu-latest

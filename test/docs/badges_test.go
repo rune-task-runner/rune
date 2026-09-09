@@ -30,7 +30,7 @@ var requiredBadges = []requiredBadge{
 	{"Go version", "img.shields.io/github/go-mod/go-version/rune-task-runner/rune", ""},
 	{"Go Report Card", "goreportcard.com/badge/github.com/rune-task-runner/rune", "goreportcard.com/report/github.com/rune-task-runner/rune"},
 	{"Go Reference", "pkg.go.dev/badge/github.com/rune-task-runner/rune", "pkg.go.dev/github.com/rune-task-runner/rune"},
-	{"Docs", "img.shields.io/badge/docs", "docs/README.md"},
+	{"Docs", "img.shields.io/badge/docs-site", "rune-task-runner.github.io/rune"},
 }
 
 func readmeSource(t *testing.T) string {

@@ -49,11 +49,26 @@ rune --list        # see all dev tasks (or: go run ./cmd/rune --list)
 | `rune test-race` | Test suite with the race detector, inside Docker. |
 | `rune build` | Build the static host binary into `dist/`. |
 | `rune docker` | Build the production container image. |
-| `rune docs-check` | Verify the documentation (examples, code blocks, links) inside Docker. |
+| `rune docs-check` | Verify the documentation (examples, code blocks, links, site nav) inside Docker. |
+| `rune docs-site-gen` | Generate the documentation site's content tree from `docs/`. |
+| `rune docs-site-dev` | Serve the documentation site at <http://localhost:4321> with hot reload. |
+| `rune docs-site` | Build the static documentation site into `website/dist`. |
+| `rune docs-site-check` | Verify the generated site tree is current and the site builds. |
 | `rune release-dryrun` | Local GoReleaser snapshot (no publish). |
 
 > Don't have `rune` installed yet? Prefix any task with `go run ./cmd/rune` — e.g.
 > `go run ./cmd/rune lint`.
+
+### Working on the documentation site
+
+The site at <https://rune-task-runner.github.io/rune/> is **generated** from `docs/` — edit
+the Markdown there, never the generated tree under `website/src/content/docs/` (it is
+gitignored and rewritten on every run). Node runs in the `website` container, so no host
+Node install is needed.
+
+A new page under `docs/` must be added to `docs/nav.yaml`, which declares the site's
+navigation; `rune docs-check` fails if a page is in neither the manifest nor its `exclude`
+list, so a page cannot silently go missing from the site.
 
 ## Add a new example
 

@@ -1,0 +1,76 @@
+# The documentation site's navigation, in one reviewable file.
+#
+# Every Markdown page under docs/ must appear in exactly one group here, or be
+# matched by `exclude` — test/docs/site_test.go enforces that, so a new page
+# cannot silently go missing from the site. Parsed by internal/docsite.
+#
+# After editing, run: rune docs-site-gen
+
+base: /rune
+
+exclude:
+  - guides/**        # "Moved" redirect stubs, kept for old links but not published
+  - release-guru/**  # an agent skill, not user documentation
+
+groups:
+  - group: Start here
+    pages:
+      - overview.md
+      - installation.md
+      - getting-started.md
+      - path: user-guide/README.md
+        label: User guide
+
+  - group: How-to
+    pages:
+      - how-to/dependencies-and-hooks.md
+      - how-to/parameters.md
+      - how-to/caching.md
+      - how-to/parallelism.md
+      - how-to/executors.md
+      - how-to/settings-and-dotenv.md
+      - how-to/secret-masking.md
+      - how-to/imports-and-modules.md
+      - how-to/os-filtering.md
+      - path: how-to/README.md
+        label: All how-to guides
+
+  - group: Use cases
+    pages:
+      - path: use-cases/README.md
+        label: Overview
+      - path: use-cases/python-project.md
+        label: Python
+      - path: use-cases/node-project.md
+        label: Node
+      - path: use-cases/mcp-agents.md
+        label: AI agents
+
+  - group: Examples
+    pages:
+      - path: examples/README.md
+        label: All examples
+      - "examples/*/README.md"
+
+  - group: Reference
+    pages:
+      - cli.md
+      - path: runefile.md
+        label: Runefile language
+      - path: GRAMMAR.md
+        label: Grammar
+      - path: diagnostics.md
+        label: Diagnostics & codes
+      - path: mcp.md
+        label: AI agents (MCP)
+
+  - group: Operations
+    pages:
+      - docker.md
+      - troubleshooting.md
+      - releasing.md
+
+  - group: Editors
+    links:
+      - label: Editor setup (LSP)
+        url: https://github.com/rune-task-runner/rune/blob/main/editors/README.md

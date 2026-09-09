@@ -168,3 +168,21 @@ The workflow is safe to re-run:
 - **Apple notarization** / **Windows Authenticode** code-signing to remove OS "unidentified
   developer" prompts (requires paid certificates). The Homebrew cask strips the macOS
   quarantine attribute as an interim measure.
+
+## Documentation site
+
+The site at <https://rune-task-runner.github.io/rune/> is generated from `docs/` and
+deployed by `.github/workflows/pages.yml` on every push to `main` that touches `docs/`,
+`website/`, `internal/docsite/`, `cmd/docsite/` or the Runefile TextMate grammar. It is not
+tied to a release: documentation ships continuously.
+
+- **Source of truth** is `docs/**.md`. `internal/docsite` derives each page's frontmatter
+  from its H1 and first paragraph and rewrites relative links; the generated tree under
+  `website/` is gitignored. Run `rune docs-site-gen` after editing.
+- **Navigation** lives in `docs/nav.yaml`. A page under `docs/` that is neither listed nor
+  excluded fails `rune docs-check`.
+- **One-time setup:** the repository's Settings → Pages must have **Source: GitHub Actions**.
+- **Moving to a custom domain** later: add a `CNAME` file to `website/public/`, set
+  `base: '/'` and `site: 'https://<domain>'` in `website/astro.config.mjs`, and change
+  `BasePath` in `docsite.DefaultOptions` to `/`. Point the DNS records at GitHub Pages, then
+  regenerate — every link flows from those two values.

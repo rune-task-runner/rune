@@ -33,6 +33,24 @@ docker:
 docs-check:
     docker-compose run --rm test go test ./test/docs/...
 
+# Generate the documentation site content tree from docs/ and docs/nav.yaml.
+docs-site-gen:
+    go run ./cmd/docsite
+
+# Serve the documentation site locally at http://localhost:4321 (Node in Docker).
+docs-site-dev: docs-site-gen
+    docker-compose run --rm --service-ports website npm run dev
+
+# Build the static documentation site into website/dist.
+docs-site: docs-site-gen
+    docker-compose run --rm website npm ci
+    docker-compose run --rm website npm run build
+
+# Verify the generated site tree is current and the site builds.
+docs-site-check:
+    go run ./cmd/docsite -check
+    docker-compose run --rm website npm run build
+
 # Dry-run a release locally (no publish).
 release-dryrun:
     goreleaser release --snapshot --clean

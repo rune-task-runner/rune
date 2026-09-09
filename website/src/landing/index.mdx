@@ -1,0 +1,112 @@
+---
+title: Rune
+description: A shared task runner for humans and AI agents. One readable Runefile, run from the CLI or through MCP.
+template: splash
+hero:
+  title: One task file. Humans and agents.
+  tagline: Rune runs your project's commands from one readable Runefile — lint, test, build, deploy. You run them from the CLI; your AI agents and editors run the very same tasks through MCP. A single static binary, no runtime dependencies.
+  image:
+    alt: The Rune logo
+    # Relative asset paths resolve from where this file is *built*, which is
+    # website/src/content/docs/index.mdx — not from src/landing/. So this points
+    # at website/src/assets/icon.png.
+    file: ../../assets/icon.png
+  actions:
+    - text: Get started
+      link: /rune/getting-started/
+      icon: right-arrow
+      variant: primary
+    - text: Browse examples
+      link: /rune/examples/
+      icon: open-book
+      variant: minimal
+    - text: View on GitHub
+      link: https://github.com/rune-task-runner/rune
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rune-task-runner/rune/main/scripts/install.sh | sh
+```
+
+Or see [every installation method](/rune/installation/) — Homebrew, Docker, `go install`,
+or a release archive.
+
+## A Runefile
+
+```rune
+# Build the project.
+build target="release": fetch
+    go build -tags {{target}} ./...
+
+# Fetch dependencies.
+fetch:
+    @go mod download
+
+# Run tests.
+test: build
+    go test ./...
+```
+
+```sh
+rune              # show the version + available tasks (runs nothing)
+rune build        # run the `build` task
+rune test         # runs `build` (a dependency), then `test`
+rune --list       # shows documented tasks
+```
+
+## Why Rune
+
+<CardGrid>
+  <Card title="A command runner, not a build system" icon="rocket">
+    Tasks always run when asked. No `.PHONY` traps, no timestamp guessing. Content-hash
+    caching exists as an explicit per-task [`[cache(...)]`](/rune/how-to/caching/) opt-in.
+  </Card>
+  <Card title="Errors are a feature" icon="warning">
+    Undefined variables, unknown dependencies, dependency cycles and arity mismatches are
+    caught *before anything runs*, with `file:line:col` and caret-underlined
+    [diagnostics](/rune/diagnostics/).
+  </Card>
+  <Card title="Agents are first-class" icon="puzzle">
+    Every task is an MCP tool — read-only by default, gated when destructive. Your agent and
+    your terminal run the same definitions. See [AI agents (MCP)](/rune/mcp/).
+  </Card>
+  <Card title="Polyglot task bodies" icon="seti:python">
+    Shell, Python, Node — or an AI agent — as the body of a task, chosen per task with
+    [executors](/rune/how-to/executors/).
+  </Card>
+  <Card title="Composable across a repo" icon="seti:folder">
+    Split and namespace task files with [imports and modules](/rune/how-to/imports-and-modules/),
+    and run independent prerequisites [in parallel](/rune/how-to/parallelism/).
+  </Card>
+  <Card title="Secrets stay secret" icon="approve-check">
+    Values of sensitive-looking variables are masked as `***` in all output, and are never
+    exposed to agents. See [secret masking](/rune/how-to/secret-masking/).
+  </Card>
+</CardGrid>
+
+## Where to next
+
+<CardGrid>
+  <Card title="New here" icon="open-book">
+    [What is Rune?](/rune/overview/) then [Getting started](/rune/getting-started/) — install,
+    write a tiny Runefile, run a task.
+  </Card>
+  <Card title="Know what you want" icon="setting">
+    The [how-to guides](/rune/how-to/) cover one capability per page, each with a runnable
+    example.
+  </Card>
+  <Card title="Wiring up a project" icon="seti:folder">
+    Complete walkthroughs for [Python](/rune/use-cases/python-project/),
+    [Node](/rune/use-cases/node-project/) and [AI agents](/rune/use-cases/mcp-agents/).
+  </Card>
+  <Card title="Looking something up" icon="list-format">
+    [CLI flags](/rune/cli/), the [Runefile language](/rune/runefile/), the
+    [grammar](/rune/grammar/), and the [`RUNE####` codes](/rune/diagnostics/).
+  </Card>
+</CardGrid>
