@@ -88,7 +88,7 @@ func newRootCmd(opts *cli.Options, version, commit string) *cobra.Command {
 	f.StringArrayVar(&opts.Set, "set", nil, "override a variable: --set NAME VALUE")
 	f.BoolVar(&opts.Watch, "watch", false, "re-run on file changes")
 	f.BoolVar(&opts.Choose, "choose", false, "interactive task picker")
-	f.BoolVar(&opts.Yes, "yes", false, "auto-approve [confirm] tasks")
+	f.BoolVar(&opts.Yes, "yes", false, "approve [confirm] tasks without prompting (required when stdin is not a terminal)")
 	f.BoolVar(&opts.Quiet, "quiet", false, "suppress command echo")
 	f.BoolVar(&opts.Fmt, "fmt", false, "rewrite the Runefile in canonical formatting")
 	f.BoolVar(&opts.ClearCache, "clear-cache", false, "remove the project-local .rune/cache directory")

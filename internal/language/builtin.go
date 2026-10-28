@@ -82,7 +82,7 @@ var builtinSettings = []Builtin{
 // builtinAttributes are the valid task attributes (mirrors ast Attr* constants).
 var builtinAttributes = []Builtin{
 	{Name: "private", Kind: BuiltinAttribute, Signature: "[private]", Documentation: "Hide the task from listings and disallow direct invocation."},
-	{Name: "confirm", Kind: BuiltinAttribute, Signature: "[confirm(\"Prompt?\")]", Documentation: "Prompt for confirmation before running (maps to the MCP destructive hint)."},
+	{Name: "confirm", Kind: BuiltinAttribute, Signature: "[confirm(\"Prompt?\")]", Documentation: "Ask for confirmation at a terminal before running; --yes approves non-interactively (maps to the MCP destructive hint)."},
 	{Name: "group", Kind: BuiltinAttribute, Signature: "[group(\"name\")]", Documentation: "Group the task under a heading in listings."},
 	{Name: "parallel", Kind: BuiltinAttribute, Signature: "[parallel]", Documentation: "Run this task's dependencies concurrently; the body starts only after all succeed."},
 	{Name: "cache", Kind: BuiltinAttribute, Signature: "[cache(inputs = [], outputs = [])]", Documentation: "Skip the task when inputs and outputs are unchanged since the last run."},

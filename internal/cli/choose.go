@@ -3,10 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
-	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattn/go-isatty"
 
 	"github.com/rune-task-runner/rune/internal/tui"
 )
@@ -72,16 +70,7 @@ func pickerItems(mod *loadedModule) []tui.PickerSection {
 // redirected, or CI context this returns false so the caller errors instead of
 // rendering control sequences into captured output (FR-011).
 func interactiveTerminal(opts Options) bool {
-	in, okIn := opts.Stdin.(*os.File)
-	out, okOut := opts.Stdout.(*os.File)
-	if !okIn || !okOut {
-		return false
-	}
-	return isTTY(in.Fd()) && isTTY(out.Fd())
-}
-
-func isTTY(fd uintptr) bool {
-	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+	return isTerminal(opts.Stdin) && isTerminal(opts.Stdout)
 }
 
 // runPicker runs the Bubble Tea program to completion and returns the selected
