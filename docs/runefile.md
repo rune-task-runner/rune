@@ -272,7 +272,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 
 ```rune
 [private]                       # hidden from --list and MCP; callable only as a dependency
-[confirm("Really clean?")]      # prompt before running (auto-approve with --yes)
+[confirm("Really clean?")]      # prompt at a terminal before running (--yes approves otherwise)
 [parallel]                      # run this task's dependencies concurrently
 [group("build")]                # group label in listings
 [linux]  [macos]  [windows]  [unix]   # restrict to an OS (see below)
@@ -288,6 +288,13 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
 [cache(inputs = ["go.mod", "src/**/*.go"], outputs = ["dist/app"])]  # content-hash caching
 ```
+
+`[confirm]` asks before a destructive task runs, and only a person at a terminal can
+answer. When stdin is a pipe or a file (a script, a CI job, or an AI agent with a shell),
+the task is declined without reading stdin and the run fails with a message naming
+`--yes`, the deliberate way to approve `[confirm]` tasks unattended. Over MCP,
+`[confirm]` tasks are gated separately; see
+[Using Rune with AI Agents](mcp.md#security-model-secure-by-default).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it
 when an agent session starts and injects its output into the agent's context — see

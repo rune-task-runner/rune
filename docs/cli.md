@@ -54,7 +54,7 @@ A clean exit `0` means the Runefile is valid; exit `3` means a static error (wit
 | `--set <NAME=VALUE>` | Override a variable. The positional `NAME=VALUE` form (above) is the primary mechanism. |
 | `--watch` | Re-run the requested task(s) when files change. |
 | `--choose` | Open the interactive task picker (requires a terminal). |
-| `--yes` | Auto-approve `[confirm]` tasks (non-interactive). |
+| `--yes` | Approve `[confirm]` tasks without prompting. Required when stdin is not a terminal: piped or redirected input never approves. |
 | `--quiet` | Suppress command echo. |
 | `--fmt` | Rewrite the Runefile in canonical formatting. |
 | `--clear-cache` | Remove the project-local `.rune/cache` directory. |

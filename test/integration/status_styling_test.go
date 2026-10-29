@@ -6,7 +6,8 @@ import (
 )
 
 // 014 US2 (C3): the remaining status/informational messages — formatted:,
-// cleared:, the confirm prompt, the bare-`rune` overview, and the MCP server
+// cleared:, the confirm prompt (now in confirm_pty_test.go: it needs a
+// terminal since spec 027), the bare-`rune` overview, and the MCP server
 // banner — join the shared theme, with plain bytes frozen.
 
 // styledVsPlain runs the same invocation twice in dir (--color=always, then
@@ -75,34 +76,6 @@ func TestOverviewNoTasksStyled(t *testing.T) {
 	}
 	if !hasANSI(styled.stdout) {
 		t.Errorf("no-tasks overview should carry ANSI (header/docs URL): %q", styled.stdout)
-	}
-}
-
-func TestConfirmPromptStyled(t *testing.T) {
-	src := "[confirm]\ndanger:\n    @echo done\n"
-	dir := writeRunefile(t, src)
-
-	styled := runWithStdin(t, dir, "n\n", "--color=always", "danger")
-	plain := runWithStdin(t, dir, "n\n", "--color=never", "danger")
-	if styled.code != plain.code {
-		t.Fatalf("exit diverged: styled=%d plain=%d", styled.code, plain.code)
-	}
-	if !strings.Contains(plain.stderr, `Run "danger"? [y/N] `) {
-		t.Fatalf("prompt shape changed: %q", plain.stderr)
-	}
-	if !hasANSI(styled.stderr) {
-		t.Errorf("confirm prompt should carry ANSI: %q", styled.stderr)
-	}
-	if got := stripANSI(styled.stderr); got != plain.stderr {
-		t.Errorf("styled prompt (stripped) != plain:\n stripped=%q\n plain=%q", got, plain.stderr)
-	}
-	// The [y/N] hint stays plain: no escape may open after the prompt text.
-	if !strings.HasSuffix(styled.stderr, " [y/N] ") {
-		t.Errorf("[y/N] hint should be plain at the end of the prompt: %q", styled.stderr)
-	}
-	// Declining still refuses to run.
-	if strings.Contains(styled.stdout, "done") || strings.Contains(plain.stdout, "done") {
-		t.Errorf("task ran despite declined confirm")
 	}
 }
 

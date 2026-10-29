@@ -155,9 +155,9 @@ homebrew_casks:
     # strip the quarantine attribute so it runs without a Gatekeeper prompt.
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/rune"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/rune"]
           end
 
 scoops:

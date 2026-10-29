@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +10,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -154,6 +154,7 @@ func execute(opts Options, runefile string, args []string) error {
 		ctx:       mopts.ctx(),
 		src:       srcProvider,
 		goos:      runtime.GOOS,
+		stdinTTY:  isTerminal(mopts.Stdin),
 	}
 
 	invs, err := eng.resolveRoots(rawInvs)
@@ -196,6 +197,14 @@ type engine struct {
 	ctx       context.Context
 	src       diag.SourceProvider
 	goos      string // host OS for availability checks; runtime.GOOS outside tests
+
+	// stdinTTY records, once per invocation, whether stdin is a terminal: only
+	// then may a [confirm] prompt be answered (spec 027). Always false on the
+	// MCP path, which passes no stdin at all.
+	stdinTTY bool
+
+	// confirmMu holds one [confirm] prompt and its answer at a time.
+	confirmMu sync.Mutex
 
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
@@ -295,11 +304,11 @@ func (e *engine) Execute(task *ast.Task, params map[string]string) error {
 	}
 
 	if c := task.Attr(ast.AttrConfirm); c != nil && e.plan == planRun {
-		if !e.opts.Yes && !e.confirm(task, c.Str) {
+		if f := e.confirmFailure(task, c.Str); f != nil {
 			// The body never started, so || failure hooks must not fire
 			// (FR-003): the wrapper lets the scheduler recognize this via
 			// scheduler.ErrBodyNotRun without changing the rendered message.
-			return &TaskFailure{Err: &bodyNotRunError{err: errorf("task %q was not confirmed", task.Name)}, Silent: true}
+			return &TaskFailure{Err: &bodyNotRunError{err: f.Err}, Silent: f.Silent}
 		}
 	}
 
@@ -357,8 +366,8 @@ func (e *engine) ExecuteFailHook(task *ast.Task, params map[string]string, f sch
 		return e.ctx.Err()
 	}
 	if c := task.Attr(ast.AttrConfirm); c != nil {
-		if !e.opts.Yes && !e.confirm(task, c.Str) {
-			return &TaskFailure{Err: errorf("task %q was not confirmed", task.Name), Silent: true}
+		if f := e.confirmFailure(task, c.Str); f != nil {
+			return f
 		}
 	}
 	// "diagnosing" is an active status label like "running:" (label styled,
@@ -465,28 +474,6 @@ func (e *engine) runBodyTo(task *ast.Task, params map[string]string, stdout io.W
 		return &TaskFailure{Err: err, Silent: true}
 	}
 	return err
-}
-
-// confirm prompts the operator to approve a destructive ([confirm]) task. It
-// returns false on any non-affirmative answer or when stdin is unavailable.
-func (e *engine) confirm(task *ast.Task, prompt string) bool {
-	if e.opts.Stdin == nil {
-		return false
-	}
-	if prompt == "" {
-		prompt = fmt.Sprintf("Run %q?", task.Name)
-	}
-	// A destructive-action prompt uses the warning role; the [y/N] hint stays
-	// plain so the input convention is never obscured by styling (014 C3).
-	fmt.Fprintf(e.opts.Stderr, "%s [y/N] ", e.theme.Warning.Render(prompt))
-	reader := bufio.NewReader(e.opts.Stdin)
-	line, _ := reader.ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true
-	default:
-		return false
-	}
 }
 
 // taskDir resolves the working directory for a task, honoring [no-cd] (run in
