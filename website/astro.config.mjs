@@ -28,7 +28,10 @@ export default defineConfig({
       // The logo is an *imported* asset, so it must live under src/ — files in
       // public/ are served but not importable. favicon takes a served URL.
       logo: { src: './src/assets/icon.png', alt: 'Rune' },
-      favicon: '/img/icon.png',
+      favicon: '/img/favicon.svg',
+      // ICO fallback for browsers without SVG favicon support. Unlike favicon,
+      // head links do not get the base path, so the href spells out /rune.
+      head: [{ tag: 'link', attrs: { rel: 'icon', href: '/rune/img/favicon.ico', sizes: '32x32' } }],
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/docs/` },
       lastUpdated: true,

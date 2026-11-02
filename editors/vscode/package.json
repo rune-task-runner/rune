@@ -48,7 +48,11 @@
         "extensions": [
           ".rune"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/runefile.svg",
+          "dark": "./icons/runefile.svg"
+        }
       }
     ],
     "grammars": [
