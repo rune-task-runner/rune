@@ -1,0 +1,73 @@
+/*
+  Papyrus theme: the warm palette of the Rune logo (parchment and ink) in
+  place of Starlight's default blue-grey. Starlight reads every colour from
+  these variables, so overriding them restyles the whole site. Its own styles
+  live in cascade layers, so this unlayered file wins without !important.
+
+  Starlight's scale runs from --sl-color-white (strongest text) to
+  --sl-color-black (page background) in both modes; light mode inverts it.
+*/
+
+:root {
+	/* Dark mode: lamp-lit brown page, parchment text, amber accent. */
+	--sl-color-white: #f6ead2;
+	--sl-color-gray-1: #ede0c8;
+	--sl-color-gray-2: #e2d3b8;
+	--sl-color-gray-3: #b6a387;
+	--sl-color-gray-4: #7f6d58;
+	--sl-color-gray-5: #4a3d31;
+	--sl-color-gray-6: #2b231c;
+	--sl-color-black: #1b1612;
+
+	--sl-color-accent-low: #3a2416;
+	--sl-color-accent: #d98f4e;
+	--sl-color-accent-high: #f0b57a;
+
+	--sl-color-backdrop-overlay: hsla(28, 25%, 8%, 0.7);
+
+	--rune-note-bg: #2a2018;
+	--rune-font-heading: 'EB Garamond', Georgia, 'Times New Roman', serif;
+}
+
+:root[data-theme='light'] {
+	/* Light mode: papyrus page, ink text, sienna accent. */
+	--sl-color-white: #232136;
+	--sl-color-gray-1: #2e2620;
+	--sl-color-gray-2: #3d3229;
+	--sl-color-gray-3: #5e4f3e;
+	--sl-color-gray-4: #8c7a60;
+	--sl-color-gray-5: #cdb48a;
+	--sl-color-gray-6: #e9d8b4;
+	--sl-color-gray-7: #efe0c2;
+	--sl-color-black: #f4e8cf;
+
+	--sl-color-accent-low: #e9cfa3;
+	--sl-color-accent: #8a3f1c;
+	--sl-color-accent-high: #6e3016;
+
+	--sl-color-backdrop-overlay: hsla(30, 30%, 30%, 0.5);
+
+	--rune-note-bg: #ecdab6;
+}
+
+/* Serif headings; body text, navigation, and code keep the system fonts. */
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6),
+h1#_top,
+.site-title {
+	font-family: var(--rune-font-heading);
+}
+
+/* Starlight rotates card icons through orange, purple, green, red, and blue.
+   Every card keeps the first one's warm orange instead. */
+.card {
+	--sl-card-border: var(--sl-color-orange);
+	--sl-card-bg: var(--sl-color-orange-low);
+}
+
+/* The docs write notes as blockquotes ("> [!NOTE]"): mark them as notes. */
+.sl-markdown-content blockquote {
+	border-inline-start: 3px solid var(--sl-color-accent);
+	background-color: var(--rune-note-bg);
+	padding: 0.5rem 1rem;
+	border-radius: 0 0.25rem 0.25rem 0;
+}
