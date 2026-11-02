@@ -1,6 +1,6 @@
 # Dev-only files excluded from the .vsix. Do NOT exclude extension.js,
 # syntaxes/, language-configuration.json, README.md, CHANGELOG.md, LICENSE,
-# icon.png, or production node_modules — CI asserts they are packaged.
+# icon.png, icons/, or production node_modules; CI asserts they are packaged.
 .vscodeignore
 .gitignore
 package-lock.json

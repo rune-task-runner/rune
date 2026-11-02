@@ -153,6 +153,7 @@ jobs:
             extension/changelog.md \
             extension/LICENSE \
             extension/icon.png \
+            extension/icons/runefile.svg \
             extension/node_modules/vscode-languageclient/ ; do
             if ! grep -qiF "$f" /tmp/vsix-contents.txt; then
               echo "::error::missing $f in the packaged .vsix"; status=1
