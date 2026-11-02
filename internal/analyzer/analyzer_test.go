@@ -38,6 +38,17 @@ func TestAnalyzeClean(t *testing.T) {
 	}
 }
 
+// Issue #69: {{ expr }} with spaces inside the braces is the documented form.
+func TestAnalyzeSpacedInterpolation(t *testing.T) {
+	src := "x := \"1\"\ngreet name=\"world\":\n    @echo {{ name }} {{ x}} {{ env(\"HOME\") }} {{ name + x }}\n"
+	if msgs := analyze(t, src); len(msgs) != 0 {
+		t.Fatalf("expected no diagnostics, got %v", msgs)
+	}
+	if msgs := analyze(t, "greet:\n    @echo {{ nope }}\n"); !hasMsg(msgs, "undefined variable: nope") {
+		t.Errorf("a padded expression must still be resolved: msgs = %v", msgs)
+	}
+}
+
 func TestAnalyzeUndefinedVariable(t *testing.T) {
 	msgs := analyze(t, "greet:\n    @echo {{nope}}\n")
 	if !hasMsg(msgs, "undefined variable: nope") {

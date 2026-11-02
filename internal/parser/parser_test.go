@@ -190,3 +190,21 @@ func TestParseFailHookClauseOrderFixed(t *testing.T) {
 		t.Fatal("expected parse error for '|| ... && ...' clause order, got none")
 	}
 }
+
+// The text inside {{ ... }} may be padded with spaces, the documented form
+// (issue #69). A leading space must not lex as an indent.
+func TestParseExprFragmentIgnoresSurroundingSpace(t *testing.T) {
+	for _, src := range []string{"x", " x", "x ", " x ", "\tx\t"} {
+		expr, diags := ParseExprFragment("Runefile", src)
+		if diags.HasErrors() {
+			t.Errorf("%q: unexpected diagnostics: %v", src, diags)
+			continue
+		}
+		if v, ok := expr.(*ast.VarRef); !ok || v.Name != "x" {
+			t.Errorf("%q: expr = %#v, want VarRef x", src, expr)
+		}
+	}
+	if _, diags := ParseExprFragment("Runefile", ` env("HOME") + "/bin" `); diags.HasErrors() {
+		t.Errorf("padded call: unexpected diagnostics: %v", diags)
+	}
+}
