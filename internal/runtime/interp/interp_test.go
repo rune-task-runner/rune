@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rune-task-runner/rune/internal/token"
 )
@@ -47,5 +49,27 @@ func TestRunNoInterpreter(t *testing.T) {
 	err := Run(context.Background(), "x", "noop\n", nil, token.Span{}, Options{})
 	if err == nil {
 		t.Fatal("expected error for empty command")
+	}
+}
+
+// exec.CommandContext kills the child on cancellation and Cmd.Wait then
+// reports the kill, not the context error; Run must still surface the
+// cancellation so the CLI exits 130 and skips || hooks (spec 028 R4).
+func TestRunCancelledReturnsContextError(t *testing.T) {
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("sleep not available")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	timer := time.AfterFunc(100*time.Millisecond, cancel)
+	defer timer.Stop()
+
+	err := Run(ctx, "slow", "sleep 5\n", []string{"sh"}, token.Span{}, Options{})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want context.Canceled", err)
+	}
+	var ee *ExecError
+	if errors.As(err, &ee) {
+		t.Errorf("err = %v, want no ExecError for a cancelled body", err)
 	}
 }

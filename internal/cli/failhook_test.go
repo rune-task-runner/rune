@@ -17,8 +17,8 @@ func TestCallFailHookFixSuggestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.ExitCode == 0 {
-		t.Fatal("failing task must keep a non-zero exit code")
+	if res.ExitCode != 7 {
+		t.Fatalf("exit = %d, want 7 (the body's code)", res.ExitCode)
 	}
 	if res.FixSuggestion != "SUGGESTION: check the fixtures" {
 		t.Errorf("FixSuggestion = %q", res.FixSuggestion)

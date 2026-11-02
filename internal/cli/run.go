@@ -627,20 +627,52 @@ func (e *engine) classifyRunErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	// An error already classified by runBody (e.g. a Silent [no-exit-message]
-	// failure or a declined confirmation) passes through unchanged.
+	// The run context, not the error, decides an interrupt: a child that traps
+	// SIGINT can exit with any status, and a killed agent CLI reads as a plain
+	// failure. Wrapping keeps the banner text, and keeps a silent
+	// [no-exit-message] failure silent.
+	if errors.Is(e.ctx.Err(), context.Canceled) {
+		return &Interrupted{Err: err}
+	}
+	var tf *TaskFailure
+	if !errors.As(err, &tf) {
+		var evErr *eval.Error
+		if errors.As(err, &evErr) {
+			renderDiags(e.opts, diag.List{diag.New(evErr.Span, evErr.Msg)}, e.src)
+		}
+		var cyc *scheduler.CycleError
+		if errors.As(err, &cyc) {
+			printErrorBanner(e.opts, e.theme, cyc.Error())
+		}
+	}
+	return classify(err)
+}
+
+// ExitCode is the code rune exits with for a failed body's error, so a ||
+// hook's RUNE_FAILED_EXIT_CODE always matches it (spec 028 FR-009).
+func (e *engine) ExitCode(err error) int {
+	return CodeFor(classify(err))
+}
+
+// classify maps a run error to the class that sets its exit code and banner,
+// without printing anything.
+func classify(err error) error {
+	// An error already classified by runBody (e.g. a declined confirmation)
+	// passes through unchanged. A silent [no-exit-message] failure keeps its
+	// banner suppressed, but its code follows the error it wraps (FR-008).
 	var already *TaskFailure
 	if errors.As(err, &already) {
+		if already.Silent {
+			return &TaskFailure{Err: classify(already.Err), Silent: true}
+		}
 		return already
 	}
 	var evErr *eval.Error
 	if errors.As(err, &evErr) {
-		renderDiags(e.opts, diag.List{diag.New(evErr.Span, evErr.Msg)}, e.src)
 		return &ValidationError{Err: err}
 	}
 	var cyc *scheduler.CycleError
 	if errors.As(err, &cyc) {
-		printErrorBanner(e.opts, e.theme, cyc.Error())
 		return &ValidationError{Err: err}
 	}
 	var exec *shell.ExecError

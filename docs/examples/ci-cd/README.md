@@ -29,5 +29,29 @@ running via `rune --dry-run ci`, and list tasks with `rune --list`. `deploy` is 
 ## How it works
 
 `ci: lint test build` chains the gate; `[confirm("…")]` on `deploy` blocks accidental or
-unattended production deploys. Exit codes: `0` success, `1` task failure, `2` usage, `3`
-validation.
+unattended production deploys. Exit codes: `0` success, a failed task body's own code (`1`
+when the failure has no exit code), `2` usage, `3` validation, `130` interrupted.
+
+## Branching on the exit code
+
+When a task body fails, rune exits with that body's code, so CI can tell a deliberate refusal
+from a failure without parsing output. `release-gate` exits `2` when the release window is
+closed:
+
+```sh
+rc=0
+rune release-gate "$WINDOW" || rc=$?
+case "$rc" in
+  0) echo "gate open, releasing" ;;
+  2) echo "gate refused, skipping the release" ;;
+  *) echo "release gate failed (exit $rc)"; exit "$rc" ;;
+esac
+```
+
+Rune also exits `2` for its own usage errors, such as an unknown task name. The `rune:` line on
+stderr tells the two apart:
+
+```text
+rune: task "release-gate" failed at "…": exit status 2   <- the gate refused
+rune: unknown task: release-gat                          <- usage error, also 2
+```

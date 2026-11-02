@@ -122,10 +122,24 @@ See the [MCP guide](mcp.md) for exposing tasks to AI agents, [editor setup](../e
 | Code | Meaning |
 |------|---------|
 | `0` | All requested tasks succeeded. |
-| `1` | A task body failed. |
-| `2` | Usage error — no Runefile found, unknown task, or bad arguments. |
-| `3` | Static validation error (parse/analyze) — nothing was executed. |
+| *N* | A task body failed with exit code *N*. The body can belong to the task you named, a dependency, or a later task on the command line; it is the failure the error message names. |
+| `1` | A task failed without a body exit code: a `[confirm]` prompt was declined or had no terminal, the interpreter is missing, or an `agent` task's CLI is missing or failed. |
+| `2` | Usage error: no Runefile found, unknown task, bad arguments, or an `agent` task with no `agent_cmd` set. |
+| `3` | Static validation error (parse/analyze). Nothing was executed. |
 | `130` | Interrupted (SIGINT / Ctrl-C). |
+
+Rune passes a body's code through unchanged, even when it equals one of Rune's own codes (`2`,
+`3`, `130`). The message on stderr tells the two apart:
+
+```text
+rune: task "gate" failed at "exit 2": exit status 2   <- the body exited 2
+rune: unknown task: gaet                              <- Rune's usage error, also 2
+```
+
+A body killed by signal *S* exits `128 + S` on Linux and macOS (for example `143` for SIGTERM).
+Shell bodies report codes 0 to 255 on every OS; interpreter bodies (`python`, `node`, custom) on
+Windows pass through the full code. `||` failure hooks never change the exit code, and the
+`RUNE_FAILED_EXIT_CODE` they receive always equals it.
 
 Rune's own messages go to **stderr**, so a task's `stdout` stays clean for piping.
 

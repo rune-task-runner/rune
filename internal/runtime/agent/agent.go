@@ -40,8 +40,10 @@ func (CLIProvider) Run(ctx context.Context, prompt string, opts Options) (string
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return "", err
+		// On cancel, Wait reports the kill as an *exec.ExitError rather than
+		// the context error, so the context is checked first.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", ctxErr
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {

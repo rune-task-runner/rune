@@ -24,8 +24,6 @@ import (
 	"sync"
 
 	"github.com/rune-task-runner/rune/internal/ast"
-	"github.com/rune-task-runner/rune/internal/runtime/interp"
-	"github.com/rune-task-runner/rune/internal/runtime/shell"
 )
 
 // ErrBodyNotRun marks an Execute error raised before the task's body started
@@ -52,13 +50,16 @@ type Engine interface {
 	// Available reports whether a task may run on this host. Unavailable
 	// dependency/post-hook targets are skipped silently.
 	Available(task *ast.Task) bool
+	// ExitCode is the code the run exits with for a failed body's error. The
+	// failure hooks receive it, so the two always agree (spec 028 FR-009).
+	ExitCode(err error) int
 }
 
 // Failure is the context of one task-body failure, handed to every failure
 // hook fired for it.
 type Failure struct {
 	TaskName string // user-visible (namespaced) name of the failed task
-	ExitCode int    // exit code of the failed body; 1 when non-numeric
+	ExitCode int    // the code the run exits with for this failure
 }
 
 // Invocation is a task plus its resolved parameters (a scheduler root).
@@ -172,7 +173,7 @@ func (s *state) runFailHooks(task *ast.Task, params map[string]string, bodyErr e
 	if len(task.FailHooks) == 0 || errors.Is(bodyErr, context.Canceled) || errors.Is(bodyErr, ErrBodyNotRun) {
 		return
 	}
-	f := Failure{TaskName: task.Name, ExitCode: failureExitCode(bodyErr)}
+	f := Failure{TaskName: task.Name, ExitCode: s.engine.ExitCode(bodyErr)}
 	for _, hook := range task.FailHooks {
 		target, hookParams, err := s.engine.ResolveDep(task, params, hook)
 		if err != nil {
@@ -232,23 +233,6 @@ func (s *state) runFailHook(hook *ast.Task, params map[string]string, f Failure,
 		}
 	}
 	return nil
-}
-
-// failureExitCode extracts the failed body's exit code: the shell or
-// interpreter executor's real exit status when available, else 1 (mirroring
-// the CLI's ExitTaskFail). A zero Code on an executor error means no exit
-// status was recorded (e.g. a shell parse error) — the task still failed, so
-// that also falls back to 1 rather than reporting a bogus "exit 0".
-func failureExitCode(err error) int {
-	var se *shell.ExecError
-	if errors.As(err, &se) && se.Code != 0 {
-		return se.Code
-	}
-	var ie *interp.ExecError
-	if errors.As(err, &ie) && ie.Code != 0 {
-		return ie.Code
-	}
-	return 1
 }
 
 func (s *state) runDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall, chain []string) error {

@@ -55,6 +55,15 @@ _internal-helper:
 Here `build` is offered to the agent as a tool with a `target` argument; `_internal-helper`
 is not.
 
+A tool call returns the task's output followed by an `[exit N]` line, and the result is
+marked as an error whenever *N* is not `0`. *N* is the code the CLI exits with for the same
+call: a failed body's own exit code, so an agent can tell a deliberate refusal (say, exit `2`)
+from a failure; `1` for a failure without a body exit code; and Rune's own `2` (usage), `3`
+(validation), or `130` (interrupted). A body can exit with one of those numbers too, so the
+marker alone does not tell a body's exit `2` from a usage error. See
+[Exit codes](cli.md#exit-codes). A call with invalid arguments is rejected before the task
+runs and returns an error without the marker.
+
 ## Typed tool schemas
 
 Inline [parameter type annotations](runefile.md#typed-parameters) become a
