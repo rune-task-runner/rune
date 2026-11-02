@@ -78,6 +78,19 @@ func TestUS1_ParamPassing(t *testing.T) {
 	}
 }
 
+// The documented {{ expr }} form, with spaces inside the braces, interpolates
+// like {{expr}} (issue #69).
+func TestUS1_SpacedInterpolation(t *testing.T) {
+	dir := writeRunefile(t, "greet name=\"world\":\n    @echo \"hello, {{ name }}{{ \"!\" }}\"\n")
+	r := run(t, dir, nil, "greet", "Ada")
+	if r.code != 0 {
+		t.Fatalf("exit = %d, stderr=%s", r.code, r.stderr)
+	}
+	if strings.TrimSpace(r.stdout) != "hello, Ada!" {
+		t.Errorf("stdout = %q, want 'hello, Ada!'", r.stdout)
+	}
+}
+
 func TestUS1_DependencyRunsFirstAndOnce(t *testing.T) {
 	dir := writeRunefile(t, us1Runefile)
 	r := run(t, dir, nil, "build")

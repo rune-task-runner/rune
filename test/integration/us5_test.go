@@ -111,3 +111,20 @@ func TestUS5_ImportSplice(t *testing.T) {
 		t.Errorf("import splice output: %q", r.stdout)
 	}
 }
+
+// A variable interpolated as {{ v }}, with spaces, is part of the cache
+// fingerprint: changing it re-runs the task (issue #69).
+func TestUS5_CacheInvalidatesOnSpacedInterpolation(t *testing.T) {
+	dir := writeRunefile(t, "[cache(inputs = [\"in.txt\"], outputs = [\"out.txt\"])]\nbuild v=\"1\":\n    @echo {{ v }} > out.txt\n")
+	_ = os.WriteFile(filepath.Join(dir, "in.txt"), []byte("v1"), 0o644)
+	if r := run(t, dir, nil, "build", "1"); r.code != 0 || !strings.Contains(r.stderr, "running: build") {
+		t.Fatalf("first run: exit=%d stderr=%q", r.code, r.stderr)
+	}
+	r := run(t, dir, nil, "build", "2")
+	if !strings.Contains(r.stderr, "running: build") {
+		t.Errorf("changed interpolated value should re-run: exit=%d stderr=%q", r.code, r.stderr)
+	}
+	if out, _ := os.ReadFile(filepath.Join(dir, "out.txt")); strings.TrimSpace(string(out)) != "2" {
+		t.Errorf("out.txt = %q, want 2", out)
+	}
+}

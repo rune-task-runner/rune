@@ -24,8 +24,10 @@ func Parse(file, src string) (*ast.File, diag.List) {
 
 // ParseExprFragment parses a standalone expression (e.g. the contents of a
 // {{ ... }} interpolation). It returns the expression and any diagnostics.
+// Surrounding whitespace is dropped first: {{ expr }} is the documented form,
+// and the lexer reads a leading space as an indent.
 func ParseExprFragment(file, src string) (ast.Expr, diag.List) {
-	toks, diags := lexer.Lex(file, src)
+	toks, diags := lexer.Lex(file, strings.TrimSpace(src))
 	p := &parser{file: file, toks: toks, diags: diags}
 	expr := p.parseExpr()
 	if p.curKind() != token.NEWLINE && p.curKind() != token.EOF {
