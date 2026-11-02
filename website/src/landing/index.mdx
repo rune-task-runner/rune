@@ -9,9 +9,11 @@ hero:
     alt: The Rune logo
     # Relative asset paths resolve from where this file is *built*, which is
     # website/src/content/docs/index.mdx — not from src/landing/. So this points
-    # at website/src/assets/logo.png, a 512px render: the hero shows it at
-    # 400px, while the header logo (icon.png) stays small.
-    file: ../../assets/logo.png
+    # at website/src/assets/logo.svg. It is SVG because Starlight renders a
+    # bitmap hero at a fixed 400px, which blurs on high-DPI screens; an SVG
+    # is not rasterized, so the rune stays sharp. It is docs/img/logo.svg with
+    # the parchment texture re-encoded as an 800px WebP (45 KB, not 1.2 MB).
+    file: ../../assets/logo.svg
   actions:
     - text: Get started
       link: /rune/getting-started/
