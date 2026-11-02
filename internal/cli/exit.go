@@ -2,12 +2,18 @@
 // analyze → run pipeline, task dispatch, and exit-code mapping.
 package cli
 
-import "errors"
+import (
+	"errors"
 
-// Exit codes (contracts/cli.md, FR-021).
+	"github.com/rune-task-runner/rune/internal/runtime/interp"
+	"github.com/rune-task-runner/rune/internal/runtime/shell"
+)
+
+// Exit codes (spec 001 contracts/cli.md FR-021; spec 028 contracts/exit-codes.md).
+// A task body failure exits with the body's own code instead of a constant.
 const (
 	ExitSuccess    = 0   // all requested tasks succeeded
-	ExitTaskFail   = 1   // a task body failed
+	ExitTaskFail   = 1   // a task failed without a body exit code
 	ExitUsage      = 2   // usage error / no Runefile / unknown task / bad args
 	ExitValidation = 3   // static parse/analyze error — nothing executed
 	ExitInterrupt  = 130 // interrupted (SIGINT)
@@ -27,8 +33,9 @@ type ValidationError struct{ Err error }
 func (e *ValidationError) Error() string { return e.Err.Error() }
 func (e *ValidationError) Unwrap() error { return e.Err }
 
-// TaskFailure marks a task body failure (exit 1). Silent suppresses the trailing
-// error banner (the [no-exit-message] attribute) without changing the exit code.
+// TaskFailure marks a task failure. It exits with the wrapped body's exit code,
+// or 1 when there is none. Silent suppresses the trailing error banner (the
+// [no-exit-message] attribute) without changing the exit code.
 type TaskFailure struct {
 	Err    error
 	Silent bool
@@ -67,10 +74,27 @@ func CodeFor(err error) int {
 	}
 	var tf *TaskFailure
 	if errors.As(err, &tf) {
-		return ExitTaskFail
+		return bodyExitCode(err)
 	}
 	// Default: treat unknown errors as usage problems.
 	return ExitUsage
+}
+
+// bodyExitCode extracts a failed body's exit code: the shell or interpreter
+// executor's real exit status when available, else 1. Only a positive Code
+// counts: 0 means no status was recorded (e.g. a shell parse error) and a
+// negative one means the platform reported none, so both fall back to 1 rather
+// than claiming success or leaking -1.
+func bodyExitCode(err error) int {
+	var se *shell.ExecError
+	if errors.As(err, &se) && se.Code > 0 {
+		return se.Code
+	}
+	var ie *interp.ExecError
+	if errors.As(err, &ie) && ie.Code > 0 {
+		return ie.Code
+	}
+	return ExitTaskFail
 }
 
 // usagef builds a UsageError with a formatted message.

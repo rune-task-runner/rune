@@ -35,8 +35,12 @@ func TestFailureHooks_MCPFixSuggestionInToolResult(t *testing.T) {
 			t.Errorf("tool result missing %q:\n%s", want, result)
 		}
 	}
-	if !strings.Contains(result, "[exit ") {
-		t.Errorf("tool result missing exit marker:\n%s", result)
+	// The marker carries the body's own code and precedes the suggestion.
+	exitAt := strings.Index(result, "[exit 7]")
+	if exitAt < 0 {
+		t.Errorf("tool result missing [exit 7] marker:\n%s", result)
+	} else if hookAt := strings.Index(result, "[fix suggestion - from Runefile || failure hooks]"); hookAt < exitAt {
+		t.Errorf("fix suggestion does not follow the exit marker:\n%s", result)
 	}
 	// No ANSI escapes may reach the agent.
 	if strings.Contains(result, "\\u001b") || strings.Contains(result, "\x1b") {

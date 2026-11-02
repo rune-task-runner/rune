@@ -21,8 +21,8 @@ diagnose:
 func TestFailureHooks_CLIHeaderAndExitCode(t *testing.T) {
 	dir := writeRunefile(t, failHookCLIRunefile)
 	r := run(t, dir, nil, "test")
-	if r.code != 1 {
-		t.Errorf("exit = %d, want 1 (task failure, unchanged by hooks)", r.code)
+	if r.code != 7 {
+		t.Errorf("exit = %d, want 7 (the body's code, unchanged by hooks)", r.code)
 	}
 	if !strings.Contains(r.stderr, "diagnosing: diagnose") {
 		t.Errorf("stderr missing 'diagnosing: diagnose' header:\n%s", r.stderr)
@@ -46,8 +46,8 @@ func TestFailureHooks_CLISuccessNoHeader(t *testing.T) {
 func TestFailureHooks_CLIHookFailureWarnsExitPreserved(t *testing.T) {
 	dir := writeRunefile(t, "test: || diagnose\n    @exit 7\ndiagnose:\n    @exit 9\n")
 	r := run(t, dir, nil, "test")
-	if r.code != 1 {
-		t.Errorf("exit = %d, want 1 (original failure, not the hook's)", r.code)
+	if r.code != 7 {
+		t.Errorf("exit = %d, want 7 (original failure, not the hook's)", r.code)
 	}
 	if !strings.Contains(r.stderr, "warning: failure hook diagnose failed") {
 		t.Errorf("stderr missing hook-failure warning:\n%s", r.stderr)

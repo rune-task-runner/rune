@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"syscall"
 
 	"github.com/rune-task-runner/rune/internal/token"
 )
@@ -91,14 +92,26 @@ func Run(ctx context.Context, taskName, script string, command []string, span to
 	cmd.Stderr = opts.Stderr
 
 	if err := cmd.Run(); err != nil {
-		if errors.Is(err, context.Canceled) {
-			return err
+		// On cancellation CommandContext kills the child and Wait reports the
+		// kill as an ExitError, so the context must be checked first or a
+		// Ctrl-C'd body would look like a failed one.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("task %q: %w", taskName, ctxErr)
 		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
-			return &ExecError{Task: taskName, Name: bin, Code: ee.ExitCode(), Span: span}
+			return &ExecError{Task: taskName, Name: bin, Code: exitCode(ee), Span: span}
 		}
 		return &ExecError{Task: taskName, Name: bin, Err: err, Span: span}
 	}
 	return nil
+}
+
+// exitCode follows the shell convention for a signal-killed process, 128 + S,
+// where ExitError.ExitCode would report -1. On Windows Signaled is always false.
+func exitCode(ee *exec.ExitError) int {
+	if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return ee.ExitCode()
 }

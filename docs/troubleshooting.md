@@ -9,7 +9,8 @@
 | Code | Meaning |
 |------|---------|
 | `0` | All requested tasks succeeded. |
-| `1` | A task body failed at runtime. |
+| *N* | A task body failed with exit code *N*; Rune exits with that same code. |
+| `1` | A task failed without a body exit code (for example a declined `[confirm]` or a missing interpreter). |
 | `2` | Usage error — no Runefile found, unknown task at the command line, or bad arguments. |
 | `3` | Validation error (parse/analyze, or a task not available on this OS) — **nothing executed**. |
 | `130` | Interrupted (SIGINT / Ctrl-C). |
@@ -106,14 +107,18 @@ rune: no Runefile found in this directory or any parent
 
 **Fix:** run from inside your project, or point at a file with `rune --file path/to/Runefile`.
 
-### A task body failed — exit 1
+### A task body failed
 
-A command in the body exited non-zero. Rune stops at the first failure and names the task, the
-failing line, and the exit status.
+A command in the body exited non-zero. Rune stops at the first failure, names the task, the
+failing line, and the exit status, and exits with that same code (`7` here).
 
 ```text
 rune: task "boom" failed at "exit 7": exit status 7
 ```
+
+A failure with no exit status, such as a declined `[confirm]`, exits `1`. A body can also exit
+`2`, `3`, or `130`, the codes Rune uses for its own errors; the message above tells them apart.
+See [Exit codes](cli.md#exit-codes).
 
 **Fix:** address the failing command. Prefix a line with `-` to deliberately ignore its error.
 

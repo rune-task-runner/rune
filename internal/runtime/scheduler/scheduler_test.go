@@ -23,7 +23,8 @@ type mockEngine struct {
 	hookErr     error            // error for hookFailOn (default "hook boom")
 	hookGate    func()           // called inside ExecuteFailHook (concurrency probes)
 	delay       time.Duration
-	unavailable map[string]bool // tasks Available reports false for
+	unavailable map[string]bool     // tasks Available reports false for
+	exitCode    func(err error) int // ExitCode's answer (default 1)
 
 	mu       sync.Mutex
 	order    []string
@@ -95,6 +96,13 @@ func (m *mockEngine) Warnf(format string, args ...any) {
 func (m *mockEngine) Namespace(_ *ast.Task) string { return "" }
 
 func (m *mockEngine) Available(t *ast.Task) bool { return !m.unavailable[t.Name] }
+
+func (m *mockEngine) ExitCode(err error) int {
+	if m.exitCode != nil {
+		return m.exitCode(err)
+	}
+	return 1
+}
 
 func task(name string, deps ...string) *ast.Task {
 	t := &ast.Task{Name: name}

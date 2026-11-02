@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 func lookFalse() (string, error) { return exec.LookPath("false") }
@@ -54,5 +55,25 @@ func TestRunFailureIsAuthError(t *testing.T) {
 	var ae *AuthError
 	if !errors.As(err, &ae) {
 		t.Fatalf("err = %v, want AuthError", err)
+	}
+}
+
+// Ctrl-C kills the agent CLI, and Wait reports that as an exit error. Run must
+// return the context error so the run exits 130 instead of reporting an
+// agent failure (spec 028 user-interrupt edge case).
+func TestRunCancelledReturnsContextError(t *testing.T) {
+	for _, bin := range []string{"sh", "sleep"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			t.Skipf("%s not available", bin)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	timer := time.AfterFunc(100*time.Millisecond, cancel)
+	defer timer.Stop()
+	defer cancel()
+
+	_, err := CLIProvider{}.Run(ctx, "prompt", Options{AgentCmd: []string{"sh", "-c", "exec sleep 5"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }

@@ -130,8 +130,8 @@ func TestUS1_ListStyledMatchesPlain(t *testing.T) {
 func TestUS1_FailingTaskExitsNonZero(t *testing.T) {
 	dir := writeRunefile(t, "boom:\n    exit 7\n")
 	r := run(t, dir, nil, "boom")
-	if r.code != 1 {
-		t.Errorf("exit = %d, want 1", r.code)
+	if r.code != 7 {
+		t.Errorf("exit = %d, want 7 (the body's code)", r.code)
 	}
 }
 

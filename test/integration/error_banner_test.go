@@ -18,8 +18,8 @@ func TestBannerStyledOnFailure(t *testing.T) {
 	dir := writeRunefile(t, bannerRunefile)
 	styled := run(t, dir, nil, "--color=always", "boom")
 	plain := run(t, dir, nil, "--color=never", "boom")
-	if styled.code != 1 || plain.code != 1 {
-		t.Fatalf("exit codes: styled=%d plain=%d, want 1 (stderr=%q)", styled.code, plain.code, styled.stderr)
+	if styled.code != 7 || plain.code != 7 {
+		t.Fatalf("exit codes: styled=%d plain=%d, want 7 (stderr=%q)", styled.code, plain.code, styled.stderr)
 	}
 	assertStyledStderrMatchesPlain(t, styled, plain)
 	if !strings.HasPrefix(plain.stderr, `rune: task "boom" failed`) {
@@ -37,12 +37,12 @@ func TestBannerStyledOnFailure(t *testing.T) {
 }
 
 // TestBannerPlainInvariant: piped / NO_COLOR / --color=never all produce the
-// identical pre-014 plain banner with exit 1 (FR-006, C1).
+// identical pre-014 plain banner with the body's exit 7 (FR-006, C1).
 func TestBannerPlainInvariant(t *testing.T) {
 	dir := writeRunefile(t, bannerRunefile)
 	r := assertPlainInvariant(t, dir, "boom")
-	if r.code != 1 {
-		t.Fatalf("exit = %d, want 1", r.code)
+	if r.code != 7 {
+		t.Fatalf("exit = %d, want 7", r.code)
 	}
 	if !strings.HasPrefix(r.stderr, `rune: task "boom" failed`) {
 		t.Errorf("plain banner bytes changed: %q", r.stderr)
@@ -54,8 +54,8 @@ func TestBannerPlainInvariant(t *testing.T) {
 func TestBannerNoExitMessageStaysSilent(t *testing.T) {
 	dir := writeRunefile(t, "[no-exit-message]\nboom:\n    @exit 7\n")
 	r := run(t, dir, nil, "--color=always", "boom")
-	if r.code != 1 {
-		t.Fatalf("exit = %d, want 1", r.code)
+	if r.code != 7 {
+		t.Fatalf("exit = %d, want 7", r.code)
 	}
 	if r.stderr != "" {
 		t.Errorf("suppressed banner reappeared: %q", r.stderr)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rune-task-runner/rune/internal/ast"
-	"github.com/rune-task-runner/rune/internal/runtime/interp"
 	"github.com/rune-task-runner/rune/internal/runtime/shell"
 )
 
@@ -226,49 +225,26 @@ func TestFailHookPostHooksRun(t *testing.T) {
 	}
 }
 
-// R5: ExitCode derives from *shell.ExecError.Code; other errors default to 1.
-func TestFailureExitCodeFromExecError(t *testing.T) {
+// The hook's ExitCode is the engine's code for the body error, the code the
+// run exits with (spec 028 FR-009), not a value the scheduler derives itself.
+// The CLI's mapping, including the shell and interpreter body codes, is
+// tested with CodeFor in internal/cli.
+func TestFailureExitCodeComesFromEngine(t *testing.T) {
 	diagnose := task("diagnose")
 	main := withFailHooks(task("main"), "diagnose")
 	m := newEngine(diagnose, main)
 	m.failOn = "main"
 	m.execErr = &shell.ExecError{Task: "main", Code: 7, Err: errors.New("exit status 7")}
-
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
-	if len(m.failures) != 1 || m.failures[0].ExitCode != 7 {
-		t.Errorf("failure = %+v, want ExitCode 7", m.failures)
+	m.exitCode = func(err error) int {
+		if !errors.Is(err, m.execErr) {
+			t.Errorf("ExitCode got %v, want the body error", err)
+		}
+		return 42
 	}
-}
-
-// The interp executor (python/node) reports failures with its own ExecError
-// type; the hook must still see the real exit code (failure-env contract:
-// "stable across executors").
-func TestFailureExitCodeFromInterpExecError(t *testing.T) {
-	diagnose := task("diagnose")
-	main := withFailHooks(task("main"), "diagnose")
-	m := newEngine(diagnose, main)
-	m.failOn = "main"
-	m.execErr = &interp.ExecError{Task: "main", Name: "python3", Code: 5}
 
 	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
-	if len(m.failures) != 1 || m.failures[0].ExitCode != 5 {
-		t.Errorf("failure = %+v, want ExitCode 5", m.failures)
-	}
-}
-
-// A shell ExecError without an exit status (Code 0, e.g. a parse error) must
-// fall back to 1 — RUNE_FAILED_EXIT_CODE=0 would claim the failed task
-// succeeded.
-func TestFailureExitCodeZeroFallsBackToOne(t *testing.T) {
-	diagnose := task("diagnose")
-	main := withFailHooks(task("main"), "diagnose")
-	m := newEngine(diagnose, main)
-	m.failOn = "main"
-	m.execErr = &shell.ExecError{Task: "main", Err: errors.New("syntax error")}
-
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
-	if len(m.failures) != 1 || m.failures[0].ExitCode != 1 {
-		t.Errorf("failure = %+v, want ExitCode 1", m.failures)
+	if len(m.failures) != 1 || m.failures[0].ExitCode != 42 {
+		t.Errorf("failure = %+v, want ExitCode 42 from the engine", m.failures)
 	}
 }
 
