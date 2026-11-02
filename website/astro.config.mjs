@@ -32,11 +32,17 @@ export default defineConfig({
       // ICO fallback for browsers without SVG favicon support. Unlike favicon,
       // head links do not get the base path, so the href spells out /rune.
       head: [{ tag: 'link', attrs: { rel: 'icon', href: '/rune/img/favicon.ico', sizes: '32x32' } }],
+      // The papyrus palette and serif headings matching the logo. The font is
+      // bundled from npm, so the site makes no third-party requests.
+      customCss: ['@fontsource/eb-garamond/600.css', './src/styles/theme.css'],
       social: [{ icon: 'github', label: 'GitHub', href: repo }],
       editLink: { baseUrl: `${repo}/edit/main/docs/` },
       lastUpdated: true,
       sidebar,
       expressiveCode: {
+        // Gruvbox's warm syntax colours sit on the papyrus palette.
+        // Starlight shows the one matching the site's light or dark mode.
+        themes: ['gruvbox-dark-medium', 'gruvbox-light-medium'],
         // Starlight renders code through Expressive Code, so custom languages
         // are registered here — markdown.shikiConfig is not consulted.
         shiki: {
