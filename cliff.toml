@@ -1,6 +1,8 @@
 # git-cliff configuration — generates the committed CHANGELOG.md (Keep a Changelog
 # format) and the GitHub Release notes (single source) from Conventional-Commit
 # squash-merge PR titles. See specs/006-release-automation/contracts/changelog.md.
+# Each entry's "(#N)" comes from the title itself: GitHub appends it to squash
+# commits, so the template must not add the PR number again.
 #
 # NOTE: validate against the installed git-cliff with `git cliff --version` and a
 # `git cliff --unreleased --tag vX.Y.Z` dry-run before the first release — a few
@@ -29,8 +31,7 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
     ### {{ group | upper_first }}
     {% for commit in commits %}\
-        - {{ commit.message | upper_first }}\
-            {% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}
+        - {{ commit.message | upper_first }}
     {% endfor %}\
 {% endfor %}\n
 """

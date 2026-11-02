@@ -7,13 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.0] - 2026-08-26
 
 ### Added
-- Agent context prep — [context] hook injects project health into agent context (spec 021) (#24) (#24)
-- Post-mortem diagnostics — || failure hooks deliver fix suggestions on task failure (spec 022) (#25) (#25)
+- Agent context prep — [context] hook injects project health into agent context (spec 021) (#24)
+- Post-mortem diagnostics — || failure hooks deliver fix suggestions on task failure (spec 022) (#25)
 
 ## [0.5.0] - 2026-08-18
 
 ### Added
-- Enforce OS availability — hide mismatched tasks from agents, gate execution, enable per-OS dispatch (#23) (#23)
+- Enforce OS availability — hide mismatched tasks from agents, gate execution, enable per-OS dispatch (#23)
 
 ### Documentation
 - Drop stale spec-019 plan block from CLAUDE.md
@@ -21,62 +21,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.4] - 2026-08-12
 
 ### Fixed
-- Report the module version for go-install builds (#20) (#20)
+- Report the module version for go-install builds (#20)
 
 ## [0.4.3] - 2026-08-12
 
 ### Fixed
-- Accept the conventional --stdio flag and stop the client sending it (#19) (#19)
+- Accept the conventional --stdio flag and stop the client sending it (#19)
 
 ## [0.4.2] - 2026-08-11
 
 ### Fixed
-- Rename display name to 'Rune Task Runner' for Marketplace uniqueness (#18) (#18)
+- Rename display name to 'Rune Task Runner' for Marketplace uniqueness (#18)
 
 ## [0.4.1] - 2026-08-04
 
 ### Fixed
-- Rename extension to runefile for Marketplace name uniqueness (#17) (#17)
+- Rename extension to runefile for Marketplace name uniqueness (#17)
 
 ## [0.4.0] - 2026-08-04
 
 ### Added
-- Group sections in the interactive task picker (#14) (#14)
-- Secret masking & sanitization (013) (#15) (#15)
-- Publish the VS Code extension to the Marketplace and Open VSX (#16) (#16)
+- Group sections in the interactive task picker (#14)
+- Secret masking & sanitization (013) (#15)
+- Publish the VS Code extension to the Marketplace and Open VSX (#16)
 
 ## [0.3.0] - 2026-07-17
 
 ### Added
-- Minimum_version Runefile setting (#12) (#12)
-- Rune Language Server Protocol + `rune analyze` (#13) (#13)
+- Minimum_version Runefile setting (#12)
+- Rune Language Server Protocol + `rune analyze` (#13)
 
 ## [0.2.0] - 2026-07-02
 
 ### Added
-- Interactive task picker (--choose) on Bubble Tea (#9) (#9)
-- Styled output, friendlier --help, and version/task overview for bare `rune` (#10) (#10)
+- Interactive task picker (--choose) on Bubble Tea (#9)
+- Styled output, friendlier --help, and version/task overview for bare `rune` (#10)
 
 ### Documentation
 - Sync FR-002/FR-005 with shipped versioning behavior
-- Modern, example-rich docs & README status badges (#11) (#11)
+- Modern, example-rich docs & README status badges (#11)
 
 ### Fixed
-- Harden lexer/parser against malformed input; wire up fuzz + golden CI gates (#8) (#8)
+- Harden lexer/parser against malformed input; wire up fuzz + golden CI gates (#8)
 
 ## [0.1.0] - 2026-06-10
 
 ### Added
-- Support rc iteration and rc-to-stable promotion in release versioning (#6) (#6)
+- Support rc iteration and rc-to-stable promotion in release versioning (#6)
 
 ### Fixed
-- Tolerate no-match grep in version compute under pipefail (#7) (#7)
+- Tolerate no-match grep in version compute under pipefail (#7)
 
 ## [0.2.0-rc.1] - 2026-06-10
 
 ### Fixed
-- Resolve image digest with v-stripped tag for provenance attestation (#4) (#4)
-- Give git-cliff a GITHUB_TOKEN to avoid 403 rate-limit panic (#5) (#5)
+- Resolve image digest with v-stripped tag for provenance attestation (#4)
+- Give git-cliff a GITHUB_TOKEN to avoid 403 rate-limit panic (#5)
 
 ## [0.1.0-rc.1] - 2026-06-10
 
@@ -87,8 +87,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add spec, plan, research, and tasks
 
 ### Fixed
-- Release guard must not check its own in-progress run (#2) (#2)
-- Widen docs example-run timeout for slow Windows interpreter cold-start (#3) (#3)
+- Release guard must not check its own in-progress run (#2)
+- Widen docs example-run timeout for slow Windows interpreter cold-start (#3)
 
 
 ## [Unreleased]
