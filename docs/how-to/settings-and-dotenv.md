@@ -20,7 +20,7 @@ bin := out / "app"
 # Export Runefile variables into task environments.
 set export
 # Override the shell for (sh) bodies (rarely needed).
-set shell := ["bash", "-cu"]
+set shell := ["bash", "-euo", "pipefail"]
 
 build:
     @echo "building {{bin}}"
@@ -47,6 +47,8 @@ See **[examples/settings-dotenv](../examples/settings-dotenv/README.md)** — `s
 - **`set export` is opt-in.** Without it, Runefile variables interpolate into commands but
   aren't necessarily present as environment variables for sub-processes.
 - **Paths use `/`.** The path-join operator emits forward slashes on every OS for portability.
+- **`set shell` runs the body as one script.** Include `-e` so a failing line stops the task.
+  The `@` and `-` prefixes have no effect. See [shell override](../runefile.md#shell-override).
 
 ## Next steps
 

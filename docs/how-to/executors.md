@@ -43,7 +43,8 @@ pipeline), plus [node-project](../examples/node-project/README.md) and
   if the runtime isn't on `PATH`. The Rune container image ships only the static binary — see
   the [Docker guide](../docker.md) for that caveat.
 - **Stick to the default `sh` for portability.** Only reach for `set shell := [...]` when you
-  truly need a system shell feature; it trades away cross-platform parity.
+  truly need a system shell feature; it trades away cross-platform parity. See
+  [shell override](../runefile.md#shell-override) for how an override runs the body.
 - **Agent bodies need a configured agent CLI** — see [AI agents (MCP)](../mcp.md).
 
 ## Next steps
