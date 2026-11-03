@@ -17,7 +17,7 @@ type Settings struct {
 	Export     bool     // set export (export all variables to the task env)
 	Fallback   bool     // set fallback
 	Dotenv     string   // set dotenv := ".env"
-	Shell      []string // set shell := ["bash", "-cu"]
+	Shell      []string // set shell := ["bash", "-euo", "pipefail"]
 	Python     []string // set python := ["python3"]
 	Node       []string // set node := ["node"]
 	AgentCmd   []string // set agent_cmd := ["claude", "-p"]

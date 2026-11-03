@@ -152,7 +152,7 @@ bin := out / "app"          # `/` joins paths (forward slash on every OS)
 
 # Settings:
 set export                  # export Runefile variables into task environments
-set shell := ["bash", "-cu"]  # override the shell for (sh) bodies
+set shell := ["bash", "-euo", "pipefail"]  # override the shell for (sh) bodies
 set secrets := ["DEPLOY_CFG"]   # mask these variables' values in all output
 set unmasked := ["OAUTH_METHOD"]  # exempt from built-in secret-name patterns
 ```
@@ -265,6 +265,27 @@ summarize (agent):
 
 `python`/`node`/custom executors shell out to the real interpreter, so those runtimes must
 be installed (see the [Docker guide](docker.md) for the container caveat).
+
+### Shell override
+
+`set shell := [...]` runs default (`sh`) bodies with a system shell instead of the built-in
+one. Rune writes the interpolated body to a temporary script and runs the list with the
+script's path appended:
+
+- The whole body runs as one script in one shell process, so variables and the current
+  directory set on one line are visible on later lines.
+- A failing line stops the task only when the shell's exit-on-error flag (`-e`) is set.
+  Without it, later lines still run, and the task's status is the last command's.
+- Lines are not echoed, and the `@` and `-` prefixes have no effect. Under `-e`, a `-` line
+  that fails still stops the task.
+- A shell's `-c` with no code after it (a habit from `just`) is accepted and dropped, so
+  `["bash", "-euo", "pipefail", "-c"]` runs the same as `["bash", "-euo", "pipefail"]`. The
+  same holds for a `[script("...")]` command.
+- A list that gives the shell its own code, such as `["bash", "-c", "exec bash -eu $0"]`,
+  runs as written, with the script's path as `$0`. A `-c` that belongs to a wrapper or to a
+  program that is not a shell (`nix develop -c`, `node -c`) is passed through unchanged.
+
+Prefer the built-in shell for portability; see [Executors](how-to/executors.md).
 
 ## Attributes
 

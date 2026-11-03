@@ -68,7 +68,7 @@ var builtinSettings = []Builtin{
 	{Name: "export", Kind: BuiltinSetting, Signature: "set export", Documentation: "Export all module variables into the task environment."},
 	{Name: "fallback", Kind: BuiltinSetting, Signature: "set fallback", Documentation: "Search parent directories for a Runefile when none is found locally."},
 	{Name: "dotenv", Kind: BuiltinSetting, Signature: "set dotenv := \"path\"", Documentation: "Load environment variables from the given .env file."},
-	{Name: "shell", Kind: BuiltinSetting, Signature: "set shell := [\"prog\", \"args\"...]", Documentation: "Command used to run shell task bodies."},
+	{Name: "shell", Kind: BuiltinSetting, Signature: "set shell := [\"prog\", \"args\"...]", Documentation: "Command that runs shell task bodies as one script. Include -e to stop at a failing line."},
 	{Name: "python", Kind: BuiltinSetting, Signature: "set python := [\"python3\"]", Documentation: "Command used for (python) tasks."},
 	{Name: "node", Kind: BuiltinSetting, Signature: "set node := [\"node\"]", Documentation: "Command used for (node) tasks."},
 	{Name: "agent_cmd", Kind: BuiltinSetting, Signature: "set agent_cmd := [\"...\"]", Documentation: "Command used to drive (agent) tasks."},
