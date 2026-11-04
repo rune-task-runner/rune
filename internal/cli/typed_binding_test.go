@@ -50,10 +50,10 @@ func TestBindParamsEnforcesConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid decimal rejected: %v", err)
 	}
-	if params["replicas"] != "2.5" {
-		t.Errorf("replicas = %q", params["replicas"])
+	if params.Values["replicas"] != "2.5" {
+		t.Errorf("replicas = %q", params.Values["replicas"])
 	}
-	if params, err = bindParams(deploy, []string{"prod"}, scope); err != nil || params["replicas"] != "2" {
+	if params, err = bindParams(deploy, []string{"prod"}, scope); err != nil || params.Values["replicas"] != "2" {
 		t.Errorf("default binding: params=%v err=%v", params, err)
 	}
 }
@@ -70,7 +70,7 @@ func TestBindParamsValidatesVariadicPerElement(t *testing.T) {
 	}
 
 	params, err := bindParams(sum, []string{"1", "2.5"}, scope)
-	if err != nil || params["nums"] != "1 2.5" {
+	if err != nil || params.Values["nums"] != "1 2.5" {
 		t.Errorf("valid variadic: params=%v err=%v", params, err)
 	}
 }
@@ -78,7 +78,7 @@ func TestBindParamsValidatesVariadicPerElement(t *testing.T) {
 func TestBindNamedParamsEnforcesConstraints(t *testing.T) {
 	deploy, scope := typedTask(t, "deploy env:enum(\"staging\",\"prod\") replicas:number=\"2\":\n    @echo hi\n")
 
-	if _, err := bindNamedParams(deploy, map[string]string{"env": "production"}, scope); err == nil {
+	if _, err := bindNamedParams(deploy, map[string]string{"env": "production"}, nil, scope); err == nil {
 		t.Fatal("out-of-enum named value accepted")
 	} else {
 		for _, want := range []string{"env", `"production"`, `"staging", "prod"`} {
@@ -88,8 +88,8 @@ func TestBindNamedParamsEnforcesConstraints(t *testing.T) {
 		}
 	}
 
-	params, err := bindNamedParams(deploy, map[string]string{"env": "prod"}, scope)
-	if err != nil || params["replicas"] != "2" {
+	params, err := bindNamedParams(deploy, map[string]string{"env": "prod"}, nil, scope)
+	if err != nil || params.Values["replicas"] != "2" {
 		t.Errorf("valid named binding: params=%v err=%v", params, err)
 	}
 }

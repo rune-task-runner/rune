@@ -115,7 +115,7 @@ func TestEvalParamsAndOverridesAndAssigns(t *testing.T) {
 	}
 
 	// Param beats both.
-	withParam := scope2.WithParams(map[string]string{"build_dir": "p"})
+	withParam := scope2.WithArgs(Args{Values: map[string]string{"build_dir": "p"}})
 	got, _ = evalFragment(t, `build_dir`, withParam)
 	if got != "p" {
 		t.Errorf("param = %q, want p", got)
@@ -146,7 +146,7 @@ func TestEvalAssignmentCycle(t *testing.T) {
 }
 
 func TestInterpolate(t *testing.T) {
-	scope := newTestScope().WithParams(map[string]string{"name": "Ada"})
+	scope := newTestScope().WithArgs(Args{Values: map[string]string{"name": "Ada"}})
 	e := New(scope)
 	base := token.Span{File: "Runefile"}
 	tests := []struct {

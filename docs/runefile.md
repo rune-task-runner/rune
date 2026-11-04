@@ -132,6 +132,15 @@ build target="debug":
     go build -tags {{target}} ./...
 ```
 
+A variadic parameter passed on by its bare name keeps its elements. In
+`ci *pkgs: (test pkgs)`, `test`'s variadic receives each of `ci`'s arguments as
+its own element, so `{{quote_each(pkgs)}}` in `test` quotes them one by one. An
+empty list expands to nothing there too, even when `test` declares `+pkgs`. Passed
+to a scalar parameter, the variadic gives its space-joined text. Either way the
+text `{{pkgs}}` produces is the same as before, and a call that passed the
+target's checks before still passes. The same rule applies to `&&` post-hooks and
+`||` failure hooks.
+
 ## Interpolation
 
 `{{ expr }}` evaluates an expression and substitutes the result. Use `{{{{` for a literal
@@ -230,13 +239,23 @@ Rune ships a set of pure, total helper functions (mirroring the `just` family):
 | Paths | `join(...)`, `clean(p)`, `extension(p)`, `file_name(p)`, `file_stem(p)`, `parent_dir(p)`, `absolute_path(p)` |
 | Strings | `uppercase`, `lowercase`, `capitalize`, `trim`, `trim_start`, `trim_end`, `replace(s, from, to)`, `replace_regex(s, re, to)` |
 | Filesystem | `path_exists(p)`, `read(p)` |
-| Misc | `uuid()`, `datetime(fmt)`, `quote(s)`, `which(name)`, `require(name)`, `error(msg)` |
+| Misc | `uuid()`, `datetime(fmt)`, `quote(s)`, `quote_each(list)`, `which(name)`, `require(name)`, `error(msg)` |
 
 ```rune
 home := env("HOME", "/tmp")
 name := capitalize(trim(raw_name))
 build:
     @echo "on {{os()}}/{{arch()}} with {{num_cpus()}} CPUs"
+```
+
+`quote(s)` quotes its argument as one shell word. `quote_each(list)` quotes each
+element of a variadic parameter as its own word, so every file name below reaches
+`prettier` intact, spaces included. An empty list expands to nothing. Given
+anything other than a variadic parameter, `quote_each` is the same as `quote`.
+
+```rune
+fmt *files:
+    prettier --write {{quote_each(files)}}
 ```
 
 ## Executors

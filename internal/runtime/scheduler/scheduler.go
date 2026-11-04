@@ -18,12 +18,11 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
 	"github.com/rune-task-runner/rune/internal/ast"
+	"github.com/rune-task-runner/rune/internal/eval"
 )
 
 // ErrBodyNotRun marks an Execute error raised before the task's body started
@@ -37,12 +36,12 @@ var ErrBodyNotRun = errors.New("task body did not run")
 type Engine interface {
 	// ResolveDep evaluates a dependency/post-hook call in the scope of the
 	// calling task, returning the target task and its bound parameters.
-	ResolveDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall) (*ast.Task, map[string]string, error)
+	ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) (*ast.Task, eval.Args, error)
 	// Execute runs a single task body with its bound parameters.
-	Execute(task *ast.Task, params map[string]string) error
+	Execute(task *ast.Task, args eval.Args) error
 	// ExecuteFailHook runs a || failure-hook body with the failure context
 	// available to it (spec 022 FR-009). Called outside the memo table.
-	ExecuteFailHook(task *ast.Task, params map[string]string, f Failure) error
+	ExecuteFailHook(task *ast.Task, args eval.Args, f Failure) error
 	// Warnf emits a one-line warning (failure-hook skip or failure).
 	Warnf(format string, args ...any)
 	// Namespace returns the memoization namespace for a task (mod path, or "").
@@ -65,7 +64,7 @@ type Failure struct {
 // Invocation is a task plus its resolved parameters (a scheduler root).
 type Invocation struct {
 	Task   *ast.Task
-	Params map[string]string
+	Params eval.Args
 }
 
 // Run executes the given root invocations in order, sharing one memo table so
@@ -102,7 +101,7 @@ type state struct {
 // run executes a task once (singleflight by memo key). chain is the
 // goroutine-local dependency path of task NAMES, used for cycle detection
 // (concurrency-safe because it is passed by value, never shared).
-func (s *state) run(task *ast.Task, params map[string]string, chain []string) error {
+func (s *state) run(task *ast.Task, params eval.Args, chain []string) error {
 	for _, name := range chain {
 		if name == task.Name {
 			return &CycleError{Path: cyclePath(chain, task.Name)}
@@ -139,7 +138,7 @@ func (s *state) run(task *ast.Task, params map[string]string, chain []string) er
 }
 
 // execute runs dependencies (parallel if [parallel]), the body, then post-hooks.
-func (s *state) execute(task *ast.Task, params map[string]string, chain []string) error {
+func (s *state) execute(task *ast.Task, params eval.Args, chain []string) error {
 	if task.Attr(ast.AttrParallel) != nil {
 		if err := s.runDepsParallel(task, params, task.Deps, chain); err != nil {
 			return err
@@ -169,7 +168,7 @@ func (s *state) execute(task *ast.Task, params map[string]string, chain []string
 // outcomes never surface: the caller returns the original body error, so the
 // exit code is preserved (FR-004); hook failures and skips become warnings.
 // User cancellation aborts everything — no post-mortem runs (FR-002).
-func (s *state) runFailHooks(task *ast.Task, params map[string]string, bodyErr error, chain []string) {
+func (s *state) runFailHooks(task *ast.Task, params eval.Args, bodyErr error, chain []string) {
 	if len(task.FailHooks) == 0 || errors.Is(bodyErr, context.Canceled) || errors.Is(bodyErr, ErrBodyNotRun) {
 		return
 	}
@@ -200,7 +199,7 @@ func (s *state) runFailHooks(task *ast.Task, params map[string]string, bodyErr e
 // normal memoized semantics, the body via ExecuteFailHook OUTSIDE the memo
 // table (once per failure, spec 022 clarification Q2). The hook's own ||
 // hooks are deliberately not consulted — post-mortems do not chain.
-func (s *state) runFailHook(hook *ast.Task, params map[string]string, f Failure, chain []string) error {
+func (s *state) runFailHook(hook *ast.Task, params eval.Args, f Failure, chain []string) error {
 	for _, name := range chain {
 		if name == hook.Name {
 			return &CycleError{Path: cyclePath(chain, hook.Name)}
@@ -235,7 +234,7 @@ func (s *state) runFailHook(hook *ast.Task, params map[string]string, f Failure,
 	return nil
 }
 
-func (s *state) runDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall, chain []string) error {
+func (s *state) runDep(curTask *ast.Task, curParams eval.Args, dep *ast.DepCall, chain []string) error {
 	target, depParams, err := s.engine.ResolveDep(curTask, curParams, dep)
 	if err != nil {
 		return err
@@ -250,25 +249,8 @@ func (s *state) runDep(curTask *ast.Task, curParams map[string]string, dep *ast.
 }
 
 // memoKey builds a canonical, order-stable key for a task invocation.
-func memoKey(namespace, name string, params map[string]string) string {
-	keys := make([]string, 0, len(params))
-	for k := range params {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	b.WriteString(namespace)
-	b.WriteString("::")
-	b.WriteString(name)
-	b.WriteByte('(')
-	for i, k := range keys {
-		if i > 0 {
-			b.WriteByte(';')
-		}
-		fmt.Fprintf(&b, "%s=%s", k, params[k])
-	}
-	b.WriteByte(')')
-	return b.String()
+func memoKey(namespace, name string, a eval.Args) string {
+	return namespace + "::" + name + "(" + a.Key() + ")"
 }
 
 // CycleError reports a dependency cycle with the offending path.

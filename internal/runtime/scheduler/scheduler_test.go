@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rune-task-runner/rune/internal/ast"
+	"github.com/rune-task-runner/rune/internal/eval"
 )
 
 // mockEngine is a test Engine: tasks are looked up by name from a map; deps
@@ -34,15 +35,15 @@ type mockEngine struct {
 	maxConc  int
 }
 
-func (m *mockEngine) ResolveDep(_ *ast.Task, _ map[string]string, dep *ast.DepCall) (*ast.Task, map[string]string, error) {
+func (m *mockEngine) ResolveDep(_ *ast.Task, _ eval.Args, dep *ast.DepCall) (*ast.Task, eval.Args, error) {
 	t, ok := m.tasks[dep.Name]
 	if !ok {
-		return nil, nil, errors.New("unknown task: " + dep.Name)
+		return nil, eval.Args{}, errors.New("unknown task: " + dep.Name)
 	}
-	return t, map[string]string{}, nil
+	return t, eval.Args{}, nil
 }
 
-func (m *mockEngine) Execute(task *ast.Task, _ map[string]string) error {
+func (m *mockEngine) Execute(task *ast.Task, _ eval.Args) error {
 	m.mu.Lock()
 	m.order = append(m.order, task.Name)
 	m.running++
@@ -70,7 +71,7 @@ func (m *mockEngine) Execute(task *ast.Task, _ map[string]string) error {
 
 // ExecuteFailHook records the hook run as "||<name>" plus the failure context
 // it observed; the memo-bypass tests count these entries.
-func (m *mockEngine) ExecuteFailHook(task *ast.Task, _ map[string]string, f Failure) error {
+func (m *mockEngine) ExecuteFailHook(task *ast.Task, _ eval.Args, f Failure) error {
 	m.mu.Lock()
 	m.order = append(m.order, "||"+task.Name)
 	m.failures = append(m.failures, f)
@@ -130,7 +131,7 @@ func TestSchedulerSkipsUnavailableDep(t *testing.T) {
 	setup := task("setup", "setup-nix", "setup-win")
 	m := newEngine(nix, win, setup)
 	m.unavailable = map[string]bool{"setup-win": true}
-	if err := Run(m, []Invocation{{Task: setup, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: setup}}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"setup-nix", "setup"}
@@ -146,7 +147,7 @@ func TestSchedulerSkipsUnavailableParallelDep(t *testing.T) {
 	top.Attributes = append(top.Attributes, &ast.Attribute{Kind: ast.AttrParallel})
 	m := newEngine(a, b, top)
 	m.unavailable = map[string]bool{"b": true}
-	if err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: top}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range m.order {
@@ -165,7 +166,7 @@ func TestSchedulerSkipsUnavailablePostHook(t *testing.T) {
 	main.PostHooks = append(main.PostHooks, &ast.DepCall{Name: "hook"})
 	m := newEngine(hook, main)
 	m.unavailable = map[string]bool{"hook": true}
-	if err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: main}}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(m.order, ",") != "main" {
@@ -179,7 +180,7 @@ func TestSchedulerAllDepsSkippedBodyStillRuns(t *testing.T) {
 	top := task("top", "a", "b")
 	m := newEngine(a, b, top)
 	m.unavailable = map[string]bool{"a": true, "b": true}
-	if err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: top}}); err != nil {
 		t.Fatal(err)
 	}
 	// The skip happens in runDep, before the target enters run(): Execute is
@@ -194,7 +195,7 @@ func TestSchedulerTopoOrder(t *testing.T) {
 	greet := task("greet")
 	build := task("build", "greet")
 	m := newEngine(greet, build)
-	if err := Run(m, []Invocation{{Task: build, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: build}}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"greet", "build"}
@@ -210,7 +211,7 @@ func TestSchedulerRunOnce(t *testing.T) {
 	b := task("b", "base")
 	top := task("top", "a", "b")
 	m := newEngine(base, a, b, top)
-	if err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: top}}); err != nil {
 		t.Fatal(err)
 	}
 	count := 0
@@ -232,7 +233,7 @@ func TestSchedulerFailFast(t *testing.T) {
 	m := newEngine(a, b, c)
 	m.failOn = "b"
 	m.execErr = errors.New("boom")
-	err := Run(m, []Invocation{{Task: a, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: a}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("err = %v, want boom", err)
 	}
@@ -248,7 +249,7 @@ func TestSchedulerCycleDetection(t *testing.T) {
 	a := task("a", "b")
 	b := task("b", "a")
 	m := newEngine(a, b)
-	err := Run(m, []Invocation{{Task: a, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: a}})
 	var ce *CycleError
 	if !errors.As(err, &ce) {
 		t.Fatalf("err = %v, want CycleError", err)
@@ -261,7 +262,7 @@ func TestSchedulerMemoAcrossRoots(t *testing.T) {
 	a := task("a", "base")
 	b := task("b", "base")
 	m := newEngine(base, a, b)
-	roots := []Invocation{{Task: a, Params: map[string]string{}}, {Task: b, Params: map[string]string{}}}
+	roots := []Invocation{{Task: a}, {Task: b}}
 	if err := Run(m, roots); err != nil {
 		t.Fatal(err)
 	}
@@ -273,5 +274,21 @@ func TestSchedulerMemoAcrossRoots(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("base ran %d times across roots, want 1", count)
+	}
+}
+
+// Spec 030 FR-009: run-once identity includes variadic element boundaries, so
+// the same joined text with different elements is two invocations.
+func TestSchedulerMemoSeesElements(t *testing.T) {
+	lint := task("lint")
+	m := newEngine(lint)
+	oneElem := eval.Args{Values: map[string]string{"p": "a b"}, Lists: map[string][]string{"p": {"a b"}}}
+	twoElems := eval.Args{Values: map[string]string{"p": "a b"}, Lists: map[string][]string{"p": {"a", "b"}}}
+	roots := []Invocation{{Task: lint, Params: oneElem}, {Task: lint, Params: twoElems}, {Task: lint, Params: twoElems}}
+	if err := Run(m, roots); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(m.order, ","); got != "lint,lint" {
+		t.Errorf("order = %s, want lint,lint (different elements run twice, equal Args once)", got)
 	}
 }

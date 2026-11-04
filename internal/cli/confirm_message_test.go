@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rune-task-runner/rune/internal/eval"
 )
 
 // A non-interactive decline explains itself through the standard failure
@@ -46,7 +48,7 @@ func TestConfirmNonTerminalMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			eng, _, _ := confirmEngine(t, tt.src, strings.NewReader("y\n"), false, false)
 
-			err := eng.Execute(eng.tasks[tt.task], nil)
+			err := eng.Execute(eng.tasks[tt.task], eval.Args{})
 
 			var tf *TaskFailure
 			if !errors.As(err, &tf) {

@@ -24,7 +24,10 @@ func (e *Error) Error() string { return e.Msg }
 // overrides, and module-level assignments (evaluated lazily, with a cycle
 // guard). Host hooks (env/os/arch/now) are injectable for deterministic tests.
 type Scope struct {
-	Params    map[string]string
+	Params map[string]string
+	// Lists holds the current invocation's variadic elements; only
+	// quote_each reads it (spec 030).
+	Lists     map[string][]string
 	Overrides map[string]string
 	Assigns   map[string]*ast.Assignment
 
@@ -48,11 +51,13 @@ func NewScope(assigns map[string]*ast.Assignment, overrides map[string]string) *
 	}
 }
 
-// WithParams returns a shallow copy of the scope with task params bound. The
-// assignment cache is shared (assignments do not see params).
-func (s *Scope) WithParams(params map[string]string) *Scope {
+// WithArgs returns a shallow copy of the scope with an invocation's bound
+// arguments, elements included. The assignment cache is shared (assignments do
+// not see params).
+func (s *Scope) WithArgs(a Args) *Scope {
 	cp := *s
-	cp.Params = params
+	cp.Params = a.Values
+	cp.Lists = a.Lists
 	return &cp
 }
 

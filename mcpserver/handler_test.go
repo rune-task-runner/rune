@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -136,7 +137,7 @@ func TestDecodeArgsKeepsNumberSpelling(t *testing.T) {
 		{Name: "replicas", Kind: "number"},
 		{Name: "nums", Variadic: true, Kind: "number"},
 	}
-	args, err := decodeArgs([]byte(`{"replicas": 1000000, "nums": [0.0000001, 12345678901234567890]}`), params)
+	args, _, err := decodeArgs([]byte(`{"replicas": 1000000, "nums": [0.0000001, 12345678901234567890]}`), params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,5 +146,80 @@ func TestDecodeArgsKeepsNumberSpelling(t *testing.T) {
 	}
 	if args["nums"] != "0.0000001 12345678901234567890" {
 		t.Errorf("nums = %q, want verbatim spellings", args["nums"])
+	}
+}
+
+// Spec 030 (contracts/mcp.md): a variadic's elements reach the engine as a
+// list next to the joined value.
+func TestDecodeArgsLists(t *testing.T) {
+	params := []ParamInfo{{Name: "names", Variadic: true}, {Name: "one"}}
+	tests := []struct {
+		raw       string
+		wantArg   string
+		hasArg    bool
+		wantList  []string
+		hasListed bool
+	}{
+		{`{"names": ["a b", "c"]}`, "a b c", true, []string{"a b", "c"}, true},
+		{`{"names": []}`, "", true, []string{}, true},
+		{`{"names": "a b"}`, "a b", true, []string{"a b"}, true},
+		{`{"names": ""}`, "", true, []string{}, true},
+		{`{}`, "", false, nil, false},
+	}
+	for _, tt := range tests {
+		args, lists, err := decodeArgs([]byte(tt.raw), params)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.raw, err)
+		}
+		if got, ok := args["names"]; ok != tt.hasArg || got != tt.wantArg {
+			t.Errorf("%s: args[names] = %q (present %v)", tt.raw, got, ok)
+		}
+		got, ok := lists["names"]
+		if ok != tt.hasListed || (ok && (got == nil || !reflect.DeepEqual(got, tt.wantList))) {
+			t.Errorf("%s: lists[names] = %#v (present %v), want %#v", tt.raw, got, ok, tt.wantList)
+		}
+	}
+
+	args, lists, err := decodeArgs([]byte(`{"one": ["x", "y"], "unknown": ["p", "q"]}`), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args["one"] != "x y" || args["unknown"] != "p q" {
+		t.Errorf("non-variadic arrays changed: %v", args)
+	}
+	if len(lists) != 0 {
+		t.Errorf("lists for non-variadic or unknown parameters: %v", lists)
+	}
+}
+
+type fakeListEngine struct {
+	fakeEngine
+	viaLists  bool
+	lastLists map[string][]string
+}
+
+func (f *fakeListEngine) CallLists(_ context.Context, name string, args map[string]string, lists map[string][]string) (Result, error) {
+	f.lastCall, f.lastArgs, f.lastLists, f.viaLists = name, args, lists, true
+	return f.result, nil
+}
+
+func TestHandlerPrefersListEngine(t *testing.T) {
+	tasks := []TaskInfo{{Name: "c", Params: []ParamInfo{{Name: "names", Variadic: true}}}}
+	call := map[string]any{"names": []any{"a b", "c"}}
+
+	le := &fakeListEngine{fakeEngine: fakeEngine{tasks: tasks}}
+	if _, err := connect(t, New(le, Options{})).CallTool(context.Background(), &mcp.CallToolParams{Name: "c", Arguments: call}); err != nil {
+		t.Fatal(err)
+	}
+	if !le.viaLists || le.lastArgs["names"] != "a b c" || !reflect.DeepEqual(le.lastLists["names"], []string{"a b", "c"}) {
+		t.Errorf("ListEngine call: viaLists %v args %v lists %v", le.viaLists, le.lastArgs, le.lastLists)
+	}
+
+	plain := &fakeEngine{tasks: tasks}
+	if _, err := connect(t, New(plain, Options{})).CallTool(context.Background(), &mcp.CallToolParams{Name: "c", Arguments: call}); err != nil {
+		t.Fatal(err)
+	}
+	if plain.lastCall != "c" || plain.lastArgs["names"] != "a b c" {
+		t.Errorf("plain Engine call = %q args %v", plain.lastCall, plain.lastArgs)
 	}
 }

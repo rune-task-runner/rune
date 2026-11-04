@@ -112,6 +112,14 @@ type Engine interface {
 	Call(ctx context.Context, name string, args map[string]string) (Result, error)
 }
 
+// ListEngine is an optional Engine extension. When the engine implements it,
+// array arguments reach it with their elements intact (spec 030); a plain
+// string for a variadic is one element, or none when empty. args still holds
+// every value, arrays joined by single spaces, exactly as Call receives it.
+type ListEngine interface {
+	CallLists(ctx context.Context, name string, args map[string]string, lists map[string][]string) (Result, error)
+}
+
 // Options configures authorization for the server.
 type Options struct {
 	// AllowDestructive permits calling tasks marked destructive ([confirm]).

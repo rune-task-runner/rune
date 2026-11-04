@@ -22,7 +22,7 @@ func TestParallelDepsRunConcurrently(t *testing.T) {
 	m.delay = 50 * time.Millisecond
 
 	start := time.Now()
-	if err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: top}}); err != nil {
 		t.Fatal(err)
 	}
 	elapsed := time.Since(start)
@@ -44,7 +44,7 @@ func TestParallelRunOncePreserved(t *testing.T) {
 	m := newEngine(base, a, b, top)
 	m.delay = 20 * time.Millisecond
 
-	if err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: top}}); err != nil {
 		t.Fatal(err)
 	}
 	count := 0
@@ -66,7 +66,7 @@ func TestParallelFirstErrorCancels(t *testing.T) {
 	m.failOn = "a"
 	m.execErr = errors.New("boom")
 
-	err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: top}})
 	if err == nil {
 		t.Fatal("expected an error from a failing parallel dep")
 	}

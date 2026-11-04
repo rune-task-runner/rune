@@ -52,6 +52,7 @@ var builtinFunctions = []Builtin{
 	{Name: "replace", Kind: BuiltinFunction, Signature: "replace(s, from, to) -> string", Documentation: "s with each occurrence of from replaced by to."},
 	{Name: "replace_regex", Kind: BuiltinFunction, Signature: "replace_regex(s, pattern, repl) -> string", Documentation: "s with regex pattern matches replaced by repl."},
 	{Name: "quote", Kind: BuiltinFunction, Signature: "quote(s) -> string", Documentation: "s quoted for safe use as a single shell argument."},
+	{Name: "quote_each", Kind: BuiltinFunction, Signature: "quote_each(list) -> string", Documentation: "Each element of a variadic parameter quoted as a separate shell argument."},
 	{Name: "require", Kind: BuiltinFunction, Signature: "require(name) -> string", Documentation: "The PATH location of executable name; errors if it is not found."},
 	{Name: "which", Kind: BuiltinFunction, Signature: "which(name) -> string", Documentation: "The PATH location of executable name, or an empty string when not found."},
 	{Name: "datetime", Kind: BuiltinFunction, Signature: "datetime(format?) -> string", Documentation: "The current date/time, optionally formatted by the given layout."},
