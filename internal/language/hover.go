@@ -61,14 +61,20 @@ func taskHover(f *ast.File, name string) (string, bool) {
 
 // varHover renders a variable or parameter hover. A parameter's hover carries
 // its declared type annotation and [param-doc] description (spec 023).
+// rawKindNote matches the sentence mcpserver adds to a raw parameter's schema,
+// so the editor and agents describe raw the same way.
+const rawKindNote = "Split into shell words without quoting."
+
 func varHover(f *ast.File, name string, scope ScopeID) string {
 	if scope != ModuleScope {
 		sig := name
 		desc := ""
+		raw := false
 		if t := findTask(f, string(scope)); t != nil {
 			for _, p := range t.Params {
 				if p.Name == name {
 					sig = name + p.Constraint.String()
+					raw = p.Constraint != nil && p.Constraint.Kind == ast.KindRaw
 					break
 				}
 			}
@@ -77,6 +83,9 @@ func varHover(f *ast.File, name string, scope ScopeID) string {
 		out := fmt.Sprintf("```rune\n%s\n```\nparameter of task `%s`", sig, string(scope))
 		if desc != "" {
 			out += "\n\n" + desc
+		}
+		if raw {
+			out += "\n\n" + rawKindNote
 		}
 		return out
 	}

@@ -52,3 +52,20 @@ func TestParamCompletionDetailShowsConstraint(t *testing.T) {
 		t.Errorf("replicas detail = %q", got)
 	}
 }
+
+// Spec 030 FR-018: hover on a raw parameter says what raw means, after any
+// [param-doc] text.
+func TestRawParamHover(t *testing.T) {
+	src := "[param-doc(\"flags\", \"Extra go test flags\")]\ntest flags:raw=\"-v -race\":\n    go test {{flags}}\n"
+	f, diags := parser.Parse("Runefile", src)
+	if diags.HasErrors() {
+		t.Fatalf("parse: %v", diags)
+	}
+	md, _, ok := Hover(f, "Runefile", strings.Index(src, "{{flags}}")+2)
+	if !ok {
+		t.Fatal("no hover")
+	}
+	if !strings.Contains(md, "flags:raw") || !strings.HasSuffix(md, "Extra go test flags\n\nSplit into shell words without quoting.") {
+		t.Errorf("hover = %q", md)
+	}
+}

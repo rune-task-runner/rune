@@ -32,7 +32,7 @@ runtime dependencies.
 ```rune
 # Build the project.
 build target="release": fetch
-    go build -tags {{target}} ./...
+    go build -tags {{quote(target)}} ./...
 
 # Fetch dependencies.
 fetch:

@@ -219,8 +219,8 @@ func inputSchema(params []ParamInfo) map[string]any {
 		if p.Variadic {
 			prop = map[string]any{"type": "array", "items": prop}
 		}
-		if p.Description != "" {
-			prop["description"] = p.Description
+		if desc := describe(p); desc != "" {
+			prop["description"] = desc
 		}
 		properties[p.Name] = prop
 		if p.Required {
@@ -235,6 +235,25 @@ func inputSchema(params []ParamInfo) map[string]any {
 		schema["required"] = required
 	}
 	return schema
+}
+
+// rawNote tells an agent that a raw value is split into shell words, so it
+// sends flags as one string rather than expecting them quoted (spec 030).
+const rawNote = "Split into shell words without quoting."
+
+// describe returns the property description: the author's text, then rawNote
+// for a raw parameter, joined as one paragraph.
+func describe(p ParamInfo) string {
+	if p.Kind != "raw" {
+		return p.Description
+	}
+	if p.Description == "" {
+		return rawNote
+	}
+	if strings.HasSuffix(p.Description, ".") || strings.HasSuffix(p.Description, "!") || strings.HasSuffix(p.Description, "?") {
+		return p.Description + " " + rawNote
+	}
+	return p.Description + ". " + rawNote
 }
 
 // scalarType maps a constraint kind to its JSON Schema scalar type. Unknown

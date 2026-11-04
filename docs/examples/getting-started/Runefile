@@ -4,7 +4,7 @@
 
 # Greet someone by name (defaults to "world").
 greet name="world":
-    @echo "Hello, {{name}}! This is your first Rune task."
+    @echo "Hello, "{{quote(name)}}"! This is your first Rune task."
 
 # Run the project's checks; `greet` runs first as a dependency.
 check: greet

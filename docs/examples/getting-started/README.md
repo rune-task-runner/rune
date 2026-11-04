@@ -30,13 +30,14 @@ or `rune --list` to see both tasks with their descriptions.
 ```rune
 # Greet someone by name (defaults to "world").
 greet name="world":
-    @echo "Hello, {{name}}! This is your first Rune task."
+    @echo "Hello, "{{quote(name)}}"! This is your first Rune task."
 
 # Run the project's checks; `greet` runs first as a dependency.
 check: greet
     @echo "All good ✓"
 ```
 
-- `name="world"` is a parameter with a default; `{{name}}` interpolates it.
+- `name="world"` is a parameter with a default; `{{quote(name)}}` passes it to the command
+  as one quoted argument.
 - `check: greet` declares a dependency — `greet` runs first, at most once per invocation.
 - The leading `@` suppresses echoing the command line before it runs.

@@ -45,7 +45,7 @@ never enabled by default.
 ```rune
 # Build the project for a target.
 build target="release":
-    go build -tags {{target}} ./...
+    go build -tags {{quote(target)}} ./...
 
 [private]
 _internal-helper:
@@ -86,6 +86,10 @@ a violating call returns a tool error naming the parameter, the rejected value,
 and the accepted set — before anything executes — and array (variadic) values
 are validated per element. The same rules bind CLI and dependency invocations,
 so a constraint is a property of the task, not of the transport.
+
+A `raw` parameter is a plain string whose description ends with "Split into
+shell words without quoting.", after any `[param-doc]` text, so the agent knows
+the value becomes several shell words.
 
 `[returns("…")]` gives the agent a success criterion: it is appended to the tool
 description as a `Returns:` trailer (and shown in `--list` and the JSON dump),

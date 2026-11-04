@@ -47,7 +47,7 @@ filtering and CI.
 | `RUNE1005` | Malformed task declaration |
 | `RUNE1006` | Malformed parameter constraint (`enum` without a value list, empty `enum()`, a non-string enum value, or a value list on a non-`enum` kind) |
 
-### Semantic (RUNE2xxx) — errors, except `RUNE2010` and `RUNE2016` (warnings)
+### Semantic (RUNE2xxx): errors, except `RUNE2010`, `RUNE2016`, and `RUNE2017` (warnings)
 
 | Code | Condition |
 |------|-----------|
@@ -62,11 +62,12 @@ filtering and CI.
 | `RUNE2009` | Invalid executor *(reserved; executors are open-ended custom interpreters)* |
 | `RUNE2010` | Public task lacks documentation — **warning**, never gates execution or exit code |
 | `RUNE2011` | Invalid failure hook (a `\|\|` hook targets — or reaches through its dependencies — an `agent`-executor task) |
-| `RUNE2012` | Unknown parameter type (supported kinds: `string`, `number`, `boolean`, `path`, `enum`) |
+| `RUNE2012` | Unknown parameter type (supported kinds: `string`, `number`, `boolean`, `path`, `raw`, `enum`) |
 | `RUNE2013` | Invalid enum values (duplicate value in a parameter's `enum(...)` list) |
 | `RUNE2014` | A parameter's literal default violates its own type constraint |
 | `RUNE2015` | Invalid annotation attribute (`[param-doc]` names an unknown parameter, duplicate `[param-doc]` for one parameter, or more than one `[returns]` on a task) |
 | `RUNE2016` | Annotated kind name shadows a task name — **warning**: an unspaced legacy header may have re-parsed as a type annotation; write `name: task` for a dependency |
+| `RUNE2017` | A string or path parameter reaches a shell command unquoted: **warning**, never gates execution or exit code. Write `{{quote(p)}}` (or `{{quote_each(p)}}` for a variadic) outside any shell quotes, or declare `p:raw` when word splitting is intended |
 
 ### Project (RUNE3xxx) — errors
 
@@ -79,8 +80,9 @@ filtering and CI.
 
 ## Notes
 
-- `RUNE2008` (invalid setting) and `RUNE2010` (undocumented public task) are
-  surfaced by `rune analyze` and the language server. They are **not** raised on
+- `RUNE2008` (invalid setting), `RUNE2010` (undocumented public task), and
+  `RUNE2017` (unquoted parameter) are surfaced by `rune analyze` and the
+  language server. They are **not** raised on
   the execution path, so an existing Runefile keeps running — the editor still
   flags them.
 - Dependency- and import-cycle diagnostics attach every participating task/file

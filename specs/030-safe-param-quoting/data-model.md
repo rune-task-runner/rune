@@ -80,7 +80,8 @@ A variadic of any kind becomes an `array` of the item schema, as today.
 | `[script("cmd …")]` (non-empty) | some field of `cmd …` is a known shell |
 | no `[script]`, executor `sh` or none, file has `set shell` | some string-literal element of the list is a known shell |
 | no `[script]`, executor `sh` or none, no `set shell` | always (built-in shell) |
-| executor `python`, `node`, `agent`, or custom | never |
+| no `[script]`, custom executor | the executor name is a known shell (`(bash)`, `(/bin/zsh)`) |
+| executor `python`, `node`, or `agent` | never |
 
 Known shells: `sh`, `bash`, `dash`, `zsh`, `ksh`, `mksh`, `ash`, `fish`, by base
 name, ignoring case and a `.exe` suffix (`runtime.IsKnownShell`).

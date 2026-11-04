@@ -24,7 +24,8 @@ Try the variations: `rune greet Ada` → `hello Ada`; `rune deploy prod` → `de
 ## How it works
 
 `greet name="world"` has a default; `deploy env` is required; `test +packages` is variadic
-(one or more). `{{name}}` interpolates a value into the command.
+(one or more). `{{quote(name)}}` passes a value to the command as one argument, and
+`{{quote_each(packages)}}` passes each element of a variadic as its own argument.
 
 `release channel:enum("stable","beta") builds:number="1"` adds inline **type
 annotations**: `rune release beta` runs, while `rune release nightly` is rejected

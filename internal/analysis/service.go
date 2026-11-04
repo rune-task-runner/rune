@@ -56,6 +56,7 @@ func (s *Service) Analyze(ctx context.Context, req AnalyzeRequest) (*Snapshot, e
 	diags = append(diags, config.Compose(file, provider)...)
 	diags = append(diags, analyzer.Analyze(file)...)
 	diags = append(diags, analyzer.CheckDocumentation(file)...)
+	diags = append(diags, analyzer.CheckQuoting(file)...)
 	diags = append(diags, analyzer.CheckSettings(file)...)
 
 	idx := language.BuildIndex(file)

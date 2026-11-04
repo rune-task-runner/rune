@@ -2,6 +2,8 @@ package integration
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -133,5 +135,87 @@ need +pkgs:
 		if r.code != 0 || r.stdout != tt.want {
 			t.Errorf("rune %q: stdout = %q, exit %d; want %q, 0 (stderr %q)", tt.args, r.stdout, r.code, tt.want, r.stderr)
 		}
+	}
+}
+
+// Spec 030 Story 3: rune analyze reports RUNE2017 as a warning and exits 0,
+// and running the task prints no warning.
+func TestQuoting_Analyze(t *testing.T) {
+	dir := writeRunefile(t, `a *names:
+    @printf "[%s]\n" {{names}}
+
+b *names:
+    @printf "[%s]\n" {{quote(names)}}
+
+c *names:
+    @printf "[%s]\n" {{quote_each(names)}}
+
+n *names:
+    @set -- {{quote_each(names)}}; echo "$#"
+
+ci *pkgs: (n pkgs)
+    @echo done
+
+plus *pkgs: (need pkgs)
+    @echo after
+
+need +pkgs:
+    @set -- {{quote_each(pkgs)}}; echo "$#"
+`)
+	r := run(t, dir, nil, "analyze", "--json")
+	if r.code != 0 {
+		t.Fatalf("analyze --json exit %d; stdout %q stderr %q", r.code, r.stdout, r.stderr)
+	}
+	var report struct {
+		Diagnostics []struct {
+			Code     string `json:"code"`
+			Severity string `json:"severity"`
+			Message  string `json:"message"`
+			Range    struct {
+				Start struct {
+					Line int `json:"line"`
+				} `json:"start"`
+			} `json:"range"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal([]byte(r.stdout), &report); err != nil {
+		t.Fatalf("analyze --json output: %v\n%s", err, r.stdout)
+	}
+	var found []string
+	for _, d := range report.Diagnostics {
+		if d.Code == "RUNE2017" {
+			found = append(found, fmt.Sprintf("%s line %d: %s", d.Severity, d.Range.Start.Line, d.Message))
+		}
+	}
+	want := `warning line 2: parameter "names" is interpolated into a shell command unquoted; write {{quote_each(names)}} outside any shell quotes, or declare *names:raw if word splitting is intended`
+	if len(found) != 1 || found[0] != want {
+		t.Errorf("RUNE2017 findings = %q, want only %q", found, want)
+	}
+
+	if r := run(t, dir, nil, "analyze"); r.code != 0 || !strings.Contains(r.stdout+r.stderr, "RUNE2017") {
+		t.Errorf("analyze: exit %d, output %q", r.code, r.stdout+r.stderr)
+	}
+	if r := run(t, dir, nil, "a", "x"); r.code != 0 || strings.Contains(r.stderr, "RUNE2017") || strings.Contains(r.stderr, "unquoted") {
+		t.Errorf("rune a x: exit %d, stderr %q", r.code, r.stderr)
+	}
+}
+
+// Spec 030 Story 4: raw splits into words as {{p}} always did, and agents are
+// told so.
+func TestQuoting_RawKind(t *testing.T) {
+	dir := writeRunefile(t, `# Test with flags.
+[param-doc("flags", "Extra go test flags")]
+test flags:raw="-v -race":
+    @printf "[%s]\n" {{flags}}
+`)
+	if r := run(t, dir, nil, "test"); r.code != 0 || r.stdout != "[-v]\n[-race]\n" {
+		t.Errorf("rune test: stdout %q, exit %d, stderr %q", r.stdout, r.code, r.stderr)
+	}
+	reply := mcpToolsList(t, dir)
+	if want := `"flags":{"description":"Extra go test flags. Split into shell words without quoting.","type":"string"}`; !strings.Contains(reply, want) {
+		t.Errorf("tools/list missing %s\nreply: %s", want, reply)
+	}
+	if r := run(t, dir, nil, "analyze", "--json"); r.code != 0 || strings.Contains(r.stdout, "RUNE2017") || strings.Contains(r.stdout, "RUNE2012") {
+		t.Errorf("analyze: exit %d, %s", r.code, r.stdout)
 	}
 }

@@ -35,7 +35,7 @@ Param       = Name [ TypeAnno ] [ "=" Expr ]   (* required or defaulted *)
             | "+" Name [ TypeAnno ]            (* variadic, one-or-more *)
             | "*" Name [ TypeAnno ] ;          (* variadic, zero-or-more *)
 TypeAnno    = ":" KindName [ EnumValues ] ;    (* spec 023: tokens must be offset-adjacent *)
-KindName    = "string" | "number" | "boolean" | "path" | "enum" ;
+KindName    = "string" | "number" | "boolean" | "path" | "raw" | "enum" ;
 EnumValues  = "(" StringLit { "," StringLit } ")" ;   (* enum only; >=1 value *)
 Executor    = "sh" | "python" | "node" | "agent" | Name ;
 Deps        = DepCall { DepCall } ;

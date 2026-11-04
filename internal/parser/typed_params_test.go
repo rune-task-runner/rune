@@ -188,3 +188,25 @@ func TestParseReturns(t *testing.T) {
 		t.Errorf("Returns() on unannotated task = %q", got)
 	}
 }
+
+// Spec 030 FR-016: raw parses in every parameter form and accepts any value.
+func TestParseRawKind(t *testing.T) {
+	src := "a x:raw:\n    @echo hi\n" +
+		"b x:raw=\"d\":\n    @echo hi\n" +
+		"c *xs:raw:\n    @echo hi\n" +
+		"d +xs:raw:\n    @echo hi\n"
+	f := mustParse(t, src)
+	wantKinds := []ast.ParamKind{ast.ParamRequired, ast.ParamDefaulted, ast.ParamVariadicStar, ast.ParamVariadicPlus}
+	for i, task := range f.Tasks {
+		p := task.Params[0]
+		if p.Kind != wantKinds[i] || p.Constraint == nil || p.Constraint.Kind != ast.KindRaw || p.Constraint.KindName != "raw" {
+			t.Errorf("%s: param %+v, constraint %+v", task.Name, p, p.Constraint)
+			continue
+		}
+		for _, v := range []string{"", "-v -race", "x; echo pwned"} {
+			if err := p.Constraint.Check(v); err != nil {
+				t.Errorf("%s: Check(%q) = %v", task.Name, v, err)
+			}
+		}
+	}
+}

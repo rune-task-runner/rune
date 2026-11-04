@@ -16,3 +16,9 @@ pick *names:enum("a","b"):
 [param-doc("channel", "Release channel to query")]
 list-artifacts channel:enum("stable","beta"):
     @echo {{channel}}
+
+test-flags flags:raw="-v -race":
+    go test {{flags}} ./...
+
+run *args:raw:
+    ./tool {{args}}

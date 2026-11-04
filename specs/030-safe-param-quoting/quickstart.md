@@ -31,7 +31,7 @@ What the suites cover:
 | Run-once identity | `internal/runtime/scheduler` tests |
 | Cache fingerprint with elements | `internal/cli` cache tests |
 | `ListEngine`, `decodeArgs` lists, `raw` schema | `mcpserver` tests |
-| RUNE2017 rule table | `internal/analyzer/quoting_test.go`, fixture rows 1 to 27 of [diagnostic-rune2017.md](contracts/diagnostic-rune2017.md) |
+| RUNE2017 rule table | `internal/analyzer/quoting_test.go`, fixture rows 1 to 28 of [diagnostic-rune2017.md](contracts/diagnostic-rune2017.md) |
 | `raw` parse, format, hover | parser, formatter golden, `internal/language` hover tests, new corpus fixture |
 | Binary-level behavior | `test/integration/quoting_test.go` (CLI, MCP over stdio, forwarding, `rune analyze --json`) |
 | Docs and examples are warning-free | `test/docs/quoting_test.go` |

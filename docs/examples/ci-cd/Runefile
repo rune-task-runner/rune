@@ -22,5 +22,5 @@ deploy: ci
 # Release gate: exits 2 ("refused") when the window is closed, 0 otherwise.
 # Rune exits with the body's own code, so CI can branch on it.
 release-gate window="open":
-    @[ "{{window}}" != "closed" ] || { echo "release gate: refused (window closed)" >&2; exit 2; }
+    @[ {{quote(window)}} != "closed" ] || { echo "release gate: refused (window closed)" >&2; exit 2; }
     @echo "release gate: open"

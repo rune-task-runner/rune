@@ -253,7 +253,7 @@ func TestParamCheckMatchesASTConstraint(t *testing.T) {
 func TestScalarTypeCoversAllKinds(t *testing.T) {
 	wantJSON := map[string]string{
 		"string": "string", "number": "number", "boolean": "boolean",
-		"path": "string", "enum": "string",
+		"path": "string", "raw": "string", "enum": "string",
 	}
 	for _, kind := range ast.SupportedConstraintKinds {
 		want, ok := wantJSON[kind]
@@ -266,5 +266,31 @@ func TestScalarTypeCoversAllKinds(t *testing.T) {
 	}
 	if got := scalarType(""); got != "string" {
 		t.Errorf(`scalarType("") = %q, want "string" (the unannotated pre-023 shape)`, got)
+	}
+}
+
+// Spec 030 FR-019 (contracts/mcp.md, "Schema mapping delta"): a raw parameter
+// tells agents its value is split into shell words.
+func TestInputSchemaRaw(t *testing.T) {
+	const sentence = "Split into shell words without quoting."
+	schema := inputSchema([]ParamInfo{
+		{Name: "a", Kind: "raw"},
+		{Name: "b", Kind: "raw", Description: "Extra flags"},
+		{Name: "c", Kind: "raw", Description: "Extra flags."},
+		{Name: "d", Kind: "raw", Variadic: true},
+		{Name: "e", Kind: "string", Description: "Extra flags"},
+	})
+	props := schema["properties"].(map[string]any)
+	want := map[string]any{
+		"a": map[string]any{"type": "string", "description": sentence},
+		"b": map[string]any{"type": "string", "description": "Extra flags. " + sentence},
+		"c": map[string]any{"type": "string", "description": "Extra flags. " + sentence},
+		"d": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": sentence},
+		"e": map[string]any{"type": "string", "description": "Extra flags"},
+	}
+	for name, w := range want {
+		if !reflect.DeepEqual(props[name], w) {
+			t.Errorf("%s = %v, want %v", name, props[name], w)
+		}
 	}
 }

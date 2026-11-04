@@ -35,7 +35,7 @@ release: (build "release")
     @echo "releasing"
 
 build target="debug":
-    @echo "building {{target}}"
+    @echo "building "{{quote(target)}}
 ```
 
 ## Runnable example
