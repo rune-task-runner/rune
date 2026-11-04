@@ -25,6 +25,12 @@ leak:
 // pipe must stay open until then).
 func mcpCall(t *testing.T, dir, task string) (toolResult string, stderr string) {
 	t.Helper()
+	return mcpCallArgs(t, dir, task, "{}")
+}
+
+// mcpCallArgs is mcpCall with a JSON object of tool arguments.
+func mcpCallArgs(t *testing.T, dir, task, arguments string) (toolResult string, stderr string) {
+	t.Helper()
 	cmd := exec.Command(runeBin, "mcp")
 	cmd.Dir = dir
 	stdin, err := cmd.StdinPipe()
@@ -46,7 +52,7 @@ func mcpCall(t *testing.T, dir, task string) (toolResult string, stderr string) 
 	frames := []string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"it","version":"0.0.0"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
-		fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":{}}}`, task),
+		fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, task, arguments),
 	}
 	if _, err := io.WriteString(stdin, strings.Join(frames, "\n")+"\n"); err != nil {
 		t.Fatalf("writing MCP frames: %v", err)

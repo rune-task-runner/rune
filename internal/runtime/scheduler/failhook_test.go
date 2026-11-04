@@ -41,7 +41,7 @@ func TestFailHookFiresOnBodyFailure(t *testing.T) {
 	m.failOn = "main"
 	m.execErr = errors.New("boom")
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("original error not returned: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestFailHookNotFiredOnSuccess(t *testing.T) {
 	diagnose := task("diagnose")
 	main := withFailHooks(task("main"), "diagnose")
 	m := newEngine(diagnose, main)
-	if err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}}); err != nil {
+	if err := Run(m, []Invocation{{Task: main}}); err != nil {
 		t.Fatal(err)
 	}
 	if countOrder(m, "||diagnose") != 0 {
@@ -72,7 +72,7 @@ func TestFailHookNotFiredOnCancellation(t *testing.T) {
 	m.failOn = "main"
 	m.execErr = context.Canceled
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
@@ -91,7 +91,7 @@ func TestFailHookBodyOnlyNotDependencyFailure(t *testing.T) {
 	m.failOn = "dep"
 	m.execErr = errors.New("dep boom")
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if err == nil || !strings.Contains(err.Error(), "dep boom") {
 		t.Fatalf("err = %v", err)
 	}
@@ -113,7 +113,7 @@ func TestFailHooksRunInDeclarationOrder(t *testing.T) {
 	m.failOn = "main"
 	m.execErr = errors.New("boom")
 
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	_ = Run(m, []Invocation{{Task: main}})
 	want := []string{"main", "||h1", "||h2"}
 	if strings.Join(m.order, ",") != strings.Join(want, ",") {
 		t.Errorf("order = %v, want %v", m.order, want)
@@ -132,7 +132,7 @@ func TestFailHookFailureWarnsAndContinues(t *testing.T) {
 	m.execErr = errors.New("boom")
 	m.hookFailOn = "bad"
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("original error not preserved: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestFailHookUnavailableSkippedWithWarning(t *testing.T) {
 	m.execErr = errors.New("boom")
 	m.unavailable = map[string]bool{"diagnose": true}
 
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	_ = Run(m, []Invocation{{Task: main}})
 	if countOrder(m, "||diagnose") != 0 {
 		t.Errorf("unavailable hook executed: %v", m.order)
 	}
@@ -190,7 +190,7 @@ func TestFailHookRunsOncePerFailure(t *testing.T) {
 	m := newEngine(prep, diagnose, a, b, top)
 	m.failErrs = map[string]error{"a": errors.New("a boom"), "b": errors.New("b boom")}
 
-	err := Run(m, []Invocation{{Task: top, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: top}})
 	if err == nil {
 		t.Fatal("expected error from failing parallel deps")
 	}
@@ -219,7 +219,7 @@ func TestFailHookPostHooksRun(t *testing.T) {
 	m.failOn = "main"
 	m.execErr = errors.New("boom")
 
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	_ = Run(m, []Invocation{{Task: main}})
 	if countOrder(m, "after") != 1 {
 		t.Errorf("hook's && post-hook did not run: %v", m.order)
 	}
@@ -242,7 +242,7 @@ func TestFailureExitCodeComesFromEngine(t *testing.T) {
 		return 42
 	}
 
-	_ = Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	_ = Run(m, []Invocation{{Task: main}})
 	if len(m.failures) != 1 || m.failures[0].ExitCode != 42 {
 		t.Errorf("failure = %+v, want ExitCode 42 from the engine", m.failures)
 	}
@@ -257,7 +257,7 @@ func TestFailHookNotFiredWhenBodyNotRun(t *testing.T) {
 	m.failOn = "main"
 	m.execErr = fmt.Errorf("task %q was not confirmed: %w", "main", ErrBodyNotRun)
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if err == nil {
 		t.Fatal("original error must still be returned")
 	}
@@ -280,7 +280,7 @@ func TestFailHookCancellationStopsQuietly(t *testing.T) {
 	m.hookFailOn = "bad"
 	m.hookErr = context.Canceled
 
-	err := Run(m, []Invocation{{Task: main, Params: map[string]string{}}})
+	err := Run(m, []Invocation{{Task: main}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("original error not preserved: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestFailHookBodiesNeverConcurrent(t *testing.T) {
 		mu.Unlock()
 	}
 
-	_ = Run(m, []Invocation{{Task: top, Params: map[string]string{}}})
+	_ = Run(m, []Invocation{{Task: top}})
 	if got := countOrder(m, "||diagnose"); got != 2 {
 		t.Fatalf("hook ran %d times, want 2: %v", got, m.order)
 	}

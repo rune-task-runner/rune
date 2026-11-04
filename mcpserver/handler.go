@@ -20,11 +20,17 @@ func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 		if !s.authorized(taskName) {
 			return errorResult(fmt.Sprintf("task %q requires explicit approval and is not authorized for this session", taskName)), nil
 		}
-		args, err := decodeArgs(req.Params.Arguments, t.Params)
+		args, lists, err := decodeArgs(req.Params.Arguments, t.Params)
 		if err != nil {
 			return errorResult("invalid arguments: " + err.Error()), nil
 		}
-		res, runErr := s.engine.Call(ctx, taskName, args)
+		var res Result
+		var runErr error
+		if le, ok := s.engine.(ListEngine); ok {
+			res, runErr = le.CallLists(ctx, taskName, args, lists)
+		} else {
+			res, runErr = s.engine.Call(ctx, taskName, args)
+		}
 		if runErr != nil {
 			return errorResult(runErr.Error()), nil
 		}
@@ -38,23 +44,25 @@ func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 // decodeArgs converts the raw JSON arguments into string parameters and
 // validates each against its declared constraint (spec 023 FR-005 — a
 // violation never reaches the engine). Array (variadic) values are validated
-// PER ELEMENT and then space-joined — the join destroys element boundaries,
-// so this is the only point where per-value semantics exist on the MCP path
-// (spec 023 FR-008). A scalar supplied for a variadic parameter is validated
-// as a single element, exactly as the CLI treats one quoted argument, so no
-// value form bypasses the constraint. Numbers are decoded with UseNumber so
-// their source spelling survives verbatim (fmt.Sprint on a float64 would
-// render 1000000 as "1e+06").
-func decodeArgs(raw json.RawMessage, params []ParamInfo) (map[string]string, error) {
+// PER ELEMENT and then space-joined into args, as Engine.Call has always
+// received them. For a known variadic parameter the elements are also
+// returned in lists, so a ListEngine keeps their boundaries (spec 030). A
+// scalar supplied for a variadic parameter is validated as a single element,
+// exactly as the CLI treats one quoted argument, so no value form bypasses the
+// constraint; it is listed as one element, or as none when it is empty. Numbers are decoded with UseNumber so their
+// source spelling survives verbatim (fmt.Sprint on a float64 would render
+// 1000000 as "1e+06").
+func decodeArgs(raw json.RawMessage, params []ParamInfo) (map[string]string, map[string][]string, error) {
 	out := map[string]string{}
+	lists := map[string][]string{}
 	if len(raw) == 0 {
-		return out, nil
+		return out, lists, nil
 	}
 	var m map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&m); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	byName := make(map[string]ParamInfo, len(params))
 	for _, p := range params {
@@ -68,12 +76,15 @@ func decodeArgs(raw json.RawMessage, params []ParamInfo) (map[string]string, err
 				s := fmt.Sprint(e)
 				if known {
 					if err := p.check(s); err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 				}
 				parts = append(parts, s)
 			}
 			out[k] = strings.Join(parts, " ")
+			if known && p.Variadic {
+				lists[k] = parts
+			}
 			continue
 		}
 		s, isStr := v.(string)
@@ -82,12 +93,20 @@ func decodeArgs(raw json.RawMessage, params []ParamInfo) (map[string]string, err
 		}
 		if known {
 			if err := p.check(s); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 		out[k] = s
+		if known && p.Variadic {
+			// An empty string carries no element, like [] and like the CLI
+			// with no arguments; one empty element would reach quote_each as ''.
+			lists[k] = []string{}
+			if s != "" {
+				lists[k] = []string{s}
+			}
+		}
 	}
-	return out, nil
+	return out, lists, nil
 }
 
 func formatResult(r Result) string {

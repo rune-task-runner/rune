@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/runtime/scheduler"
 )
 
@@ -34,7 +35,7 @@ func TestConfirmTerminalAnswers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			eng, stdout, stderr := confirmEngine(t, tt.src, strings.NewReader(tt.input), true, false)
 
-			err := eng.Execute(eng.tasks["t"], nil)
+			err := eng.Execute(eng.tasks["t"], eval.Args{})
 
 			if !strings.Contains(stderr.String(), tt.wantPrompt) {
 				t.Errorf("stderr = %q, want prompt %q", stderr.String(), tt.wantPrompt)

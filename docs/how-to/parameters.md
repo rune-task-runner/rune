@@ -22,10 +22,12 @@ deploy env:
 
 # Variadic — one-or-more (+) and zero-or-more (*)
 test +packages:
-    @echo "go test {{packages}}"
+    @echo go test {{quote_each(packages)}}
 ```
 
 Run them: `rune greet Ada`, `rune deploy prod`, `rune test ./... ./cmd/...`.
+`quote_each(packages)` passes each package as its own quoted argument, so a path
+that contains a space stays one argument.
 
 ## Runnable example
 

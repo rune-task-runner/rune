@@ -41,6 +41,9 @@ func compare(op token.Kind, l, r string, span token.Span) (bool, *Error) {
 // callBuiltin evaluates a function call's arguments and dispatches to the
 // builtin registry. The expression sublanguage has no user-defined functions.
 func (e *Evaluator) callBuiltin(fc *ast.FuncCall) (string, *Error) {
+	if out, ok := e.quoteEachList(fc); ok {
+		return out, nil
+	}
 	args := make([]string, len(fc.Args))
 	for i, a := range fc.Args {
 		v, err := e.Eval(a)
@@ -54,6 +57,29 @@ func (e *Evaluator) callBuiltin(fc *ast.FuncCall) (string, *Error) {
 		return "", &Error{Span: fc.Sp, Msg: "unknown function: " + fc.Name}
 	}
 	return fn(e, args, fc.Sp)
+}
+
+// quoteEachList handles quote_each of a bare variadic reference. It must run
+// before arguments are evaluated: the string value is already joined, so the
+// element boundaries exist only in Scope.Lists (spec 030 R2). Map membership,
+// not length, marks a variadic, so an empty list is not mistaken for a scalar.
+func (e *Evaluator) quoteEachList(fc *ast.FuncCall) (string, bool) {
+	if fc.Name != "quote_each" || len(fc.Args) != 1 {
+		return "", false
+	}
+	ref, isRef := fc.Args[0].(*ast.VarRef)
+	if !isRef {
+		return "", false
+	}
+	elems, ok := e.scope.Lists[ref.Name]
+	if !ok {
+		return "", false
+	}
+	quoted := make([]string, len(elems))
+	for i, el := range elems {
+		quoted[i] = shellQuote(el)
+	}
+	return strings.Join(quoted, " "), true
 }
 
 // IsBuiltin reports whether name is a known built-in function. The analyzer
@@ -199,9 +225,10 @@ var builtins = sync.OnceValue(func() map[string]builtinFn {
 			}
 			return "", &Error{Span: s, Msg: msg}
 		},
-		"quote":   unary("quote", shellQuote),
-		"require": requireFn,
-		"which":   whichFn,
+		"quote":      unary("quote", shellQuote),
+		"quote_each": unary("quote_each", shellQuote),
+		"require":    requireFn,
+		"which":      whichFn,
 	}
 })
 

@@ -78,8 +78,17 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 	return out
 }
 
+var _ mcpserver.ListEngine = (*mcpAdapter)(nil)
+
 // Call runs a task by name with named arguments, capturing stdout/stderr/exit.
+// With no lists, each variadic value is one element.
 func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]string) (mcpserver.Result, error) {
+	return a.CallLists(ctx, name, args, nil)
+}
+
+// CallLists is Call with a variadic's elements as the agent sent them, so
+// quote_each keeps their boundaries (spec 030).
+func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string]string, lists map[string][]string) (mcpserver.Result, error) {
 	t, ok := a.tasks[name]
 	if !ok {
 		return mcpserver.Result{}, errorf("unknown task: %s", name)
@@ -141,7 +150,7 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 		failHookOut: &syncWriter{w: fixSink},
 	}
 
-	params, err := bindNamedParams(t, args, scope)
+	params, err := bindNamedParams(t, args, lists, scope)
 	if err != nil {
 		return mcpserver.Result{}, err
 	}

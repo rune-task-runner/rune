@@ -64,7 +64,7 @@ func (r failReader) Read([]byte) (int, error) {
 func TestConfirmNonTerminalDeclinesWithoutReading(t *testing.T) {
 	eng, stdout, stderr := confirmEngine(t, confirmSrc, failReader{t}, false, false)
 
-	err := eng.Execute(eng.tasks["t"], nil)
+	err := eng.Execute(eng.tasks["t"], eval.Args{})
 
 	var tf *TaskFailure
 	if !errors.As(err, &tf) {
@@ -84,7 +84,7 @@ func TestConfirmNonTerminalDeclinesWithoutReading(t *testing.T) {
 func TestConfirmNonTerminalFailHookDeclinesWithoutReading(t *testing.T) {
 	eng, stdout, _ := confirmEngine(t, confirmSrc, failReader{t}, false, false)
 
-	err := eng.ExecuteFailHook(eng.tasks["t"], nil, scheduler.Failure{TaskName: "build", ExitCode: 1})
+	err := eng.ExecuteFailHook(eng.tasks["t"], eval.Args{}, scheduler.Failure{TaskName: "build", ExitCode: 1})
 
 	var tf *TaskFailure
 	if !errors.As(err, &tf) {
@@ -100,7 +100,7 @@ func TestConfirmNonTerminalFailHookDeclinesWithoutReading(t *testing.T) {
 func TestConfirmNoStdinKeepsSilentDecline(t *testing.T) {
 	eng, _, stderr := confirmEngine(t, confirmSrc, nil, false, false)
 
-	err := eng.Execute(eng.tasks["t"], nil)
+	err := eng.Execute(eng.tasks["t"], eval.Args{})
 
 	var tf *TaskFailure
 	if !errors.As(err, &tf) {
@@ -123,7 +123,7 @@ func TestConfirmNoStdinKeepsSilentDecline(t *testing.T) {
 func TestConfirmYesSkipsStdin(t *testing.T) {
 	eng, stdout, stderr := confirmEngine(t, confirmSrc, strings.NewReader("n\n"), true, true)
 
-	if err := eng.Execute(eng.tasks["t"], nil); err != nil {
+	if err := eng.Execute(eng.tasks["t"], eval.Args{}); err != nil {
 		t.Fatalf("Execute with --yes: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "body") {

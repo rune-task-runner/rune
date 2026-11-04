@@ -266,38 +266,76 @@ func osAttrSpan(t *ast.Task) token.Span {
 func (e *engine) Available(task *ast.Task) bool { return task.AvailableOn(e.goos) }
 
 // ResolveDep evaluates a dependency call in the caller's scope and binds args.
-// OS-mismatched targets are returned unevaluated (nil params): the scheduler
+// OS-mismatched targets are returned unevaluated (empty Args): the scheduler
 // skips them, so their args and defaults must not run on this host.
-func (e *engine) ResolveDep(curTask *ast.Task, curParams map[string]string, dep *ast.DepCall) (*ast.Task, map[string]string, error) {
+func (e *engine) ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) (*ast.Task, eval.Args, error) {
 	target, ok := e.tasks[dep.Name]
 	if !ok {
-		return nil, nil, &ValidationError{Err: errorf("unknown dependency %q of task %q", dep.Name, curTask.Name)}
+		return nil, eval.Args{}, &ValidationError{Err: errorf("unknown dependency %q of task %q", dep.Name, curTask.Name)}
 	}
 	// The scheduler skips OS-mismatched targets silently, so don't evaluate
 	// their args or parameter defaults: those may only resolve on the matching
 	// host (e.g. a [windows] dep defaulting to env("APPDATA") must not abort
 	// the dispatch pattern on linux).
 	if !e.Available(target) {
-		return target, nil, nil
+		return target, eval.Args{}, nil
 	}
-	ev := eval.New(e.scope.WithParams(curParams))
-	pos := make([]string, len(dep.Args))
-	for i, a := range dep.Args {
-		v, evErr := ev.Eval(a)
+	ev := eval.New(e.scope.WithArgs(cur))
+	vals := make([]string, 0, len(dep.Args))
+	for _, a := range dep.Args {
+		val, evErr := ev.Eval(a)
 		if evErr != nil {
-			return nil, nil, &ValidationError{Err: evErr}
+			return nil, eval.Args{}, &ValidationError{Err: evErr}
 		}
-		pos[i] = v
+		vals = append(vals, val)
 	}
-	params, err := bindParams(target, pos, e.scope)
+	v := variadicIndex(target)
+	if v < 0 || len(vals) <= v {
+		params, err := bindParams(target, vals, e.scope)
+		if err != nil {
+			return nil, eval.Args{}, err
+		}
+		return target, params, nil
+	}
+	// Spreading stops at the target's variadic slot, so scalar binding and
+	// arity stay what they were before spec 030 (R4).
+	elems := []string{}
+	for i, a := range dep.Args[v:] {
+		if ref, isRef := a.(*ast.VarRef); isRef {
+			if l, ok := cur.Lists[ref.Name]; ok {
+				elems = append(elems, l...)
+				continue
+			}
+		}
+		elems = append(elems, vals[v+i])
+	}
+	params, err := bindParams(target, append(vals[:v:v], elems...), e.scope)
 	if err != nil {
-		return nil, nil, err
+		// Forwarding has no opt-in, so a call v0.6.0 bound from the written
+		// arguments' text must still run, e.g. an empty list into a + parameter.
+		var oldErr error
+		if params, oldErr = bindParams(target, vals, e.scope); oldErr != nil {
+			return nil, eval.Args{}, err
+		}
 	}
+	name := target.Params[v].Name
+	params.Values[name] = strings.Join(vals[v:], " ")
+	params.Lists[name] = elems
 	return target, params, nil
 }
 
+// variadicIndex returns the index of the task's variadic parameter, or -1.
+func variadicIndex(t *ast.Task) int {
+	for i, p := range t.Params {
+		if p.Kind == ast.ParamVariadicPlus || p.Kind == ast.ParamVariadicStar {
+			return i
+		}
+	}
+	return -1
+}
+
 // Execute handles plan modes, confirmation, and caching, then runs the body.
-func (e *engine) Execute(task *ast.Task, params map[string]string) error {
+func (e *engine) Execute(task *ast.Task, params eval.Args) error {
 	if e.plan == planSummary {
 		fmt.Fprintln(e.opts.Stdout, task.Name)
 		return nil
@@ -354,7 +392,7 @@ func (e *engine) Execute(task *ast.Task, params map[string]string) error {
 // cache deliberately — a "cached" diagnostic would skip the one run whose
 // output is wanted — but keep the [confirm] gate: an unconfirmable hook
 // declines, fails, and surfaces as a one-line warning upstream.
-func (e *engine) ExecuteFailHook(task *ast.Task, params map[string]string, f scheduler.Failure) error {
+func (e *engine) ExecuteFailHook(task *ast.Task, params eval.Args, f scheduler.Failure) error {
 	if e.plan != planRun {
 		return nil // plan modes never execute bodies, so no failure can reach here
 	}
@@ -400,7 +438,7 @@ func (e *engine) Warnf(format string, args ...any) {
 }
 
 // runBody interpolates and runs a task body via the selected executor.
-func (e *engine) runBody(task *ast.Task, params map[string]string) error {
+func (e *engine) runBody(task *ast.Task, params eval.Args) error {
 	return e.runBodyTo(task, params, e.opts.Stdout, nil)
 }
 
@@ -409,8 +447,8 @@ func (e *engine) runBody(task *ast.Task, params map[string]string) error {
 // stdout into the fix-suggestion capture, and every hook run appends the
 // failure context (contracts/failure-env.md). extraEnv comes last so it wins
 // over static declarations of the same names.
-func (e *engine) runBodyTo(task *ast.Task, params map[string]string, stdout io.Writer, extraEnv []string) error {
-	ev := eval.New(e.scope.WithParams(params))
+func (e *engine) runBodyTo(task *ast.Task, params eval.Args, stdout io.Writer, extraEnv []string) error {
+	ev := eval.New(e.scope.WithArgs(params))
 
 	lines := make([]shell.Line, 0, len(task.Body))
 	for _, bl := range task.Body {
@@ -516,8 +554,8 @@ func joinBody(lines []shell.Line) string {
 func (e *engine) Namespace(_ *ast.Task) string { return "" }
 
 // cacheSpec builds the cache fingerprint spec for a [cache] task.
-func (e *engine) cacheSpec(task *ast.Task, params map[string]string, attr *ast.Attribute) cache.Spec {
-	ev := eval.New(e.scope.WithParams(params))
+func (e *engine) cacheSpec(task *ast.Task, params eval.Args, attr *ast.Attribute) cache.Spec {
+	ev := eval.New(e.scope.WithArgs(params))
 	evalAll := func(exprs []ast.Expr) []string {
 		out := make([]string, 0, len(exprs))
 		for _, ex := range exprs {
@@ -550,7 +588,7 @@ func (e *engine) cacheSpec(task *ast.Task, params map[string]string, attr *ast.A
 
 // collectVars resolves the values of every variable/param the task references
 // (Principle I: the fingerprint must reflect interpolated values).
-func (e *engine) collectVars(task *ast.Task, params map[string]string) map[string]string {
+func (e *engine) collectVars(task *ast.Task, params eval.Args) map[string]string {
 	names := map[string]bool{}
 	var walk func(ex ast.Expr)
 	walk = func(ex ast.Expr) {
@@ -588,11 +626,18 @@ func (e *engine) collectVars(task *ast.Task, params map[string]string) map[strin
 			}
 		}
 	}
-	ev := eval.New(e.scope.WithParams(params))
+	ev := eval.New(e.scope.WithArgs(params))
 	out := map[string]string{}
 	for name := range names {
 		if v, err := ev.Eval(&ast.VarRef{Name: name}); err == nil {
 			out[name] = v
+		}
+		// The joined text cannot tell ["a b"] from ["a", "b"], so the elements
+		// get their own entry. Its "[]" suffix collides with no identifier. It
+		// changes the fingerprint of every [cache] task that references a
+		// variadic, which therefore runs once after upgrading (spec 030 R5).
+		if elems, ok := params.Lists[name]; ok {
+			out[name+"[]"] = eval.ElementsKey(elems)
 		}
 	}
 	return out

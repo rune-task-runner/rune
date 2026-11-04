@@ -1,19 +1,17 @@
 <!--
 Sync Impact Report
-- Version: 1.0.0 → 1.1.0
-- Rationale: MINOR amendment. (1) Principle III now states explicitly what is
-  frozen: the expression sublanguage. Declarative surface (task attributes,
-  parameter annotations, header clauses) may grow through the normal spec process
-  under stated conditions — formalizing the practice already established by
-  specs 021 ([context]) and 022 (|| failure hooks). (2) The Backward-compatibility
-  Engineering Constraint gains a narrow re-parse exception with four mandatory
-  conditions; silent meaning changes remain forbidden. Prompted by /speckit-analyze
-  findings C1/C2 on spec 023 (typed parameter schemas).
-- Modified principles: III Minimal, Total DSL (freeze scope clarified).
-- Modified sections: Engineering Constraints (Backward compatibility bullet).
+- Version: 1.1.0 → 1.2.0
+- Rationale: MINOR amendment. Principle III gains a clause letting the built-in
+  function library grow through the normal spec process under stated
+  conditions: no new syntax, total and free of side effects, known to the
+  analyzer and the language registry, shipped with documentation and fixtures.
+  Prompted by spec 030 (safe parameter quoting), whose quote_each() built-in
+  grows the vocabulary without changing the grammar.
+- Modified principles: III Minimal, Total DSL (built-in library clause added).
+- Modified sections: none.
 - Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
-  Check gate references these principles) — no structural change needed.
+  Check gate references these principles): no structural change needed.
 - Follow-ups: none.
 -->
 
@@ -47,6 +45,10 @@ task attributes, parameter annotations, header clauses — MAY grow through the
 normal spec process, provided the addition is itself total and statically
 analyzable and ships with grammar documentation and fixtures per the Engineering
 Constraints.
+The built-in function library MAY grow through the normal spec process, provided
+each new function adds no syntax, is total and free of side effects, is known to
+the analyzer and the language registry, and ships with documentation and
+fixtures.
 
 ### IV. Hand-Written Front End, Idiomatic Go
 The lexer (Rob Pike state-function style), recursive-descent parser, and Pratt
@@ -132,4 +134,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-08-31
+**Version**: 1.2.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-04
