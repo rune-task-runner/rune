@@ -160,13 +160,13 @@ compare the diagnostics with a golden list.
 6. **Given** `{{"--env=" + env}}` or `{{trim(env)}}`, **When** the user runs
    `rune analyze`, **Then** it warns, because the parameter's text still reaches the
    line unquoted.
-7. **Given** `{{if env == "prod" { "--strict" } else { "" }}}`, **When** the user runs
+7. **Given** `{{ if env == "prod" { "--strict" } else { "" } }}`, **When** the user runs
    `rune analyze`, **Then** there is no warning: `env` appears only in the comparison.
-8. **Given** an unquoted parameter in a `(python)`, `(node)`, agent, or custom-executor
-   body, or in a `[script("python3")]` body, **When** the user runs `rune analyze`,
-   **Then** there is no warning.
-9. **Given** an unquoted parameter in a `[script("bash -eu")]` body, **When** the user
-   runs `rune analyze`, **Then** it warns.
+8. **Given** an unquoted parameter in a `(python)`, `(node)`, agent, or `(ruby)`
+   custom-executor body, or in a `[script("python3")]` body, **When** the user runs
+   `rune analyze`, **Then** there is no warning.
+9. **Given** an unquoted parameter in a `[script("bash -eu")]` body or a `(bash)`
+   custom-executor body, **When** the user runs `rune analyze`, **Then** it warns.
 10. **Given** a Runefile that only has this warning, **When** the user runs a task,
     **Then** the run prints no warning and its exit status is unchanged.
 
@@ -348,9 +348,10 @@ variadic and scalar parameters, and check what the dependency receives.
   reference. It MUST appear where existing analyzer warnings appear (`rune analyze`,
   its JSON output, and the editor) and MUST NOT change the exit status of
   `rune analyze` or of any run.
-- **FR-015**: Python, node, agent, and custom-executor bodies, `set shell` and
-  `[script]` programs that are not known shells, and interpolations outside task
-  bodies MUST NOT get this warning.
+- **FR-015**: Python, node, and agent bodies, custom executors, `set shell` lists,
+  and `[script]` programs that do not name a known shell, and interpolations
+  outside task bodies MUST NOT get this warning. A custom executor named after a
+  known shell, such as `(bash)`, is a shell body.
 
 **`raw` kind**
 

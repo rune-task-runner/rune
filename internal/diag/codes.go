@@ -16,7 +16,8 @@ const (
 	// (spec 023).
 	CodeMalformedConstraint = "RUNE1006"
 
-	// Semantic diagnostics (RUNE2xxx) — error, except RUNE2010 (warning).
+	// Semantic diagnostics (RUNE2xxx): errors, except the warnings RUNE2010,
+	// RUNE2016, and RUNE2017.
 	CodeUnknownDependency  = "RUNE2001"
 	CodeDuplicateTask      = "RUNE2002"
 	CodeDependencyCycle    = "RUNE2003"
@@ -35,6 +36,7 @@ const (
 	CodeDefaultViolatesType = "RUNE2014" // literal default violates its own constraint
 	CodeInvalidAnnotation   = "RUNE2015" // param-doc names an unknown parameter / duplicate param-doc / duplicate returns
 	CodeKindShadowsTask     = "RUNE2016" // warning: annotated kind name is also a task name (possible legacy re-parse)
+	CodeUnquotedParam       = "RUNE2017" // warning: string or path parameter interpolated unquoted into a shell body (spec 030)
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

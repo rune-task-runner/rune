@@ -76,7 +76,7 @@ func splitCommand(s string) []string {
 // So is a list with -s: without -c, the shell would read stdin instead of the file.
 // The result is a new slice because settings.Shell is shared by every task.
 func commandWithoutStringFlag(cmd []string) []string {
-	shell := slices.IndexFunc(cmd, isKnownShell)
+	shell := slices.IndexFunc(cmd, IsKnownShell)
 	if shell < 0 {
 		return slices.Clone(cmd)
 	}
@@ -103,9 +103,11 @@ func commandWithoutStringFlag(cmd []string) []string {
 	return out
 }
 
-// isKnownShell reports whether arg names a shell whose -c reads its code from the
+// IsKnownShell reports whether arg names a shell whose -c reads its code from the
 // next operand. Matching on the base name keeps paths and Windows names working.
-func isKnownShell(arg string) bool {
+// The analyzer uses it to decide shell bodies statically (spec 030 R7), so both
+// agree on one list.
+func IsKnownShell(arg string) bool {
 	name := arg[strings.LastIndexAny(arg, `/\`)+1:]
 	switch strings.TrimSuffix(strings.ToLower(name), ".exe") {
 	case "sh", "bash", "dash", "zsh", "ksh", "mksh", "ash", "fish":

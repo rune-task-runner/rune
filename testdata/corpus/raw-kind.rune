@@ -1,0 +1,12 @@
+# The raw kind (spec 030): a value split into shell words on purpose.
+test flags:raw:
+    go test {{flags}} ./...
+
+bench flags:raw="-run=^$ -bench=.":
+    go test {{flags}} ./...
+
+run *args:raw:
+    ./tool {{args}}
+
+exec +args:raw:
+    {{args}}

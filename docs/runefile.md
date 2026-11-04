@@ -41,18 +41,18 @@ clean:
 ```rune
 # Defaulted parameter:
 greet name="world":
-    @echo "hello {{name}}"
+    @echo "hello "{{quote(name)}}
 
 # Required (no default):
 deploy env:
-    @echo "deploying to {{env}}"
+    @echo "deploying to "{{quote(env)}}
 
 # Variadic — one-or-more (+) and zero-or-more (*):
 test +packages:
-    go test {{packages}}
+    go test {{quote_each(packages)}}
 
 lint *paths:
-    golangci-lint run {{paths}}
+    golangci-lint run {{quote_each(paths)}}
 ```
 
 Run them: `rune greet Ada`, `rune deploy prod`, `rune test ./... ./cmd/...`.
@@ -68,15 +68,21 @@ deploy env:enum("staging","prod") replicas:number="2":
     ./deploy.sh {{env}} {{replicas}}
 
 build target:path="./dist" verbose:boolean="false":
-    go build -o {{target}} ./...
+    go build -o {{quote(target)}} ./...
 
 test +packages:path:
-    go test {{packages}}
+    go test {{quote_each(packages)}}
+
+# Extra flags, split into words on purpose: rune vet "-v -race"
+vet flags:raw="":
+    go vet {{flags}} ./...
 ```
 
 The kinds are `string` (the default, spelled out), `number` (integers and
 decimals), `boolean` (exactly `true`/`false`), `path` (any non-empty string —
-a role marker, never an existence check), and `enum("v1","v2")` (a closed,
+a role marker, never an existence check), `raw` (any value, split into shell
+words on purpose; see [Quoting parameters](#quoting-parameters)), and
+`enum("v1","v2")` (a closed,
 case-sensitive set of static string values; variadic values are checked one by
 one). Every invocation path enforces the constraint **before anything runs** —
 CLI arguments, dependency arguments like `(deploy "staging")`, and MCP tool
@@ -87,6 +93,34 @@ attempt. Mistakes in the annotations themselves (unknown kind, empty or
 duplicate enum values, a default that violates its own constraint) are static
 errors with caret diagnostics (RUNE1006, RUNE2012–RUNE2015; see
 [diagnostics](diagnostics.md)).
+
+#### Quoting parameters
+
+`{{p}}` pastes a value into the command as it is, so the shell reads any space,
+quote, or `;` in it as shell syntax. Write `{{quote(p)}}`, or `{{quote_each(p)}}`
+for a variadic, outside any shell quotes, so the value reaches the command as
+exactly one argument, or one argument per element:
+
+```rune
+# Deploy to one environment.
+deploy env:
+    ./deploy.sh {{quote(env)}}
+
+# Lint the given paths.
+lint *paths:
+    golangci-lint run {{quote_each(paths)}}
+```
+
+Shell quotes around an interpolation do not make it safe: in `"{{p}}"` or
+`'{{p}}'`, a value that contains the same quote character ends the quoted
+string early. `rune analyze` and the editor warn (`RUNE2017`, see
+[diagnostics](diagnostics.md)) when a `string` or `path` parameter reaches a
+shell body outside `quote()` and `quote_each()`. Shell bodies are the default
+shell, a `set shell` or `[script]` that names a known shell, and an executor
+named after one, such as `(bash)`; `python`, `node`, and `agent` bodies are not
+checked. Declare the parameter `:raw` when you want its value split into words.
+Quoting does not stop a value that starts with `-` from being read as an
+option, so pass `--` before it where the command supports that.
 
 ### Dependencies and post-hooks
 
@@ -129,7 +163,7 @@ release: (build "release")
     @echo "releasing"
 
 build target="debug":
-    go build -tags {{target}} ./...
+    go build -tags {{quote(target)}} ./...
 ```
 
 A variadic parameter passed on by its bare name keeps its elements. In

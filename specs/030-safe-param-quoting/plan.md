@@ -128,7 +128,7 @@ specs/030-safe-param-quoting/
 ├── quickstart.md                    # Phase 1: automated gates and manual scenarios A-I
 ├── contracts/
 │   ├── runefile-surface.md          # quote_each, raw, forwarding, identity
-│   ├── diagnostic-rune2017.md       # rule, message, 27-row fixture
+│   ├── diagnostic-rune2017.md       # rule, message, 28-row fixture
 │   └── mcp.md                       # schema delta, ListEngine, element mapping
 ├── checklists/requirements.md
 └── tasks.md                         # Phase 2 (/speckit-tasks, not created here)

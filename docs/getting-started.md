@@ -27,13 +27,14 @@ Create a file named `Runefile` in your project root:
 ```rune
 # Greet someone by name (defaults to "world").
 greet name="world":
-    @echo "Hello, {{name}}!"
+    @echo "Hello, "{{quote(name)}}"!"
 ```
 
 A few things to notice:
 
 - The comment directly above a task becomes its documentation (shown by `rune --list`).
-- `name="world"` is a parameter with a default value; `{{name}}` interpolates it.
+- `name="world"` is a parameter with a default value; `{{quote(name)}}` passes it to the
+  command as one quoted argument.
 - The leading `@` tells Rune not to echo the command line before running it.
 
 Bodies use **significant indentation** (like Python): indent the command lines under the task.
@@ -61,7 +62,7 @@ Tasks can depend on other tasks, which run first (each at most once per invocati
 
 ```rune
 greet name="world":
-    @echo "Hello, {{name}}!"
+    @echo "Hello, "{{quote(name)}}"!"
 
 # `check` depends on `greet`, so `greet` runs first.
 check: greet

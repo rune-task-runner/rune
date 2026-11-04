@@ -1,0 +1,18 @@
+File
+  Task test
+    doc: "The raw kind (spec 030): a value split into shell words on purpose."
+    Param flags required :raw
+    Body
+      "go test {{flags}} ./..."
+  Task bench
+    Param flags defaulted :raw = "-run=^$ -bench=."
+    Body
+      "go test {{flags}} ./..."
+  Task run
+    Param args variadic* :raw
+    Body
+      "./tool {{args}}"
+  Task exec
+    Param args variadic+ :raw
+    Body
+      "{{args}}"

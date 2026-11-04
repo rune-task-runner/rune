@@ -234,7 +234,9 @@ assumed to pass its argument's text through. That over-warns rare forms such as
 2. Otherwise, executor `""` or `sh`: when the composed file has a `shell` setting
    with at least one element, a shell body when any string-literal element names a
    known shell; with no `shell` setting, it is the built-in shell, so a shell body.
-3. `python`, `node`, `agent`, and custom executors: not shell bodies.
+3. A custom executor: a shell body when its name is a known shell. `runtime.Select`
+   runs it as the interpreter command, so `deploy (bash):` hands the body to bash.
+4. `python`, `node`, and `agent`: not shell bodies.
 
 `runtime.isKnownShell` becomes exported as `runtime.IsKnownShell` so both packages
 use one list. `internal/analyzer` importing `internal/runtime` adds no cycle:

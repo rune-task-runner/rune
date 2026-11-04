@@ -30,6 +30,9 @@ All three must hold:
 
 ## Fixture (golden test)
 
+Rows 11 and 12 keep a space before the closing `}}`: an interpolation ends at
+the first `}}`, so `{ "" }}}` would cut the expression short.
+
 `deploy env`, `names` (`*names`), `version`, `n:number`, `ok:boolean`,
 `mode:enum("a","b")`, `flags:raw`, all in a default-shell task unless noted.
 
@@ -45,15 +48,15 @@ All three must hold:
 | 8 | `echo {{"--env=" + quote(env)}}` | none |
 | 9 | `echo {{"--env=" + env}}` | warn `env` |
 | 10 | `echo {{trim(env)}}` | warn `env` |
-| 11 | `echo {{if env == "prod" { "--strict" } else { "" }}}` | none |
-| 12 | `echo {{if mode == "a" { env } else { "" }}}` | warn `env` |
+| 11 | `echo {{ if env == "prod" { "--strict" } else { "" } }}` | none |
+| 12 | `echo {{ if mode == "a" { env } else { "" } }}` | warn `env` |
 | 13 | `echo {{env + env}}` | warn `env` once |
 | 14 | `echo {{env}} {{env}}` | warn `env` twice (two interpolations) |
 | 15 | `echo {{n}} {{ok}} {{mode}}` | none |
 | 16 | `go test {{flags}}` | none |
 | 17 | `echo {{version}}` where `version` is a module variable, not a parameter | none |
 | 18 | `(python)` body: `print("{{env}}")` | none |
-| 19 | `(node)` body, agent body, custom-executor body with `{{env}}` | none |
+| 19 | `(node)` body, agent body, `(ruby)` custom-executor body with `{{env}}` | none |
 | 20 | `[script("bash -eu")]` body: `echo {{env}}` | warn `env` |
 | 21 | `[script("python3")]` body: `print("{{env}}")` | none |
 | 22 | file with `set shell := ["bash", "-eu"]`, default body `echo {{env}}` | warn `env` |
@@ -62,6 +65,7 @@ All three must hold:
 | 25 | dependency argument `(deploy env)` | none (not a body) |
 | 26 | `[confirm("Deploy {{env}}?")]` | none (not a body) |
 | 27 | `echo {{path_exists(env)}}` | warn `env` (functions are not modeled) |
+| 28 | `(bash)` custom-executor body: `echo {{env}}` | warn `env` |
 
 `rune analyze` on the fixture exits 0. `rune analyze --json` lists each warning
 with `"severity": "warning"` and `"code": "RUNE2017"`.

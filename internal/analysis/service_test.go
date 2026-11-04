@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/rune-task-runner/rune/internal/analyzer"
@@ -87,4 +88,37 @@ func firstCode(diags diag.List, code string) *diag.Diagnostic {
 		}
 	}
 	return nil
+}
+
+// Spec 030 FR-014: RUNE2017 reaches `rune analyze` and the editor as a
+// warning, at the path of the file that declares the task, and never the run
+// path.
+func TestServiceReportsUnquotedParam(t *testing.T) {
+	dir := t.TempDir()
+	common := writeTemp(t, dir, "common.rune", "# Deploy.\ndeploy env:\n    ./deploy.sh {{env}}\n")
+	src := "import \"common.rune\"\n\n# Greet.\ngreet name:\n    echo {{name}}\n"
+	path := writeTemp(t, dir, "Runefile", src)
+
+	snap, err := NewService(DiskSourceStore{}).Analyze(context.Background(), AnalyzeRequest{URI: path, Version: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]bool{}
+	for _, d := range snap.Diagnostics {
+		if d.Code != diag.CodeUnquotedParam {
+			continue
+		}
+		if d.Severity != diag.Warning {
+			t.Errorf("severity = %v, want warning", d.Severity)
+		}
+		files[d.Span.File] = true
+	}
+	if want := map[string]bool{path: true, common: true}; !reflect.DeepEqual(files, want) {
+		t.Errorf("RUNE2017 reported in %v, want %v", files, want)
+	}
+
+	f, _ := parser.Parse(path, src)
+	if d := firstCode(analyzer.Analyze(f), diag.CodeUnquotedParam); d != nil {
+		t.Errorf("the run path reported RUNE2017: %+v", d)
+	}
 }

@@ -8,7 +8,7 @@ fetch:
 
 # Build the binary. `fetch` runs first (dependency).
 build target="release": fetch
-    @echo "go build -tags {{target}} -o dist/app ./cmd/app"
+    @echo "go build -tags "{{quote(target)}}" -o dist/app ./cmd/app"
 
 # Run the test suite. `build` runs first.
 test: build
@@ -16,4 +16,4 @@ test: build
 
 # Run the service locally on a chosen port.
 run port="8080": build
-    @echo "starting service on :{{port}}"
+    @echo "starting service on :"{{quote(port)}}

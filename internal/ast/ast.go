@@ -84,11 +84,12 @@ const (
 	KindBoolean                       // exactly "true" | "false"
 	KindPath                          // non-empty string; role marker only
 	KindEnum                          // closed set of static string literals
+	KindRaw                           // any value, split into shell words on purpose (spec 030)
 )
 
 // SupportedConstraintKinds lists the kind names accepted after `:` in a
 // parameter annotation, in the order diagnostics cite them.
-var SupportedConstraintKinds = []string{"string", "number", "boolean", "path", "enum"}
+var SupportedConstraintKinds = []string{"string", "number", "boolean", "path", "raw", "enum"}
 
 // ConstraintKindFromName resolves a kind name (a contextual keyword, matched
 // case-sensitively) to its ConstraintKind.
@@ -102,6 +103,8 @@ func ConstraintKindFromName(name string) (ConstraintKind, bool) {
 		return KindBoolean, true
 	case "path":
 		return KindPath, true
+	case "raw":
+		return KindRaw, true
 	case "enum":
 		return KindEnum, true
 	default:
