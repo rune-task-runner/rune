@@ -153,14 +153,16 @@ Releases are automated from these titles — see [docs/releasing.md](docs/releas
 Every push and PR runs the gate set in [`.github/workflows/ci.yml`](.github/workflows/ci.yml);
 all must pass to merge:
 
-1. **lint** — `gofmt`, `go vet`, and `golangci-lint run` are clean.
-2. **test** — the full suite with the race detector (`-race`) on Linux, macOS, and Windows.
-3. **build** — the static, CGO-free binary compiles on all three OSes.
-4. **golden** — committed golden files match a fresh regeneration.
-5. **fuzz-smoke** — the lexer and parser fuzz targets build and run briefly.
-6. **docs-verify** — the documentation harness (`test/docs`) passes: examples validate and run,
+1. **lint**: `gofmt`, `go vet`, and `golangci-lint run` are clean.
+2. **test**: the full suite with the race detector (`-race`) on Linux and Windows. macOS is
+   not tested in CI.
+3. **build**: the static, CGO-free binary compiles on Linux and Windows; **release-dryrun**
+   cross-compiles the macOS binaries.
+4. **golden**: committed golden files match a fresh regeneration.
+5. **fuzz-smoke**: the lexer and parser fuzz targets build and run briefly.
+6. **docs-verify**: the documentation harness (`test/docs`) passes: examples validate and run,
    code blocks validate, and internal links resolve.
-7. **release-dryrun** — `goreleaser release --snapshot` succeeds.
+7. **release-dryrun**: `goreleaser release --snapshot` succeeds.
 
 ### Golden files
 
