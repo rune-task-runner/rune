@@ -22,7 +22,7 @@ repository). The `list-tasks` task is a safe, read-only tool an agent may call.
 
 - `summarize (agent)` runs its body as an instruction via an installed agent CLI.
 - Exposed over MCP, tasks are **read-only by default**; `reset-db` is gated with `[confirm]`,
-  so an agent can't run it unattended (use `--yes` to auto-approve deliberately).
+  so an agent can't run it unless the server is started with `--allow-destructive reset-db`.
 - **Secrets come from the environment only** — never written in the Runefile, and never shown
   in any task description exposed to an agent.
 

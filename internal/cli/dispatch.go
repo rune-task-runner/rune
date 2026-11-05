@@ -43,6 +43,11 @@ type Options struct {
 	// minimum_version. It is an operator-only opt (a `rune serve` flag), disabled
 	// by default, and never settable from a Runefile.
 	MCPAllowIgnoreVersion bool
+	// MCPAllowDestructive holds the raw --allow-destructive values: the
+	// [confirm] tasks the operator lets agents run. It is an operator-only
+	// `rune serve` flag, never settable from a Runefile; ServeMCP splits and
+	// validates it (spec 031).
+	MCPAllowDestructive []string
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own

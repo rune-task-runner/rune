@@ -25,6 +25,11 @@ func (e *engine) confirmFailure(task *ast.Task, prompt string) *TaskFailure {
 	if e.opts.Yes {
 		return nil
 	}
+	// Keyed by this task's own name, so a grant never approves another task
+	// the run reaches (spec 031 FR-005).
+	if e.grants[task.Name] {
+		return nil
+	}
 	switch e.confirm(task, prompt) {
 	case confirmApproved:
 		return nil

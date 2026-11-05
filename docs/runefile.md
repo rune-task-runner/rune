@@ -367,7 +367,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 answer. When stdin is a pipe or a file (a script, a CI job, or an AI agent with a shell),
 the task is declined without reading stdin and the run fails with a message naming
 `--yes`, the deliberate way to approve `[confirm]` tasks unattended. Over MCP,
-`[confirm]` tasks are gated separately; see
+`[confirm]` tasks are refused unless the operator names them with `--allow-destructive`; see
 [Using Rune with AI Agents](mcp.md#security-model-secure-by-default).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it

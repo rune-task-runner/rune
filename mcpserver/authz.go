@@ -1,20 +1,32 @@
 package mcpserver
 
-import "slices"
+import (
+	"fmt"
+	"slices"
+)
 
-// authorized reports whether a task may be CALLED in this session (Q3/FR-028):
-//   - private tasks are never registered as tools (filtered upstream);
-//   - non-destructive tasks are callable;
-//   - destructive ([confirm]) tasks require explicit approval (AllowDestructive);
-//   - an operator AllowList, when set, further narrows callable tasks.
-func (s *Server) authorized(taskName string) bool {
+// refusal returns why a task may not be CALLED in this session, or "" when it
+// may (Q3/FR-028, spec 031). Private tasks are never registered as tools, so
+// they never reach here. Two refusals exist, checked in this order:
+//   - an operator AllowList, when set, narrows callable tasks;
+//   - a destructive ([confirm]) task must be named in AllowDestructive. No
+//     value grants every destructive task.
+//
+// Both texts carry the task name, not the tool name, so the destructive one
+// can be pasted into the flag it names. It says to add the name, because
+// restarting with only the refused name would drop the existing grants.
+func (s *Server) refusal(taskName string) string {
 	if len(s.opts.AllowList) > 0 && !slices.Contains(s.opts.AllowList, taskName) {
-		return false
+		return fmt.Sprintf("task %q is not authorized for this session", taskName)
 	}
-	if s.isDestructive(taskName) && !s.opts.AllowDestructive {
-		return false
+	if s.isDestructive(taskName) && !s.granted[taskName] {
+		if s.opts.AllowDestructiveFlag == "" {
+			return fmt.Sprintf("task %q is destructive and is not allowed in this session", taskName)
+		}
+		return fmt.Sprintf("task %q is destructive; to permit it, add %s to %s and restart the server",
+			taskName, taskName, s.opts.AllowDestructiveFlag)
 	}
-	return true
+	return ""
 }
 
 // isDestructive looks up whether the named task is marked destructive.

@@ -31,7 +31,14 @@ func mcpCall(t *testing.T, dir, task string) (toolResult string, stderr string) 
 // mcpCallArgs is mcpCall with a JSON object of tool arguments.
 func mcpCallArgs(t *testing.T, dir, task, arguments string) (toolResult string, stderr string) {
 	t.Helper()
-	cmd := exec.Command(runeBin, "mcp")
+	return mcpServerCall(t, dir, []string{"mcp"}, task, arguments)
+}
+
+// mcpServerCall is mcpCallArgs against a server started with serverArgs, so a
+// test can pass server flags such as --allow-destructive.
+func mcpServerCall(t *testing.T, dir string, serverArgs []string, task, arguments string) (toolResult string, stderr string) {
+	t.Helper()
+	cmd := exec.Command(runeBin, serverArgs...)
 	cmd.Dir = dir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

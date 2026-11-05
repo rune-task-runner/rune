@@ -41,7 +41,11 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 			contextText = adapter.gatherContext(e.ctx, e.opts.Stderr)
 
 			token := randomToken()
-			srv := mcpserver.New(adapter, mcpserver.Options{AllowDestructive: false, Version: e.opts.Version})
+			// No AllowDestructive: an agent task's own endpoint never permits
+			// destructive tasks, whatever flags started this run (spec 031 FR-015).
+			// No AllowDestructiveFlag either, so a refusal here does not suggest
+			// a restart that could never permit the task.
+			srv := mcpserver.New(adapter, mcpserver.Options{Version: e.opts.Version})
 			if addr, stop, err := srv.StartHTTP(mcpserver.HTTPConfig{Addr: "127.0.0.1:0", Token: token}); err == nil {
 				defer stop()
 				opts.MCPURL = "http://" + addr

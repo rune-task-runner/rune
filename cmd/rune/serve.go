@@ -29,9 +29,13 @@ Runefile's non-private tasks as tools. Tasks restricted to another OS via
 
 By default the server speaks MCP over stdio. Use --http to serve over Streamable
 HTTP, which additionally requires --token-file for bearer-token authentication.
-The 'mcp' alias is shorthand for stdio serving.`,
+The 'mcp' alias is shorthand for stdio serving.
+
+Tasks marked [confirm] are refused unless you name each one with
+--allow-destructive; no option allows all of them.`,
 		Example: `  rune mcp                                            # stdio (for local agents/IDEs)
   rune serve                                          # same as 'rune mcp'
+  rune mcp --allow-destructive clean                  # let agents run the [confirm] task 'clean'
   rune serve --http --addr :7777 --token-file ./tok   # HTTP transport`,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateServeFlags(useHTTP, addr, tokenFile); err != nil {
@@ -48,6 +52,7 @@ The 'mcp' alias is shorthand for stdio serving.`,
 	f.StringVar(&tokenFile, "token-file", "", "bearer-token file for HTTP auth (with --http)")
 	f.BoolVar(&mcpFlag, "mcp", false, "accepted for clarity; MCP is the only protocol")
 	f.BoolVar(&opts.MCPAllowIgnoreVersion, "ignore-version", false, "serve even if the Runefile's minimum_version is unmet (operator opt-in)")
+	f.StringArrayVar(&opts.MCPAllowDestructive, "allow-destructive", nil, "let agents run these [confirm] tasks (comma-separated, repeatable)")
 
 	return cmd
 }

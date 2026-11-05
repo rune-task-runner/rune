@@ -133,3 +133,104 @@ func TestConfirmYesSkipsStdin(t *testing.T) {
 		t.Errorf("--yes still prompted: %q", stderr.String())
 	}
 }
+
+// Spec 031: on the MCP server path, the operator's grant approves the named
+// task in place of a prompt. Nothing is printed and nothing waits for input.
+func TestConfirmGrantApprovesNamedTask(t *testing.T) {
+	eng, stdout, stderr := confirmEngine(t, confirmSrc, nil, false, false)
+	eng.grants = map[string]bool{"t": true}
+
+	if err := eng.Execute(eng.tasks["t"], eval.Args{}); err != nil {
+		t.Fatalf("Execute with a grant: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "body") {
+		t.Errorf("body did not run: stdout = %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("granted task wrote to stderr: %q", stderr.String())
+	}
+}
+
+// A grant skips the gate even where a prompt could be answered: a terminal
+// holding "n" would decline if it were asked, as in TestConfirmYesSkipsStdin.
+// (stdin itself still reaches the body, so a reader that fails on any read
+// cannot tell the gate from the body.)
+func TestConfirmGrantSkipsPrompt(t *testing.T) {
+	eng, stdout, stderr := confirmEngine(t, confirmSrc, strings.NewReader("n\n"), true, false)
+	eng.grants = map[string]bool{"t": true}
+
+	if err := eng.Execute(eng.tasks["t"], eval.Args{}); err != nil {
+		t.Fatalf("Execute with a grant: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "body") {
+		t.Errorf("body did not run: stdout = %q", stdout.String())
+	}
+	if strings.Contains(stderr.String(), "[y/N]") {
+		t.Errorf("granted task still prompted: %q", stderr.String())
+	}
+}
+
+// Spec 031 FR-005/FR-006 (data-model "Outcomes by path"): a grant approves
+// its own task wherever a run reaches it, and never any other task. Every
+// engine here has no stdin, as on the MCP path.
+func TestConfirmGrantIsPerTask(t *testing.T) {
+	const (
+		depSrc   = "[confirm]\nclean:\n    @echo ran:clean\n\nrelease: clean\n    @echo ran:release\n"
+		chainSrc = "[confirm]\nwipe:\n    @echo ran:wipe\n\n[confirm]\nclean: wipe\n    @echo ran:clean\n"
+		postSrc  = "[confirm]\nwipe:\n    @echo ran:wipe\n\nbuild: && wipe\n    @echo ran:build\n"
+		failSrc  = "[confirm]\nwipe:\n    @echo ran:wipe\n\nbuild: || wipe\n    @echo ran:build\n    @exit 1\n"
+		privSrc  = "[private]\n[confirm]\n_wipe:\n    @echo ran:_wipe\n\nship: _wipe\n    @echo ran:ship\n"
+	)
+	cases := []struct {
+		name     string
+		src      string
+		call     string
+		grants   []string
+		ran      []string
+		notRan   []string
+		wantCode int
+	}{
+		{"granted dependency runs", depSrc, "release", []string{"clean"}, []string{"clean", "release"}, nil, 0},
+		{"ungranted dependency stops the run", depSrc, "release", nil, nil, []string{"clean", "release"}, 1},
+		{"grant does not reach the granted task's own dependency", chainSrc, "clean", []string{"clean"}, nil, []string{"wipe", "clean"}, 1},
+		{"ungranted post-hook does not run", postSrc, "build", nil, []string{"build"}, []string{"wipe"}, 1},
+		{"granted post-hook runs", postSrc, "build", []string{"wipe"}, []string{"build", "wipe"}, nil, 0},
+		{"ungranted failure hook does not run", failSrc, "build", nil, []string{"build"}, []string{"wipe"}, 1},
+		{"granted failure hook runs", failSrc, "build", []string{"wipe"}, []string{"build", "wipe"}, nil, 1},
+		{"granted private dependency runs", privSrc, "ship", []string{"_wipe"}, []string{"_wipe", "ship"}, nil, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			eng, stdout, stderr := confirmEngine(t, c.src, nil, false, false)
+			eng.grants = map[string]bool{}
+			for _, g := range c.grants {
+				eng.grants[g] = true
+			}
+			err := scheduler.Run(eng, []scheduler.Invocation{{Task: eng.tasks[c.call]}})
+			if got := CodeFor(eng.classifyRunErr(err)); got != c.wantCode {
+				t.Errorf("exit code = %d, want %d (err %v)", got, c.wantCode, err)
+			}
+			for _, name := range c.ran {
+				if !strings.Contains(stdout.String(), "ran:"+name+"\n") {
+					t.Errorf("%s did not run: stdout = %q", name, stdout.String())
+				}
+			}
+			for _, name := range c.notRan {
+				if strings.Contains(stdout.String(), "ran:"+name+"\n") {
+					t.Errorf("%s ran: stdout = %q", name, stdout.String())
+				}
+			}
+			if c.src == failSrc && len(c.grants) == 0 {
+				var warnings []string
+				for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
+					if strings.Contains(line, "failure hook") {
+						warnings = append(warnings, line)
+					}
+				}
+				if len(warnings) != 1 || !strings.Contains(warnings[0], "wipe") {
+					t.Errorf("want one warning about the declined hook wipe, stderr = %q", stderr.String())
+				}
+			}
+		})
+	}
+}

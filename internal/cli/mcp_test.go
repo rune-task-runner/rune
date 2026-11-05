@@ -242,3 +242,91 @@ func TestAdapterDestructiveFlag(t *testing.T) {
 	}
 	_ = ast.AttrConfirm
 }
+
+// Spec 031 US1: a granted [confirm] task runs over MCP with its real output
+// and exit status, and no prompt text appears anywhere in the result.
+func TestAdapterGrantRunsDestructiveTask(t *testing.T) {
+	src := "[confirm(\"Delete?\")]\nclean:\n    @echo cleaned\n\n[confirm]\nfail3:\n    @exit 3\n"
+	ctx := context.Background()
+
+	ungranted := adapterFor(t, src)
+	res, err := ungranted.Call(ctx, "clean", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode == 0 || strings.Contains(res.Stdout, "cleaned") {
+		t.Fatalf("clean ran without a grant: %+v", res)
+	}
+
+	a := adapterFor(t, src)
+	a.grants = map[string]bool{"clean": true, "fail3": true}
+	res, err = a.Call(ctx, "clean", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 0 || !strings.Contains(res.Stdout, "cleaned") {
+		t.Errorf("granted clean: %+v", res)
+	}
+	res3, err := a.Call(ctx, "fail3", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res3.ExitCode != 3 {
+		t.Errorf("granted fail3 exit = %d, want 3 (%+v)", res3.ExitCode, res3)
+	}
+	for _, r := range []mcpserver.Result{res, res3} {
+		for _, s := range []string{r.Stdout, r.Stderr} {
+			if strings.Contains(s, "Delete?") || strings.Contains(s, "[y/N]") {
+				t.Errorf("prompt text in result: %+v", r)
+			}
+		}
+	}
+}
+
+// Spec 031 FR-015: the endpoint an agent task exposes to its own agent never
+// permits a destructive task, even if the engine running the agent task held
+// a grant. Neither the adapter nor its server gets one.
+func TestAgentAdapterGrantsNothing(t *testing.T) {
+	src := "[confirm]\nclean:\n    @echo cleaned\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	eng.grants = map[string]bool{"clean": true}
+
+	adapter := eng.newAgentAdapter()
+	if len(adapter.grants) != 0 {
+		t.Fatalf("agent adapter inherited grants %v", adapter.grants)
+	}
+	res, err := adapter.Call(context.Background(), "clean", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode == 0 || strings.Contains(res.Stdout, "cleaned") {
+		t.Errorf("agent adapter ran a destructive task: %+v", res)
+	}
+
+	srv := mcpserver.New(adapter, mcpserver.Options{Version: "test"})
+	ct, st := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	if _, err := srv.MCP().Connect(ctx, st, nil); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil).Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	call, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "clean"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No restart advice: no flag can grant anything on this endpoint.
+	want := `task "clean" is destructive and is not allowed in this session`
+	var text strings.Builder
+	for _, c := range call.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			text.WriteString(tc.Text)
+		}
+	}
+	if !call.IsError || text.String() != want {
+		t.Errorf("agent endpoint: isError=%v text=%q, want %q", call.IsError, text.String(), want)
+	}
+}
