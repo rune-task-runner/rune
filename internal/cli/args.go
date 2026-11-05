@@ -6,6 +6,7 @@ import (
 
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/eval"
+	"github.com/rune-task-runner/rune/internal/suggest"
 )
 
 // overridePattern matches a NAME=VALUE run-time variable override.
@@ -36,7 +37,7 @@ func splitArgs(args []string, tasks map[string]*ast.Task, commands []string) (ma
 		}
 		task, ok := tasks[tok]
 		if !ok {
-			if s, found := nearest(tok, candidateNames(tasks, commands)); found {
+			if s, found := suggest.Nearest(tok, candidateNames(tasks, commands)); found {
 				return nil, nil, usagef("unknown task: %s (did you mean %q?)", tok, s)
 			}
 			return nil, nil, usagef("unknown task: %s", tok)
