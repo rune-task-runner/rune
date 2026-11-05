@@ -97,7 +97,7 @@ func connect(t *testing.T, srv *Server) *mcp.ClientSession {
 
 func TestListToolsMapping(t *testing.T) {
 	eng := sampleEngine()
-	srv := New(eng, Options{AllowDestructive: true})
+	srv := New(eng, Options{})
 	cs := connect(t, srv)
 
 	res, err := cs.ListTools(context.Background(), nil)
@@ -121,7 +121,7 @@ func TestListToolsMapping(t *testing.T) {
 
 func TestCallToolThroughEngine(t *testing.T) {
 	eng := sampleEngine()
-	srv := New(eng, Options{AllowDestructive: true})
+	srv := New(eng, Options{})
 	cs := connect(t, srv)
 
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "logs"})
@@ -292,5 +292,21 @@ func TestInputSchemaRaw(t *testing.T) {
 		if !reflect.DeepEqual(props[name], w) {
 			t.Errorf("%s = %v, want %v", name, props[name], w)
 		}
+	}
+}
+
+// Spec 031 FR-014: a grant changes what may be called, never what is listed.
+func TestListToolsSameWithGrant(t *testing.T) {
+	list := func(opts Options) []*mcp.Tool {
+		res, err := connect(t, New(sampleEngine(), opts)).ListTools(context.Background(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res.Tools
+	}
+	without := list(Options{})
+	with := list(Options{AllowDestructive: []string{"clean"}})
+	if !reflect.DeepEqual(without, with) {
+		t.Errorf("tools/list changed with a grant:\nwithout: %+v\nwith:    %+v", without, with)
 	}
 }

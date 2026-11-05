@@ -17,6 +17,16 @@ rune mcp
 
 Most local agent tooling launches the server this way and talks to it over stdin/stdout.
 
+**Letting agents run destructive tasks:**
+
+```sh
+rune mcp --allow-destructive clean
+```
+
+This lets agents run the `[confirm]` task `clean`. Name each task you allow, separated by
+commas (`--allow-destructive clean,reset`) or with the flag repeated. Every other
+`[confirm]` task stays refused; see [Security model](#security-model-secure-by-default).
+
 **Streamable HTTP (opt-in, for networked clients):**
 
 ```sh
@@ -164,10 +174,15 @@ OS-skipped degrades to a one-line warning in the response's stderr portion. An
 
 Exposing tasks to an agent grants execution capability, so Rune is conservative by default:
 
-- **Read-only by default.** Agent access defaults to non-destructive tasks. Access to
-  destructive tasks is an explicit, per-task opt-in.
-- **Destructive tasks are gated.** A task marked `[confirm("…")]` is annotated with the
-  MCP `DestructiveHint`, so clients can warn or require approval before invoking it.
+- **Destructive tasks are refused by default.** A task marked `[confirm("…")]` is still
+  listed, annotated with the MCP `DestructiveHint`, but a call to it is refused and nothing
+  runs. The refusal names the flag that permits it.
+- **The operator allows destructive tasks one by one.** Start the server with
+  `--allow-destructive clean,reset` (or the flag repeated) to let agents run those tasks.
+  A granted task also runs when another task reaches it as a dependency or hook. A grant
+  never covers any other task, including a destructive dependency of the granted task.
+- **There is no blanket switch.** No option allows all destructive tasks, and
+  `rune serve` and `rune mcp` do not accept `--yes`.
 - **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint`.
 - **Secrets come from the environment only.** API keys and secrets are read from the
   environment (or the agent CLI's own session) — **never** from the Runefile, and they are
@@ -185,7 +200,7 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
 status:
     @git status --short
 
-# Destructive: gated with confirm → DestructiveHint for agents.
+# Destructive: refused over MCP unless allowed with --allow-destructive clean.
 [confirm("Delete all build output?")]
 clean:
     rm -rf dist
@@ -203,8 +218,8 @@ summarize (agent):
     Summarize the latest git changes in three bullet points.
 ```
 
-Agent tasks default to **read-only** tool access; granting them destructive capability is
-an explicit opt-in.
+The endpoint an `agent` task opens for its own agent never lets that agent run a
+destructive task. Neither `--allow-destructive` nor `--yes` changes that.
 
 ## See also
 

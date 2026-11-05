@@ -49,8 +49,8 @@ repository). `rune list-tasks` is a safe, read-only tool an agent may call.
 
   > [!IMPORTANT]
   > Agent access is **read-only by default**. Destructive tasks must opt in with `[confirm(...)]`
-  > (which maps to the MCP *destructive* hint), so an agent can't run `reset-db` unattended —
-  > use `--yes` to auto-approve deliberately. **Secrets come from the environment only**, never
+  > (which maps to the MCP *destructive* hint), so an agent can't run `reset-db` unless the
+  > server is started with `--allow-destructive reset-db`. **Secrets come from the environment only**, never
   > the Runefile, and are never shown in any task description exposed to an agent.
 
 - **`[doc(...)]`** gives each tool a clear description an agent can reason about, without

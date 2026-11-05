@@ -206,6 +206,11 @@ type engine struct {
 	// confirmMu holds one [confirm] prompt and its answer at a time.
 	confirmMu sync.Mutex
 
+	// grants holds the operator's --allow-destructive task names, each of
+	// which stands in for its own [confirm] answer (spec 031). Set only on the
+	// MCP server path; nil on the CLI path and on an agent task's endpoint.
+	grants map[string]bool
+
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
 	// fix-suggestion section (spec 022). Nil on the CLI path: hook output

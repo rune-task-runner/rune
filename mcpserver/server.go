@@ -122,8 +122,18 @@ type ListEngine interface {
 
 // Options configures authorization for the server.
 type Options struct {
-	// AllowDestructive permits calling tasks marked destructive ([confirm]).
-	AllowDestructive bool
+	// AllowDestructive names the destructive ([confirm]) tasks that may be
+	// called. Any other destructive task is refused before the engine runs.
+	// There is no value that permits all of them. The Engine must approve the
+	// confirmation of exactly these tasks, wherever a run reaches them; the
+	// rune CLI adapter does.
+	AllowDestructive []string
+	// AllowDestructiveFlag is the command-line flag that sets AllowDestructive,
+	// such as "--allow-destructive". When set, a destructive refusal tells the
+	// caller to add the task to it. Leave it empty where no grant is possible,
+	// such as the endpoint of a rune agent task: the refusal then offers no
+	// remedy.
+	AllowDestructiveFlag string
 	// AllowList, when non-empty, narrows callable tasks to these names.
 	AllowList []string
 	// Version reported to clients.
@@ -137,9 +147,10 @@ type Options struct {
 
 // Server wraps an mcp.Server built from a Runefile's tasks.
 type Server struct {
-	engine Engine
-	opts   Options
-	mcp    *mcp.Server
+	engine  Engine
+	opts    Options
+	granted map[string]bool // opts.AllowDestructive as a set
+	mcp     *mcp.Server
 }
 
 // New builds an MCP server exposing engine's non-private tasks as tools.
@@ -147,7 +158,10 @@ func New(engine Engine, opts Options) *Server {
 	if opts.Version == "" {
 		opts.Version = "dev"
 	}
-	srv := &Server{engine: engine, opts: opts}
+	srv := &Server{engine: engine, opts: opts, granted: make(map[string]bool, len(opts.AllowDestructive))}
+	for _, name := range opts.AllowDestructive {
+		srv.granted[name] = true
+	}
 	srv.mcp = mcp.NewServer(
 		&mcp.Implementation{Name: "rune", Version: opts.Version},
 		&mcp.ServerOptions{Instructions: opts.Instructions},

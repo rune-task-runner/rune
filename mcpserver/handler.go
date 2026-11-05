@@ -17,8 +17,8 @@ import (
 func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 	taskName := t.Name
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if !s.authorized(taskName) {
-			return errorResult(fmt.Sprintf("task %q requires explicit approval and is not authorized for this session", taskName)), nil
+		if msg := s.refusal(taskName); msg != "" {
+			return errorResult(msg), nil
 		}
 		args, lists, err := decodeArgs(req.Params.Arguments, t.Params)
 		if err != nil {

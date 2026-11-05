@@ -59,7 +59,7 @@ func TestHandlerRejectsConstraintViolations(t *testing.T) {
 		},
 		result: Result{Stdout: "ran", ExitCode: 0},
 	}
-	srv := New(eng, Options{AllowDestructive: true})
+	srv := New(eng, Options{})
 	cs := connect(t, srv)
 	ctx := context.Background()
 
@@ -221,5 +221,44 @@ func TestHandlerPrefersListEngine(t *testing.T) {
 	}
 	if plain.lastCall != "c" || plain.lastArgs["names"] != "a b c" {
 		t.Errorf("plain Engine call = %q args %v", plain.lastCall, plain.lastArgs)
+	}
+}
+
+// Spec 031: a grant lets exactly the named destructive tasks reach the engine.
+// Any other destructive task is refused with the text naming the flag, and the
+// task name (not the tool name) is what that text carries.
+func TestHandlerGrantIsPerTask(t *testing.T) {
+	eng := &fakeEngine{
+		tasks: []TaskInfo{
+			{Name: "clean", Destructive: true},
+			{Name: "reset", Destructive: true},
+			{Name: "tools::clean", Destructive: true},
+		},
+		result: Result{Stdout: "ran", ExitCode: 0},
+	}
+	cs := connect(t, New(eng, Options{AllowDestructive: []string{"clean"}, AllowDestructiveFlag: "--allow-destructive"}))
+	ctx := context.Background()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "clean"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError || eng.lastCall != "clean" || !strings.Contains(contentText(res), "ran") {
+		t.Fatalf("granted clean did not run: isError=%v lastCall=%q text=%q", res.IsError, eng.lastCall, contentText(res))
+	}
+
+	eng.lastCall = ""
+	for tool, task := range map[string]string{"reset": "reset", "tools__clean": "tools::clean"} {
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: tool})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "task \"" + task + "\" is destructive; to permit it, add " + task + " to --allow-destructive and restart the server"
+		if !res.IsError || contentText(res) != want {
+			t.Errorf("call %s: isError=%v text=%q, want %q", tool, res.IsError, contentText(res), want)
+		}
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q, but only clean is granted", eng.lastCall)
 	}
 }

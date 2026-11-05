@@ -30,6 +30,11 @@ type mcpAdapter struct {
 	maskSet   *mask.Set // derived once; env/tasks/settings are fixed per adapter
 	goos      string    // host OS for availability checks; runtime.GOOS outside tests
 
+	// grants is the operator's --allow-destructive set, copied into every
+	// engine a call builds. Only the `rune serve` adapter has one; the agent
+	// task endpoint's adapter never does (spec 031 FR-015).
+	grants map[string]bool
+
 	// contextTimeout bounds the [context] hook run; zero means the fixed
 	// defaultContextTimeout. A field (not a global) so tests shrink it per
 	// adapter without racing each other.
@@ -148,6 +153,7 @@ func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string
 		ctx:         ctx,
 		goos:        a.goos,
 		failHookOut: &syncWriter{w: fixSink},
+		grants:      a.grants,
 	}
 
 	params, err := bindNamedParams(t, args, lists, scope)
