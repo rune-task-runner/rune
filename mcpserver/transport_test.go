@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
@@ -113,21 +114,7 @@ func TestHTTPGrantedDestructiveCall(t *testing.T) {
 	t.Cleanup(stop)
 
 	ctx := context.Background()
-	session := func() *mcp.ClientSession {
-		transport := &mcp.StreamableClientTransport{
-			Endpoint:             "http://" + addr,
-			HTTPClient:           &http.Client{Transport: bearer{"secret"}},
-			DisableStandaloneSSE: true,
-		}
-		client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
-		cs, err := client.Connect(ctx, transport, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = cs.Close() })
-		return cs
-	}
-	first, second := session(), session()
+	first, second := httpSession(t, addr, "secret"), httpSession(t, addr, "secret")
 
 	for _, cs := range []*mcp.ClientSession{first, second} {
 		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "clean"})
@@ -148,5 +135,84 @@ func TestHTTPGrantedDestructiveCall(t *testing.T) {
 	}
 	if got := eng.called(); !slices.Equal(got, []string{"clean", "clean"}) {
 		t.Errorf("engine calls = %q, want clean from both sessions and no reset", got)
+	}
+}
+
+// httpSession connects a client to an HTTP server with the bearer token. It
+// registers the session's close as a cleanup, so register the server's stop
+// first: cleanups run last-in first-out, and no session goroutine is left.
+func httpSession(t *testing.T, addr, token string) *mcp.ClientSession {
+	t.Helper()
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:             "http://" + addr,
+		HTTPClient:           &http.Client{Transport: bearer{token}},
+		DisableStandaloneSSE: true,
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
+	cs, err := client.Connect(context.Background(), transport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+// Spec 032 FR-010: the refusal holds over Streamable HTTP as on stdio.
+func TestHTTPUnknownArgumentRefused(t *testing.T) {
+	eng := &syncEngine{tasks: []TaskInfo{{Name: "build", Params: []ParamInfo{{Name: "target"}}}}}
+	addr, stop, err := New(eng, Options{}).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	cs := httpSession(t, addr, "secret")
+
+	res := callTool(t, cs, "build", map[string]any{"targte": "release"})
+	const want = `unknown argument "targte" for task "build" (did you mean "target"?)`
+	if !res.IsError || contentText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+	}
+	if got := eng.called(); len(got) != 0 {
+		t.Errorf("engine calls = %q, want none", got)
+	}
+
+	if res := callTool(t, cs, "build", map[string]any{"target": "release"}); res.IsError {
+		t.Errorf("declared call refused: %q", contentText(res))
+	}
+	if got := eng.called(); !slices.Equal(got, []string{"build"}) {
+		t.Errorf("engine calls = %q, want build", got)
+	}
+}
+
+// Spec 032 FR-010: HTTP lists the same schemas as a directly connected client.
+// Matching alone would pass with the keyword missing from both, so it is
+// checked too.
+func TestHTTPToolsListMatchesStdio(t *testing.T) {
+	tasks := sampleEngine().tasks
+	addr, stop, err := New(&syncEngine{tasks: tasks}, Options{}).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	ctx := context.Background()
+
+	overHTTP, err := httpSession(t, addr, "secret").ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct, err := connect(t, New(&syncEngine{tasks: tasks}, Options{})).ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(overHTTP.Tools, direct.Tools) {
+		t.Errorf("tools differ:\nHTTP:   %+v\ndirect: %+v", overHTTP.Tools, direct.Tools)
+	}
+	if len(overHTTP.Tools) != len(tasks) {
+		t.Fatalf("listed %d tools, want %d", len(overHTTP.Tools), len(tasks))
+	}
+	for _, tl := range overHTTP.Tools {
+		if schema, ok := tl.InputSchema.(map[string]any); !ok || schema["additionalProperties"] != false {
+			t.Errorf("%s: InputSchema = %v, want additionalProperties false", tl.Name, tl.InputSchema)
+		}
 	}
 }

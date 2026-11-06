@@ -1,9 +1,10 @@
-package cli
+// Package suggest finds the closest name for did-you-mean hints.
+package suggest
 
-// nearest returns the candidate closest to token by Levenshtein distance and
+// Nearest returns the candidate closest to token by Levenshtein distance and
 // whether a close-enough match (distance <= 2) exists. Ties resolve to the
 // first candidate seen at the minimum distance.
-func nearest(token string, candidates []string) (string, bool) {
+func Nearest(token string, candidates []string) (string, bool) {
 	best, bestDist := "", -1
 	for _, c := range candidates {
 		d := levenshtein(token, c)

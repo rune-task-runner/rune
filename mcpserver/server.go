@@ -43,6 +43,8 @@ type ParamInfo struct {
 }
 
 // TaskInfo is the agent-facing view of a task. Private tasks are never included.
+// Params lists the only argument names a call may use: a call naming any other
+// is refused before the engine runs (spec 032).
 type TaskInfo struct {
 	Name        string // display name (namespaced mod::task becomes mod__task as a tool)
 	Doc         string
@@ -218,7 +220,8 @@ func toolFor(t TaskInfo) *mcp.Tool {
 // required→required, defaulted→optional, variadic→array. Declared constraint
 // kinds map per specs/023-mcp-typed-schemas/contracts/mcp-schema.md: enum
 // value lists are enumerated, numbers/booleans typed, paths format-tagged —
-// so a conforming client can construct only valid calls (SC-001).
+// so a conforming client can construct only valid calls (SC-001). Every schema
+// disallows other names, so a client can catch a misspelled one (spec 032).
 func inputSchema(params []ParamInfo) map[string]any {
 	properties := map[string]any{}
 	var required []string
@@ -242,8 +245,9 @@ func inputSchema(params []ParamInfo) map[string]any {
 		}
 	}
 	schema := map[string]any{
-		"type":       "object",
-		"properties": properties,
+		"type":                 "object",
+		"properties":           properties,
+		"additionalProperties": false,
 	}
 	if len(required) > 0 {
 		schema["required"] = required

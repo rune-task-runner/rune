@@ -49,7 +49,8 @@ never enabled by default.
   command; calling such a task by a remembered name is rejected at the protocol layer as
   an unknown tool.
 - A task's **parameters** define the tool's input schema. Defaults and variadic
-  parameters carry over.
+  parameters carry over, and the schema allows no other names
+  (`additionalProperties: false`).
 - The task's **doc comment** (the comment directly above it) becomes the tool description.
 
 ```rune
@@ -72,7 +73,10 @@ from a failure; `1` for a failure without a body exit code; and Rune's own `2` (
 (validation), or `130` (interrupted). A body can exit with one of those numbers too, so the
 marker alone does not tell a body's exit `2` from a usage error. See
 [Exit codes](cli.md#exit-codes). A call with invalid arguments is rejected before the task
-runs and returns an error without the marker.
+runs and returns an error without the marker. A call that names an argument the task does
+not declare is refused the same way:
+`unknown argument "targte" for task "build" (did you mean "target"?)`. A `null` or object
+value for a parameter is rejected too, since a task has no way to receive one.
 
 ## Typed tool schemas
 

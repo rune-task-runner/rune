@@ -54,6 +54,13 @@ func toolCall(t *testing.T, dir string, flags []string, task string) (text strin
 	t.Helper()
 	args := append([]string{"mcp", "--color=never"}, flags...)
 	line, stderr := mcpServerCall(t, dir, args, task, "{}")
+	text, isError = toolReply(t, line)
+	return text, isError, stderr
+}
+
+// toolReply decodes a tools/call reply into the result's text and isError flag.
+func toolReply(t *testing.T, line string) (text string, isError bool) {
+	t.Helper()
 	var frame struct {
 		Result struct {
 			Content []struct {
@@ -69,7 +76,7 @@ func toolCall(t *testing.T, dir string, flags []string, task string) (text strin
 	for _, c := range frame.Result.Content {
 		b.WriteString(c.Text)
 	}
-	return b.String(), frame.Result.IsError, stderr
+	return b.String(), frame.Result.IsError
 }
 
 func exists(t *testing.T, dir, name string) bool {

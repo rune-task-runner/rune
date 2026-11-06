@@ -310,3 +310,79 @@ func TestListToolsSameWithGrant(t *testing.T) {
 		t.Errorf("tools/list changed with a grant:\nwithout: %+v\nwith:    %+v", without, with)
 	}
 }
+
+// Spec 032 FR-009: every schema says that no other names are allowed, and
+// nothing else in it changes.
+func TestInputSchemaDisallowsOtherNames(t *testing.T) {
+	shapes := map[string][]ParamInfo{
+		"no parameters": nil,
+		"defaulted":     {{Name: "a"}},
+		"required":      {{Name: "a", Required: true}},
+		"enum":          {{Name: "a", Kind: "enum", Enum: []string{"x"}}},
+		"number":        {{Name: "a", Kind: "number"}},
+		"boolean":       {{Name: "a", Kind: "boolean"}},
+		"path":          {{Name: "a", Kind: "path"}},
+		"raw":           {{Name: "a", Kind: "raw"}},
+		"variadic":      {{Name: "a", Variadic: true}},
+	}
+	for name, params := range shapes {
+		if got := inputSchema(params)["additionalProperties"]; got != false {
+			t.Errorf("%s: additionalProperties = %v, want false", name, got)
+		}
+	}
+
+	str := map[string]any{"type": "string"}
+	full := []struct {
+		params []ParamInfo
+		want   map[string]any
+	}{
+		{
+			[]ParamInfo{{Name: "target"}},
+			map[string]any{"additionalProperties": false, "properties": map[string]any{"target": str}, "type": "object"},
+		},
+		{
+			nil,
+			map[string]any{"additionalProperties": false, "properties": map[string]any{}, "type": "object"},
+		},
+		{
+			[]ParamInfo{{Name: "env", Required: true}, {Name: "replicas"}},
+			map[string]any{
+				"additionalProperties": false,
+				"properties":           map[string]any{"env": str, "replicas": str},
+				"required":             []string{"env"},
+				"type":                 "object",
+			},
+		},
+	}
+	for _, f := range full {
+		if got := inputSchema(f.params); !reflect.DeepEqual(got, f.want) {
+			t.Errorf("inputSchema(%+v) = %v, want %v", f.params, got, f.want)
+		}
+	}
+}
+
+// Spec 032 US2: a client reading the list sees the keyword on every tool, a
+// destructive or namespaced one included.
+func TestListToolsDisallowOtherNames(t *testing.T) {
+	res, err := connect(t, New(sampleEngine(), Options{})).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 5 {
+		t.Fatalf("listed %d tools, want 5", len(res.Tools))
+	}
+	for _, tl := range res.Tools {
+		schema, ok := tl.InputSchema.(map[string]any)
+		if !ok {
+			t.Fatalf("%s: InputSchema is %T", tl.Name, tl.InputSchema)
+		}
+		if schema["additionalProperties"] != false {
+			t.Errorf("%s: additionalProperties = %v, want false", tl.Name, schema["additionalProperties"])
+		}
+		if tl.Name == "logs" {
+			if props, ok := schema["properties"].(map[string]any); !ok || len(props) != 0 {
+				t.Errorf("logs: properties = %v, want an empty object", schema["properties"])
+			}
+		}
+	}
+}
