@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -34,11 +35,7 @@ func (s *Server) ServeHTTP(ctx context.Context, cfg HTTPConfig) error {
 		cfg.Addr = "127.0.0.1:0"
 	}
 	if !isLoopback(cfg.Addr) {
-		// Non-localhost binding must be an explicit operator choice; we still
-		// enforce the token, but require the address to be spelled out.
-		if cfg.Addr == "" {
-			return fmt.Errorf("binding a non-localhost address requires an explicit --addr")
-		}
+		fmt.Fprintln(os.Stderr, "warning: serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext")
 	}
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.mcp }, nil)

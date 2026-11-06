@@ -2,7 +2,9 @@ package mcpserver
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"os"
 	"slices"
 	"sync"
 	"testing"
@@ -61,6 +63,41 @@ func TestIsLoopback(t *testing.T) {
 		if got := isLoopback(addr); got != want {
 			t.Errorf("isLoopback(%q) = %v, want %v", addr, got, want)
 		}
+	}
+}
+
+func TestServeHTTPWarnsForNonLoopback(t *testing.T) {
+	testWarning := func(addr string) string {
+		old := os.Stderr
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Stderr = w
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- New(sampleEngine(), Options{}).ServeHTTP(ctx, HTTPConfig{Addr: addr, Token: "secret"})
+		}()
+		cancel()
+		if err := <-done; err != nil && err != http.ErrServerClosed {
+			t.Fatal(err)
+		}
+		_ = w.Close()
+		got, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Stderr = old
+		_ = r.Close()
+		return string(got)
+	}
+	if got := testWarning("127.0.0.1:0"); got != "" {
+		t.Errorf("loopback warning = %q, want empty", got)
+	}
+	if got := testWarning("0.0.0.0:0"); got != "warning: serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext\n" {
+		t.Errorf("non-loopback warning = %q", got)
 	}
 }
 
