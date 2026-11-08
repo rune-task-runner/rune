@@ -16,6 +16,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/parser"
 	"github.com/rune-task-runner/rune/internal/style"
+	"github.com/rune-task-runner/rune/internal/suggest"
 	"github.com/rune-task-runner/rune/mcpserver"
 )
 
@@ -192,7 +193,7 @@ func checkGrant(names []string, tasks map[string]*ast.Task) error {
 		// Sorted, so a tie between equally close names resolves the same way
 		// on every run.
 		candidates := slices.Sorted(maps.Keys(tasks))
-		if s, ok := nearest(name, candidates); ok {
+		if s, ok := suggest.Nearest(name, candidates); ok {
 			return usagef("unknown task in --allow-destructive: %s (did you mean %q?)", name, s)
 		}
 		return usagef("unknown task in --allow-destructive: %s", name)

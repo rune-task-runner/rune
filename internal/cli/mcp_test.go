@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -76,19 +78,8 @@ func TestServerNeverRegistersOSMismatchedTools(t *testing.T) {
 	src := "everywhere:\n    @echo e\n[windows]\nwin-only:\n    @echo w\n"
 	a := adapterFor(t, src)
 	a.goos = "linux"
-	srv := mcpserver.New(a, mcpserver.Options{AllowList: []string{"win-only"}})
-
-	ct, st := mcp.NewInMemoryTransports()
+	cs := serverSession(t, mcpserver.New(a, mcpserver.Options{AllowList: []string{"win-only"}}))
 	ctx := context.Background()
-	if _, err := srv.MCP().Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
-	cs, err := client.Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
 
 	res, err := cs.ListTools(ctx, nil)
 	if err != nil {
@@ -303,7 +294,21 @@ func TestAgentAdapterGrantsNothing(t *testing.T) {
 		t.Errorf("agent adapter ran a destructive task: %+v", res)
 	}
 
-	srv := mcpserver.New(adapter, mcpserver.Options{Version: "test"})
+	cs := serverSession(t, mcpserver.New(adapter, mcpserver.Options{Version: "test"}))
+	call, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "clean"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No restart advice: no flag can grant anything on this endpoint.
+	want := `task "clean" is destructive and is not allowed in this session`
+	if !call.IsError || resultText(call) != want {
+		t.Errorf("agent endpoint: isError=%v text=%q, want %q", call.IsError, resultText(call), want)
+	}
+}
+
+// serverSession connects a client to srv over an in-memory transport.
+func serverSession(t *testing.T, srv *mcpserver.Server) *mcp.ClientSession {
+	t.Helper()
 	ct, st := mcp.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := srv.MCP().Connect(ctx, st, nil); err != nil {
@@ -314,19 +319,65 @@ func TestAgentAdapterGrantsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cs.Close() })
-	call, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "clean"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	// No restart advice: no flag can grant anything on this endpoint.
-	want := `task "clean" is destructive and is not allowed in this session`
+	return cs
+}
+
+func resultText(res *mcp.CallToolResult) string {
 	var text strings.Builder
-	for _, c := range call.Content {
+	for _, c := range res.Content {
 		if tc, ok := c.(*mcp.TextContent); ok {
 			text.WriteString(tc.Text)
 		}
 	}
-	if !call.IsError || text.String() != want {
-		t.Errorf("agent endpoint: isError=%v text=%q, want %q", call.IsError, text.String(), want)
+	return text.String()
+}
+
+// Spec 032 FR-010: the agent-task endpoint refuses an undeclared argument, and
+// the declared call afterward shows the marker can detect a run.
+func TestAgentEndpointRefusesUnknownArgument(t *testing.T) {
+	marker := filepath.ToSlash(filepath.Join(t.TempDir(), "build.done"))
+	src := "build target=\"debug\":\n    @echo {{quote(target)}} > '" + marker + "'\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	cs := serverSession(t, mcpserver.New(eng.newAgentAdapter(), mcpserver.Options{Version: "test"}))
+	ctx := context.Background()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "build", Arguments: map[string]any{"targte": "release"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `unknown argument "targte" for task "build" (did you mean "target"?)`
+	if !res.IsError || resultText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, resultText(res), want)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the task ran although refused")
+	}
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "build", Arguments: map[string]any{"target": "release"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(marker)
+	if res.IsError || err != nil || strings.TrimSpace(string(got)) != "release" {
+		t.Errorf("declared call: isError=%v marker=%q err=%v", res.IsError, got, err)
+	}
+}
+
+// Spec 032 FR-010: the agent-task endpoint lists the keyword on every tool.
+func TestAgentEndpointSchemasDisallowOtherNames(t *testing.T) {
+	src := "build target=\"debug\":\n    @echo built\n\nclean_all:\n    @echo cleaned\n\n[confirm]\nwipe:\n    @echo wiped\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	cs := serverSession(t, mcpserver.New(eng.newAgentAdapter(), mcpserver.Options{Version: "test"}))
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 3 {
+		t.Fatalf("listed %d tools, want 3", len(res.Tools))
+	}
+	for _, tl := range res.Tools {
+		if schema, ok := tl.InputSchema.(map[string]any); !ok || schema["additionalProperties"] != false {
+			t.Errorf("%s: InputSchema = %v, want additionalProperties false", tl.Name, tl.InputSchema)
+		}
 	}
 }

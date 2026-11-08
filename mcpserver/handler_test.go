@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -132,12 +134,21 @@ func TestHandlerRejectsConstraintViolations(t *testing.T) {
 // Large and small JSON numbers must reach the task with their source spelling:
 // json.Unmarshal into any yields float64, whose default formatting mangles
 // 1000000 into "1e+06" — decodeArgs decodes with UseNumber to prevent that.
+// decodeAndConvert runs the two steps a handler runs on a call's arguments.
+func decodeAndConvert(raw []byte, params []ParamInfo) (map[string]string, map[string][]string, error) {
+	decoded, err := decodeArgs(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	return stringArgs(decoded, params)
+}
+
 func TestDecodeArgsKeepsNumberSpelling(t *testing.T) {
 	params := []ParamInfo{
 		{Name: "replicas", Kind: "number"},
 		{Name: "nums", Variadic: true, Kind: "number"},
 	}
-	args, _, err := decodeArgs([]byte(`{"replicas": 1000000, "nums": [0.0000001, 12345678901234567890]}`), params)
+	args, _, err := decodeAndConvert([]byte(`{"replicas": 1000000, "nums": [0.0000001, 12345678901234567890]}`), params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +178,7 @@ func TestDecodeArgsLists(t *testing.T) {
 		{`{}`, "", false, nil, false},
 	}
 	for _, tt := range tests {
-		args, lists, err := decodeArgs([]byte(tt.raw), params)
+		args, lists, err := decodeAndConvert([]byte(tt.raw), params)
 		if err != nil {
 			t.Fatalf("%s: %v", tt.raw, err)
 		}
@@ -180,12 +191,17 @@ func TestDecodeArgsLists(t *testing.T) {
 		}
 	}
 
-	args, lists, err := decodeArgs([]byte(`{"one": ["x", "y"], "unknown": ["p", "q"]}`), params)
+	args, lists, err := decodeAndConvert([]byte(`{"one": ["x", "y"], "unknown": ["p", "q"]}`), params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if args["one"] != "x y" || args["unknown"] != "p q" {
+	if args["one"] != "x y" {
 		t.Errorf("non-variadic arrays changed: %v", args)
+	}
+	// Spec 032: the handler refuses undeclared names first, so none reaches the
+	// values a task receives.
+	if _, ok := args["unknown"]; ok {
+		t.Errorf("an undeclared name reached the task's values: %v", args)
 	}
 	if len(lists) != 0 {
 		t.Errorf("lists for non-variadic or unknown parameters: %v", lists)
@@ -260,5 +276,357 @@ func TestHandlerGrantIsPerTask(t *testing.T) {
 	}
 	if eng.lastCall != "" {
 		t.Errorf("engine ran %q, but only clean is granted", eng.lastCall)
+	}
+}
+
+func unknownArgsEngine() *fakeEngine {
+	return &fakeEngine{
+		tasks: []TaskInfo{
+			{Name: "build", Params: []ParamInfo{{Name: "target"}}},
+			{Name: "deploy", Params: []ParamInfo{
+				{Name: "env", Required: true, Kind: "enum", Enum: []string{"staging", "prod"}},
+				{Name: "replicas"},
+			}},
+			{Name: "each", Params: []ParamInfo{{Name: "names", Required: true, Variadic: true}}},
+			{Name: "clean_all"},
+			{Name: "wipe", Destructive: true},
+			{Name: "tools::build", Params: []ParamInfo{{Name: "target"}}},
+			{Name: "tie", Params: []ParamInfo{{Name: "tag"}, {Name: "tab"}}},
+			{Name: "get", Params: []ParamInfo{{Name: "id"}}},
+			{Name: "rm", Params: []ParamInfo{{Name: "path", Required: true}}},
+		},
+		result: Result{Stdout: "ran"},
+	}
+}
+
+func callTool(t *testing.T, cs *mcp.ClientSession, tool string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+// Spec 032: a call naming an undeclared argument is refused before the engine
+// runs, instead of running with the parameter's default.
+func TestHandlerRefusesUnknownArgument(t *testing.T) {
+	cases := []struct {
+		name, tool string
+		args       map[string]any
+		want       string
+	}{
+		{"typo", "build", map[string]any{"targte": "release"}, `unknown argument "targte" for task "build" (did you mean "target"?)`},
+		{"typo beside a valid name", "deploy", map[string]any{"env": "prod", "replicaz": "5"}, `unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)`},
+		{"typo of a required name", "deploy", map[string]any{"evn": "prod"}, `unknown argument "evn" for task "deploy" (did you mean "env"?)`},
+		{"nothing close", "build", map[string]any{"zzzzzz": "1"}, `unknown argument "zzzzzz" for task "build"`},
+		{"no parameters", "clean_all", map[string]any{"force": true}, `unknown argument "force" for task "clean_all"`},
+		{"case differs", "build", map[string]any{"Target": "release"}, `unknown argument "Target" for task "build" (did you mean "target"?)`},
+		{"imported task", "tools__build", map[string]any{"targte": "release"}, `unknown argument "targte" for task "tools::build" (did you mean "target"?)`},
+		{"correct and misspelled", "build", map[string]any{"target": "a", "targte": "b"}, `unknown argument "targte" for task "build" (did you mean "target"?)`},
+		{"bad value too", "deploy", map[string]any{"env": "nope", "replicaz": "5"}, `unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)`},
+		{
+			"two names", "deploy",
+			map[string]any{"replicaz": "5", "evn": "prod"},
+			`unknown argument "evn" for task "deploy" (did you mean "env"?)` + "\n" +
+				`unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)`,
+		},
+		{"variadic", "each", map[string]any{"namez": []any{"a", "b"}}, `unknown argument "namez" for task "each" (did you mean "names"?)`},
+		// Alphabetical order would pick tab; FR-004 picks the one declared first.
+		{"tie", "tie", map[string]any{"tad": "1"}, `unknown argument "tad" for task "tie" (did you mean "tag"?)`},
+		// Following a hint to a name already in the call would overwrite its value.
+		{"tie prefers an unset parameter", "tie", map[string]any{"tag": "1", "tad": "2"}, `unknown argument "tad" for task "tie" (did you mean "tab"?)`},
+		{"tie with both set", "tie", map[string]any{"tag": "1", "tab": "2", "tad": "3"}, `unknown argument "tad" for task "tie" (did you mean "tag"?)`},
+		{"closest wins over unset", "tie", map[string]any{"tag": "1", "tags": "2"}, `unknown argument "tags" for task "tie" (did you mean "tag"?)`},
+		{"case only, three edits", "deploy", map[string]any{"ENV": "prod"}, `unknown argument "ENV" for task "deploy" (did you mean "env"?)`},
+		{"case only, six edits", "build", map[string]any{"TARGET": "x"}, `unknown argument "TARGET" for task "build" (did you mean "target"?)`},
+		{"short name", "get", map[string]any{"x": "1"}, `unknown argument "x" for task "get" (did you mean "id"?)`},
+		// build declares target, but a suggestion comes only from the called task.
+		{"other task's parameter", "get", map[string]any{"targte": "1"}, `unknown argument "targte" for task "get"`},
+		{"newline in name", "build", map[string]any{"a\nb": "1"}, `unknown argument "a\nb" for task "build"`},
+		{"empty name", "build", map[string]any{"": "1"}, `unknown argument "" for task "build"`},
+		{"quote in name", "build", map[string]any{`a"b`: "1"}, `unknown argument "a\"b" for task "build"`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			eng := unknownArgsEngine()
+			res := callTool(t, connect(t, New(eng, Options{})), c.tool, c.args)
+			if !res.IsError || contentText(res) != c.want {
+				t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), c.want)
+			}
+			if eng.lastCall != "" {
+				t.Errorf("engine ran %q", eng.lastCall)
+			}
+		})
+	}
+}
+
+// Spec 032 FR-007, FR-008: a name is refused whatever its value is, and the
+// value never appears, since an agent may put a secret in a misnamed argument.
+func TestHandlerUnknownArgumentIgnoresValue(t *testing.T) {
+	eng := unknownArgsEngine()
+	cs := connect(t, New(eng, Options{}))
+	const want = `unknown argument "zzzzzz" for task "build"`
+	for _, v := range []any{"x", 1, true, nil, []any{"a"}, map[string]any{"k": "v"}} {
+		res := callTool(t, cs, "build", map[string]any{"zzzzzz": v})
+		if !res.IsError || contentText(res) != want {
+			t.Errorf("value %#v: isError=%v text=%q, want %q", v, res.IsError, contentText(res), want)
+		}
+	}
+	for _, v := range []any{"s3cret", []any{"s3cret"}} {
+		res := callTool(t, cs, "build", map[string]any{"targte": v})
+		if !res.IsError || strings.Contains(contentText(res), "s3cret") {
+			t.Errorf("value %#v: isError=%v text=%q", v, res.IsError, contentText(res))
+		}
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// Spec 032 FR-006: who may call a task comes before how to call it.
+func TestHandlerUnknownArgumentAfterRefusals(t *testing.T) {
+	cases := []struct {
+		name string
+		opts Options
+		tool string
+		args map[string]any
+		want string
+	}{
+		{
+			"destructive",
+			Options{AllowDestructiveFlag: "--allow-destructive"},
+			"wipe",
+			map[string]any{"forcee": true},
+			`task "wipe" is destructive; to permit it, add wipe to --allow-destructive and restart the server`,
+		},
+		{
+			"allowlist",
+			Options{AllowList: []string{"get"}},
+			"build",
+			map[string]any{"targte": "x"},
+			`task "build" is not authorized for this session`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			eng := unknownArgsEngine()
+			res := callTool(t, connect(t, New(eng, c.opts)), c.tool, c.args)
+			if !res.IsError || contentText(res) != c.want {
+				t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), c.want)
+			}
+			if eng.lastCall != "" {
+				t.Errorf("engine ran %q", eng.lastCall)
+			}
+		})
+	}
+}
+
+// Spec 032: a grant permits calling the task, not calling it with a typo.
+func TestHandlerUnknownArgumentGrantedDestructive(t *testing.T) {
+	eng := unknownArgsEngine()
+	cs := connect(t, New(eng, Options{AllowDestructive: []string{"wipe"}, AllowDestructiveFlag: "--allow-destructive"}))
+
+	res := callTool(t, cs, "wipe", map[string]any{"forcee": true})
+	const want = `unknown argument "forcee" for task "wipe"`
+	if !res.IsError || contentText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+
+	if res := callTool(t, cs, "wipe", nil); res.IsError || eng.lastCall != "wipe" {
+		t.Errorf("the grant is not in effect: isError=%v lastCall=%q text=%q", res.IsError, eng.lastCall, contentText(res))
+	}
+}
+
+// Spec 032 FR-011: the refusal holds for an engine that takes lists too.
+func TestHandlerUnknownArgumentSkipsListEngine(t *testing.T) {
+	le := &fakeListEngine{fakeEngine: fakeEngine{tasks: []TaskInfo{
+		{Name: "c", Params: []ParamInfo{{Name: "names", Variadic: true}}},
+	}}}
+	res := callTool(t, connect(t, New(le, Options{})), "c", map[string]any{"namez": []any{"a", "b"}})
+	const want = `unknown argument "namez" for task "c" (did you mean "names"?)`
+	if !res.IsError || contentText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+	}
+	if le.viaLists || le.lastCall != "" {
+		t.Errorf("engine ran: viaLists=%v lastCall=%q", le.viaLists, le.lastCall)
+	}
+}
+
+// Spec 032 FR-005, SC-005: JSON objects decode to a Go map, whose order varies
+// between runs, so repeating the call is what would expose an unsorted text.
+func TestHandlerUnknownArgumentStableText(t *testing.T) {
+	cs := connect(t, New(unknownArgsEngine(), Options{}))
+	want := `unknown argument "evn" for task "deploy" (did you mean "env"?)` + "\n" +
+		`unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)` + "\n" +
+		`unknown argument "zzzzzz" for task "deploy"`
+	for i := range 100 {
+		res := callTool(t, cs, "deploy", map[string]any{"replicaz": "5", "evn": "prod", "zzzzzz": "1"})
+		if contentText(res) != want {
+			t.Fatalf("call %d: text=%q, want %q", i, contentText(res), want)
+		}
+	}
+}
+
+// Spec 032 FR-012: the handler is called directly so the raw bytes are exact.
+// The client would otherwise decide how absent and null arguments are sent.
+func TestHandlerRawArguments(t *testing.T) {
+	task := TaskInfo{Name: "build", Params: []ParamInfo{{Name: "target"}}}
+	call := func(raw json.RawMessage) (*fakeEngine, *mcp.CallToolResult) {
+		eng := &fakeEngine{tasks: []TaskInfo{task}, result: Result{Stdout: "ran"}}
+		req := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: task.Name, Arguments: raw}}
+		res, err := New(eng, Options{}).handler(task)(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return eng, res
+	}
+	for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`{}`)} {
+		eng, res := call(raw)
+		if res.IsError || eng.lastCall != "build" {
+			t.Errorf("arguments %q: isError=%v lastCall=%q text=%q", raw, res.IsError, eng.lastCall, contentText(res))
+		}
+	}
+	// A number only UseNumber can hold is not a decode error, for either kind of name.
+	eng, res := call(json.RawMessage(`{"target":1e999}`))
+	if res.IsError || eng.lastArgs["target"] != "1e999" {
+		t.Errorf("declared huge number: isError=%v args=%v text=%q", res.IsError, eng.lastArgs, contentText(res))
+	}
+	eng, res = call(json.RawMessage(`{"zzzzzz":1e999}`))
+	if want := `unknown argument "zzzzzz" for task "build"`; !res.IsError || contentText(res) != want || eng.lastCall != "" {
+		t.Errorf("undeclared huge number: isError=%v lastCall=%q text=%q, want %q", res.IsError, eng.lastCall, contentText(res), want)
+	}
+	for _, raw := range []json.RawMessage{json.RawMessage(`[]`), json.RawMessage(`"x"`)} {
+		eng, res := call(raw)
+		if !res.IsError || !strings.HasPrefix(contentText(res), "invalid arguments: json: cannot unmarshal") {
+			t.Errorf("arguments %q: isError=%v text=%q", raw, res.IsError, contentText(res))
+		}
+		if eng.lastCall != "" {
+			t.Errorf("arguments %q: engine ran %q", raw, eng.lastCall)
+		}
+	}
+}
+
+// Spec 032 FR-005: the refusal's size does not grow with the call, since it goes
+// into the calling agent's context. A long name is cut at a character boundary.
+func TestHandlerUnknownArgumentCapsEcho(t *testing.T) {
+	eng := unknownArgsEngine()
+	cs := connect(t, New(eng, Options{}))
+
+	names := []struct{ name, want string }{
+		{strings.Repeat("k", 64), `unknown argument "` + strings.Repeat("k", 64) + `" for task "build"`},
+		{strings.Repeat("k", 65), `unknown argument "` + strings.Repeat("k", 64) + `..." for task "build"`},
+		{strings.Repeat("k", 100_000), `unknown argument "` + strings.Repeat("k", 64) + `..." for task "build"`},
+		{strings.Repeat("é", 65), `unknown argument "` + strings.Repeat("é", 64) + `..." for task "build"`},
+	}
+	for _, n := range names {
+		res := callTool(t, cs, "build", map[string]any{n.name: "1"})
+		if !res.IsError || contentText(res) != n.want {
+			t.Errorf("name of %d bytes: isError=%v text=%q, want %q", len(n.name), res.IsError, contentText(res), n.want)
+		}
+	}
+
+	lines := func(n int) (map[string]any, []string) {
+		args := map[string]any{}
+		var want []string
+		for i := range n {
+			name := fmt.Sprintf("zz%02d", i)
+			args[name] = "1"
+			if i < 20 {
+				want = append(want, `unknown argument "`+name+`" for task "build"`)
+			}
+		}
+		return args, want
+	}
+	args, want := lines(20)
+	if res := callTool(t, cs, "build", args); contentText(res) != strings.Join(want, "\n") {
+		t.Errorf("20 names: text=%q", contentText(res))
+	}
+	args, want = lines(25)
+	want = append(want, `unknown arguments not shown for task "build": 5`)
+	if res := callTool(t, cs, "build", args); !res.IsError || contentText(res) != strings.Join(want, "\n") {
+		t.Errorf("25 names: isError=%v text=%q", res.IsError, contentText(res))
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// Spec 032 FR-015: JSON null and objects have no string a task could receive.
+// fmt.Sprint would turn them into <nil> and map[k:v], and the task would run on
+// that, a required parameter included.
+func TestHandlerRefusesNullAndObjectValues(t *testing.T) {
+	const (
+		isNull   = "null is not a valid value"
+		isObject = "an object is not a valid value"
+		isNested = "a nested array is not a valid value"
+	)
+	cases := []struct {
+		name, tool, param string
+		value             any
+		want              string
+	}{
+		{"null, defaulted", "build", "target", nil, isNull},
+		{"null, required", "rm", "path", nil, isNull},
+		{"null, typed", "deploy", "env", nil, isNull},
+		{"null, variadic", "each", "names", nil, isNull},
+		{"object", "build", "target", map[string]any{"k": "v"}, isObject},
+		{"object, required", "rm", "path", map[string]any{}, isObject},
+		{"null element", "each", "names", []any{"a", nil}, isNull},
+		{"object element", "each", "names", []any{map[string]any{"k": "v"}}, isObject},
+		{"nested array", "each", "names", []any{[]any{"a"}}, isNested},
+		{"null element, not variadic", "build", "target", []any{nil}, isNull},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			eng := unknownArgsEngine()
+			res := callTool(t, connect(t, New(eng, Options{})), c.tool, map[string]any{c.param: c.value})
+			want := fmt.Sprintf("invalid arguments: parameter %q: %s", c.param, c.want)
+			if !res.IsError || contentText(res) != want {
+				t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+			}
+			if eng.lastCall != "" {
+				t.Errorf("engine ran %q with %v", eng.lastCall, eng.lastArgs)
+			}
+		})
+	}
+
+	// Scalars keep reaching the task as their text.
+	for _, c := range []struct {
+		tool, param string
+		value       any
+		want        string
+	}{
+		{"build", "target", true, "true"},
+		{"build", "target", 1, "1"},
+		{"build", "target", "x", "x"},
+		{"each", "names", []any{"a", 1, false}, "a 1 false"},
+	} {
+		eng := unknownArgsEngine()
+		res := callTool(t, connect(t, New(eng, Options{})), c.tool, map[string]any{c.param: c.value})
+		if res.IsError || eng.lastArgs[c.param] != c.want {
+			t.Errorf("%s(%s=%v): isError=%v args=%v, want %q", c.tool, c.param, c.value, res.IsError, eng.lastArgs, c.want)
+		}
+	}
+}
+
+// Spec 032: with two invalid values, the parameter declared first is reported,
+// so the same call always gets the same text. Ranging over the decoded map
+// would report either one.
+func TestHandlerInvalidValuesReportFirstDeclared(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{{Name: "pair", Params: []ParamInfo{
+		{Name: "second", Kind: "number"},
+		{Name: "first", Kind: "number"},
+	}}}}
+	cs := connect(t, New(eng, Options{}))
+	const want = `invalid arguments: parameter "second": invalid value "x" (expected a number)`
+	for i := range 100 {
+		res := callTool(t, cs, "pair", map[string]any{"first": "x", "second": "x"})
+		if contentText(res) != want {
+			t.Fatalf("call %d: text=%q, want %q", i, contentText(res), want)
+		}
 	}
 }
