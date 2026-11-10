@@ -4,6 +4,30 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.7.0] - 2026-11-10
+
+### Added
+- Typed parameter schemas — inline param types, [returns]/[param-doc], enforced MCP tool schemas (spec 023) (#26)
+- Documentation site — Starlight on GitHub Pages generated from docs/ (spec 024) (#27)
+- Quote_each() passes a variadic as separate quoted arguments (#76)
+- Warn when a string or path parameter reaches a shell command unquoted (RUNE2017); add the raw kind to opt out (#78)
+
+### Documentation
+- Link the documentation site from the README (#28)
+- New Rune logo for the README, docs site, and VS Code extension (#71)
+- Keep the landing logo sharp on high-DPI screens (#72)
+- Warm papyrus theme for the docs site (#74)
+
+### Fixed
+- Breaking: [confirm] needs a terminal, piped input no longer approves (use --yes) (#66)
+- Breaking: a failed task exits with its body's exit code, not always 1 (#67)
+- Allow spaces inside {{ }} interpolations (#70)
+- Breaking: shell lists with -c now apply their flags, so a failing line can fail the task (#75)
+- Breaking: rune mcp --allow-destructive TASK lets agents run named [confirm] tasks; mcpserver.Options.AllowDestructive is now a task list (#79)
+- Breaking: a tool call with an unknown argument or a null or object value now fails instead of running with the wrong value; mcpserver.TaskInfo.Params now lists the accepted names (#80)
+- Breaking: only tasks marked with the new [readonly] attribute claim to be read-only, so add it where true, and set mcpserver.TaskInfo.ReadOnly in embedders; destructive and network hints now cover dependencies and hooks (#82)
+- Breaking: a tool call that can reach an ungranted [confirm] task is now refused before anything runs, naming every task to add to --allow-destructive; mcpserver.TaskInfo.DestructiveReach lists those tasks (#83)
+
 ## [0.6.0] - 2026-08-26
 
 ### Added
