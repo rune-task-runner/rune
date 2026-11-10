@@ -138,6 +138,32 @@ func TestHTTPGrantedDestructiveCall(t *testing.T) {
 	}
 }
 
+// Spec 034 (quickstart T): over Streamable HTTP, a call that can reach an
+// ungranted destructive task is refused as on stdio, and the engine never runs.
+func TestHTTPReachRefused(t *testing.T) {
+	eng := &syncEngine{tasks: []TaskInfo{
+		{Name: "release", DestructiveReach: []string{"clean"}},
+		{Name: "clean", Destructive: true},
+	}}
+	srv := New(eng, Options{AllowDestructiveFlag: "--allow-destructive"})
+	addr, stop, err := srv.StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	res, err := httpSession(t, addr, "secret").CallTool(context.Background(), &mcp.CallToolParams{Name: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	if !res.IsError || contentText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+	}
+	if got := eng.called(); len(got) != 0 {
+		t.Errorf("engine calls = %q, want none", got)
+	}
+}
+
 // httpSession connects a client to an HTTP server with the bearer token. It
 // registers the session's close as a cleanup, so register the server's stop
 // first: cleanups run last-in first-out, and no session goroutine is left.
@@ -222,7 +248,7 @@ func TestHTTPToolsListMatchesStdio(t *testing.T) {
 func TestHTTPToolsListCarriesHints(t *testing.T) {
 	tasks := []TaskInfo{
 		{Name: "status", ReadOnly: true},
-		{Name: "release", ReachesDestructive: true},
+		{Name: "release", DestructiveReach: []string{"clean"}},
 		{Name: "mirror", Network: true},
 	}
 	want := map[string]hintSet{

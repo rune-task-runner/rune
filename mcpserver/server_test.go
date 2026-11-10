@@ -455,13 +455,18 @@ func listedTools(t *testing.T, eng Engine, opts Options) []*mcp.Tool {
 
 // Spec 033 FR-003, FR-012: a descriptor that reaches a destructive task
 // advertises the destructive hint, whether or not it is destructive itself.
-func TestToolHintsReachesDestructive(t *testing.T) {
-	for _, info := range []TaskInfo{
-		{Name: "release", ReachesDestructive: true},
-		{Name: "clean", Destructive: true, ReachesDestructive: true},
+// An empty list reaches nothing (spec 034 R2).
+func TestToolHintsDestructiveReach(t *testing.T) {
+	for _, c := range []struct {
+		info TaskInfo
+		want hintSet
+	}{
+		{TaskInfo{Name: "release", DestructiveReach: []string{"clean"}}, hintSet{destructive: true}},
+		{TaskInfo{Name: "clean", Destructive: true, DestructiveReach: []string{"wipe"}}, hintSet{destructive: true}},
+		{TaskInfo{Name: "logs", DestructiveReach: []string{}}, hintSet{}},
 	} {
-		if got, want := hintsOf(t, toolFor(info)), (hintSet{destructive: true}); got != want {
-			t.Errorf("%s: hints %+v, want %+v", info.Name, got, want)
+		if got := hintsOf(t, toolFor(c.info)); got != c.want {
+			t.Errorf("%s: hints %+v, want %+v", c.info.Name, got, c.want)
 		}
 	}
 }
@@ -470,7 +475,7 @@ func TestToolHintsReachesDestructive(t *testing.T) {
 // a destructive one.
 func TestListToolsSameWithGrantWhenReaching(t *testing.T) {
 	eng := &fakeEngine{tasks: []TaskInfo{
-		{Name: "release", ReachesDestructive: true},
+		{Name: "release", DestructiveReach: []string{"clean"}},
 		{Name: "clean", Destructive: true},
 	}}
 	without := listedTools(t, eng, Options{})
@@ -483,7 +488,7 @@ func TestListToolsSameWithGrantWhenReaching(t *testing.T) {
 // Spec 033 FR-010: an allowlist narrows calls, not hints.
 func TestListToolsSameWithAllowList(t *testing.T) {
 	eng := &fakeEngine{tasks: []TaskInfo{
-		{Name: "release", ReachesDestructive: true},
+		{Name: "release", DestructiveReach: []string{"clean"}},
 		{Name: "status", ReadOnly: true},
 	}}
 	without := listedTools(t, eng, Options{})

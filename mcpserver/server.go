@@ -52,10 +52,12 @@ type TaskInfo struct {
 	// Destructive marks the task itself destructive. A call is refused unless
 	// the task is granted, and the tool advertises DestructiveHint.
 	Destructive bool
-	// ReachesDestructive says a run of this task can reach a destructive task
-	// through its dependencies or hooks. The tool advertises DestructiveHint.
-	// Authorization ignores it: the engine decides when the run reaches that task.
-	ReachesDestructive bool
+	// DestructiveReach names the destructive tasks a run of this task can
+	// reach through its dependencies and hooks: each once, not the task
+	// itself, in the order a run first reaches them. A call is refused unless
+	// every one is granted, and a non-empty list sets DestructiveHint. Nil
+	// leaves the engine alone to decline such a task when a run reaches it.
+	DestructiveReach []string
 	// Network says the task, or anything a run of it can reach, uses the
 	// network. The tool advertises OpenWorldHint.
 	Network bool
@@ -136,10 +138,11 @@ type ListEngine interface {
 // Options configures authorization for the server.
 type Options struct {
 	// AllowDestructive names the destructive ([confirm]) tasks that may be
-	// called. Any other destructive task is refused before the engine runs.
-	// There is no value that permits all of them. The Engine must approve the
-	// confirmation of exactly these tasks, wherever a run reaches them; the
-	// rune CLI adapter does.
+	// called or run. A call is refused before the engine runs when the task
+	// itself, or any task in its DestructiveReach, is destructive and not named
+	// here. There is no value that permits all of them. The Engine must still
+	// approve the confirmation of exactly these tasks, wherever a run reaches
+	// them; the rune CLI adapter does.
 	AllowDestructive []string
 	// AllowDestructiveFlag is the command-line flag that sets AllowDestructive,
 	// such as "--allow-destructive". When set, a destructive refusal tells the
@@ -205,7 +208,7 @@ func toolName(name string) string {
 
 // toolFor derives an mcp.Tool from a task's metadata.
 func toolFor(t TaskInfo) *mcp.Tool {
-	destructive := t.Destructive || t.ReachesDestructive
+	destructive := t.Destructive || len(t.DestructiveReach) > 0
 	network := t.Network
 	desc := t.Doc
 	if t.Returns != "" {

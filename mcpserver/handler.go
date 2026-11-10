@@ -21,6 +21,7 @@ const (
 )
 
 // handler builds the tool-call handler for a task: it enforces authorization,
+// including for the destructive tasks t says a run can reach (spec 034),
 // refuses argument names the task does not declare (spec 032), validates the
 // arguments against the advertised schema (spec 023 FR-005: a violation never
 // reaches the engine), runs the task through the shared engine, and returns
@@ -32,7 +33,7 @@ func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 		names[i] = p.Name
 	}
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		if msg := s.refusal(taskName); msg != "" {
+		if msg := s.refusal(t); msg != "" {
 			return errorResult(msg), nil
 		}
 		decoded, err := decodeArgs(req.Params.Arguments)

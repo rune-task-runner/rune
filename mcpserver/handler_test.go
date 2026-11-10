@@ -630,3 +630,20 @@ func TestHandlerInvalidValuesReportFirstDeclared(t *testing.T) {
 		}
 	}
 }
+
+// Spec 034 FR-010: a call that can reach an ungranted destructive task is
+// refused before its arguments are checked, as a direct destructive call is.
+func TestHandlerReachRefusalBeforeArguments(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{
+		{Name: "release", Params: []ParamInfo{{Name: "target"}}, DestructiveReach: []string{"clean"}},
+	}}
+	cs := connect(t, New(eng, Options{AllowDestructiveFlag: "--allow-destructive"}))
+	res := callTool(t, cs, "release", map[string]any{"bogus": 1})
+	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	if !res.IsError || contentText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, contentText(res), want)
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
