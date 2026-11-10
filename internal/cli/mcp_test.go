@@ -381,3 +381,165 @@ func TestAgentEndpointSchemasDisallowOtherNames(t *testing.T) {
 		}
 	}
 }
+
+// Spec 033 FR-002: only a task with [readonly] is reported read-only.
+func TestAdapterReadOnlyFlag(t *testing.T) {
+	src := "[readonly]\nstatus:\n    @echo status\ndeploy:\n    @echo deploy\n[confirm]\nclean:\n    @echo clean\n"
+	a := adapterFor(t, src)
+	want := map[string]bool{"status": true, "deploy": false, "clean": false}
+	tasks := a.Tasks()
+	if len(tasks) != len(want) {
+		t.Fatalf("Tasks() = %+v, want %d tasks", tasks, len(want))
+	}
+	for _, ti := range tasks {
+		if ti.ReadOnly != want[ti.Name] {
+			t.Errorf("%s: ReadOnly = %v, want %v", ti.Name, ti.ReadOnly, want[ti.Name])
+		}
+	}
+}
+
+// reach is one tool's destructive and network declarations as the adapter
+// reports them.
+type reach struct{ destructive, reaches, network bool }
+
+func reachOf(a *mcpAdapter) map[string]reach {
+	got := map[string]reach{}
+	for _, ti := range a.Tasks() {
+		got[ti.Name] = reach{destructive: ti.Destructive, reaches: ti.ReachesDestructive, network: ti.Network}
+	}
+	return got
+}
+
+// Spec 033 FR-003 to FR-005, FR-014, SC-002: a task inherits the [confirm] and
+// [network] of everything its dependencies and hooks run, and nothing else.
+// Destructive stays the task's own [confirm], which authorization reads.
+func TestAdapterReach(t *testing.T) {
+	const clean = "[confirm]\nclean:\n    @echo clean\n"
+	cases := []struct {
+		name string
+		src  string
+		want map[string]reach
+	}{
+		{
+			"dependency", "release: clean\n    @echo release\n" + clean,
+			map[string]reach{"release": {reaches: true}, "clean": {destructive: true}},
+		},
+		{
+			"post-hook", "post: && clean\n    @echo post\n" + clean,
+			map[string]reach{"post": {reaches: true}},
+		},
+		{
+			"failure hook", "bad: || clean\n    @exit 1\n" + clean,
+			map[string]reach{"bad": {reaches: true}},
+		},
+		{
+			"three levels, confirm", "a: b\n    @echo a\nb: && c\n    @echo b\nc: || d\n    @echo c\n[confirm]\nd:\n    @echo d\n",
+			map[string]reach{"a": {reaches: true}, "b": {reaches: true}, "c": {reaches: true}, "d": {destructive: true}},
+		},
+		{
+			"three levels, network", "a: b\n    @echo a\nb: && c\n    @echo b\nc: || d\n    @echo c\n[network]\nd:\n    @echo d\n",
+			map[string]reach{"a": {network: true}, "b": {network: true}, "c": {network: true}, "d": {network: true}},
+		},
+		{
+			"private target", "ship: _wipe\n    @echo ship\n[private]\n[confirm]\n_wipe:\n    @echo wipe\n",
+			map[string]reach{"ship": {reaches: true}},
+		},
+		{
+			"diamond", "top: left right\n    @echo top\nleft: base\n    @echo left\nright: base\n    @echo right\n[confirm]\nbase:\n    @echo base\n",
+			map[string]reach{"top": {reaches: true}, "left": {reaches: true}, "right": {reaches: true}, "base": {destructive: true}},
+		},
+		{
+			"own confirm", clean,
+			map[string]reach{"clean": {destructive: true}},
+		},
+		{
+			"body text", "sweep:\n    rune clean\n    rm -rf dist\n" + clean,
+			map[string]reach{"sweep": {}},
+		},
+		{
+			"agent executor", "ask (agent):\n    Run clean, then fetch the data.\n" + clean,
+			map[string]reach{"ask": {}},
+		},
+		{
+			// A failure hook's own || hooks never run: post-mortems do not chain.
+			"failure hook of a failure hook, confirm", "bad: || cleanup\n    @exit 1\ncleanup: || wipe\n    @echo cleanup\n[confirm]\nwipe:\n    @echo wipe\n",
+			map[string]reach{"bad": {}, "cleanup": {reaches: true}},
+		},
+		{
+			"failure hook of a failure hook, network", "bad: || cleanup\n    @exit 1\ncleanup: || probe\n    @echo cleanup\n[network]\nprobe:\n    @echo probe\n",
+			map[string]reach{"bad": {}, "cleanup": {network: true}},
+		},
+		{
+			// A failure hook still runs its dependencies and && hooks, and a
+			// dependency's own || hooks fire as usual.
+			"what a failure hook runs", "bad: || h\n    @exit 1\nh: d && p\n    @echo h\nd: || x\n    @echo d\n[network]\np:\n    @echo p\n[confirm]\nx:\n    @echo x\n",
+			map[string]reach{"bad": {reaches: true, network: true}},
+		},
+		{
+			// cleanup is queued first as top's failure hook, then reached as
+			// helper's dependency, where its || hooks do fire.
+			"failure hook also a dependency", "top: helper || cleanup\n    @exit 1\nhelper: cleanup\n    @echo helper\ncleanup: || wipe\n    @echo cleanup\n[confirm]\nwipe:\n    @echo wipe\n",
+			map[string]reach{"top": {reaches: true}},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := reachOf(adapterFor(t, c.src))
+			for name, want := range c.want {
+				if g, ok := got[name]; !ok || g != want {
+					t.Errorf("%s: %+v (listed %v), want %+v", name, g, ok, want)
+				}
+			}
+		})
+	}
+}
+
+// Spec 033 FR-006: a task unavailable on the host OS does not count, and
+// neither does anything reached only through it.
+func TestAdapterReachFollowsHostOS(t *testing.T) {
+	src := "dispatch: wipe-win\n    @echo dispatch\n[windows, confirm(\"Wipe?\")]\nwipe-win:\n    @echo wipe\n" +
+		"viawin: winonly\n    @echo viawin\n[windows]\nwinonly: clean\n    @echo winonly\n" +
+		"both: winonly clean\n    @echo both\n[confirm]\nclean:\n    @echo clean\n"
+	want := map[string]map[string]bool{
+		"linux":   {"dispatch": false, "viawin": false, "both": true},
+		"darwin":  {"dispatch": false, "viawin": false, "both": true},
+		"windows": {"dispatch": true, "viawin": true, "both": true},
+	}
+	for goos, tasks := range want {
+		a := adapterFor(t, src)
+		a.goos = goos
+		got := reachOf(a)
+		for name, reaches := range tasks {
+			if got[name].reaches != reaches {
+				t.Errorf("%s on %s: ReachesDestructive = %v, want %v", name, goos, got[name].reaches, reaches)
+			}
+		}
+	}
+}
+
+// Spec 033 FR-011 (quickstart AB): the endpoint an agent task opens for its
+// own agent lists the same hints.
+func TestAgentEndpointHints(t *testing.T) {
+	src := "release: clean\n    @echo release\n[confirm]\nclean:\n    @echo clean\n" +
+		"mirror: fetch\n    @echo mirror\n[network]\nfetch:\n    @echo fetch\n" +
+		"[readonly]\nstatus:\n    @echo status\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	cs := serverSession(t, mcpserver.New(eng.newAgentAdapter(), mcpserver.Options{Version: "test"}))
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := map[string]*mcp.ToolAnnotations{}
+	for _, tl := range res.Tools {
+		tools[tl.Name] = tl.Annotations
+	}
+	if a := tools["release"]; a == nil || a.DestructiveHint == nil || !*a.DestructiveHint {
+		t.Errorf("release: annotations %+v, want destructiveHint true", a)
+	}
+	if a := tools["mirror"]; a == nil || a.OpenWorldHint == nil || !*a.OpenWorldHint {
+		t.Errorf("mirror: annotations %+v, want openWorldHint true", a)
+	}
+	if a := tools["status"]; a == nil || !a.ReadOnlyHint {
+		t.Errorf("status: annotations %+v, want readOnlyHint true", a)
+	}
+}

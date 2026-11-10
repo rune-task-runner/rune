@@ -56,6 +56,7 @@ AttrItem    = "private"
             | "linux" | "macos" | "windows" | "unix"
             | "no-cd"
             | "network"                  (* sets MCP openWorldHint *)
+            | "readonly"                 (* claims read-only: sets MCP readOnlyHint *)
             | "no-exit-message"          (* suppress the trailing error banner *)
             | "context"                  (* project-health hook injected into agent context *)
             | "working-directory" "(" StringLit ")"

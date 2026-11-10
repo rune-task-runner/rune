@@ -78,6 +78,33 @@ not declare is refused the same way:
 `unknown argument "targte" for task "build" (did you mean "target"?)`. A `null` or object
 value for a parameter is rejected too, since a task has no way to receive one.
 
+### Tool hints
+
+Each tool carries three MCP hints that tell a client what its task claims:
+
+| Hint | Value | True when |
+|---|---|---|
+| `readOnlyHint` | `true`, or left out | The task has `[readonly]` |
+| `destructiveHint` | `true` or `false`, always present | The task, or anything it can run, has `[confirm]` |
+| `openWorldHint` | `true` or `false`, always present | The task, or anything it can run, has `[network]` |
+
+What a task can run is its dependencies, its `&&` and `||` hooks, and everything those run in
+turn, including private tasks and tasks in imported modules. A failure hook's own `||` hooks
+do not count, because failure hooks do not chain. A task restricted to another OS does not
+count on this host, because a run skips it.
+
+- Hints are advisory. They never change what Rune runs or refuses.
+- `[readonly]` is the author's claim. Rune does not read the body, so a `[readonly]` task
+  whose body writes still claims to be read-only.
+- A task without `[readonly]` makes no read-only claim, so a client may ask before running it.
+- A `false` hint means only that nothing was declared.
+- `RUNE2018` rejects a false `[readonly]` claim: a `[readonly]` task cannot use `[confirm]`,
+  and every task it runs must be `[readonly]` too.
+- A tool can advertise `destructiveHint: true` without being refused. Only a `[confirm]` task
+  itself is refused, so `--allow-destructive` names that task, not a task that reaches it.
+- `[readonly]` on an `agent` task covers what the task runs, not the tools its agent picks at
+  run time.
+
 ## Typed tool schemas
 
 Inline [parameter type annotations](runefile.md#typed-parameters) become a
@@ -187,7 +214,8 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   never covers any other task, including a destructive dependency of the granted task.
 - **There is no blanket switch.** No option allows all destructive tasks, and
   `rune serve` and `rune mcp` do not accept `--yes`.
-- **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint`.
+- **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint` on the task and on
+  every task that can reach it.
 - **Secrets come from the environment only.** API keys and secrets are read from the
   environment (or the agent CLI's own session) — **never** from the Runefile, and they are
   never included in any tool description, schema, or log.
@@ -200,7 +228,8 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   vendor is hard-coded.
 
 ```rune
-# Safe: read-only, exposed to agents by default.
+# Claims to be read-only, so a client may run it without asking.
+[readonly]
 status:
     @git status --short
 

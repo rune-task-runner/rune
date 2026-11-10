@@ -27,8 +27,9 @@ by default (see [docs/mcp.md](docs/mcp.md)):
 - **Secrets come from the environment only.** API keys and secrets are read from the
   environment (or the agent CLI's own session) — never from a Runefile, and never included
   in any MCP tool description, schema, or log.
-- **Agent access is read-only by default.** Destructive tasks must be opted into explicitly;
-  `[confirm]` tasks carry the MCP `DestructiveHint`.
+- **Destructive tasks are refused by default.** The operator allows them one by one, a task
+  that can reach a `[confirm]` task carries the MCP `DestructiveHint`, and only `[readonly]`
+  tasks claim to be read-only.
 - **Remote MCP endpoints are opt-in**, intended to be localhost-bound, and token-gated.
 - **The container image runs as non-root** and contains only the static binary (no shell or
   package manager), minimizing attack surface.

@@ -37,6 +37,7 @@ const (
 	CodeInvalidAnnotation   = "RUNE2015" // param-doc names an unknown parameter / duplicate param-doc / duplicate returns
 	CodeKindShadowsTask     = "RUNE2016" // warning: annotated kind name is also a task name (possible legacy re-parse)
 	CodeUnquotedParam       = "RUNE2017" // warning: string or path parameter interpolated unquoted into a shell body (spec 030)
+	CodeInvalidReadonly     = "RUNE2018" // [readonly] with [confirm], or running a task without [readonly] (spec 033)
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

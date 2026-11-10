@@ -122,3 +122,23 @@ func TestServiceReportsUnquotedParam(t *testing.T) {
 		t.Errorf("the run path reported RUNE2017: %+v", d)
 	}
 }
+
+// Spec 033 FR-009: RUNE2018 in an imported file reaches the editor as an
+// error at that file.
+func TestServiceReportsInvalidReadonly(t *testing.T) {
+	dir := t.TempDir()
+	common := writeTemp(t, dir, "common.rune", "# Reports.\n[readonly]\nreport: build\n    @echo report\n\n# Builds.\nbuild:\n    @echo build\n")
+	path := writeTemp(t, dir, "Runefile", "import \"common.rune\"\n\n# Greets.\ngreet:\n    @echo hi\n")
+
+	snap, err := NewService(DiskSourceStore{}).Analyze(context.Background(), AnalyzeRequest{URI: path, Version: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := firstCode(snap.Diagnostics, diag.CodeInvalidReadonly)
+	if d == nil {
+		t.Fatalf("no RUNE2018 in %v", snap.Diagnostics)
+	}
+	if d.Severity != diag.Error || d.Span.File != common {
+		t.Errorf("RUNE2018 severity %v at %q, want error at %q", d.Severity, d.Span.File, common)
+	}
+}

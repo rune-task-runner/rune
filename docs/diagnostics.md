@@ -68,6 +68,7 @@ filtering and CI.
 | `RUNE2015` | Invalid annotation attribute (`[param-doc]` names an unknown parameter, duplicate `[param-doc]` for one parameter, or more than one `[returns]` on a task) |
 | `RUNE2016` | Annotated kind name shadows a task name — **warning**: an unspaced legacy header may have re-parsed as a type annotation; write `name: task` for a dependency |
 | `RUNE2017` | A string or path parameter reaches a shell command unquoted: **warning**, never gates execution or exit code. Write `{{quote(p)}}` (or `{{quote_each(p)}}` for a variadic) outside any shell quotes, or declare `p:raw` when word splitting is intended |
+| `RUNE2018` | Invalid `[readonly]`: the task also uses `[confirm]`, or runs a dependency or hook that is not `[readonly]` |
 
 ### Project (RUNE3xxx) — errors
 

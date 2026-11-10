@@ -352,6 +352,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [linux]  [macos]  [windows]  [unix]   # restrict to an OS (see below)
 [no-cd]                         # don't change into the Runefile's directory
 [network]                       # marks the task as network-using (MCP openWorldHint)
+[readonly]                      # claims the task changes nothing (MCP readOnlyHint)
 [no-exit-message]               # suppress the trailing error banner on failure
 [context]                       # project-health hook: output is injected into agent context
 [working-directory("./sub")]    # run the body from a specific directory
@@ -368,7 +369,15 @@ answer. When stdin is a pipe or a file (a script, a CI job, or an AI agent with 
 the task is declined without reading stdin and the run fails with a message naming
 `--yes`, the deliberate way to approve `[confirm]` tasks unattended. Over MCP,
 `[confirm]` tasks are refused unless the operator names them with `--allow-destructive`; see
-[Using Rune with AI Agents](mcp.md#security-model-secure-by-default).
+[Using Rune with AI Agents](mcp.md#security-model-secure-by-default). A task that runs a
+`[confirm]` or `[network]` task through a dependency or hook advertises the same MCP hint,
+but only the `[confirm]` task itself is refused.
+
+`[readonly]` is the author's claim that a task changes nothing, and Rune does not check the
+body. It changes nothing on the command line: the task runs and lists as it would without
+it. Over MCP it sets the tool's `readOnlyHint`, and a task without it makes no read-only
+claim. A `[readonly]` task cannot use `[confirm]`, and every task it runs as a dependency
+or hook must be `[readonly]` too (`RUNE2018`). See [tool hints](mcp.md#tool-hints).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it
 when an agent session starts and injects its output into the agent's context — see

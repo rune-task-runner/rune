@@ -46,11 +46,22 @@ type ParamInfo struct {
 // Params lists the only argument names a call may use: a call naming any other
 // is refused before the engine runs (spec 032).
 type TaskInfo struct {
-	Name        string // display name (namespaced mod::task becomes mod__task as a tool)
-	Doc         string
-	Params      []ParamInfo
-	Destructive bool // has [confirm]/destructive => DestructiveHint
-	Network     bool // has [network] => OpenWorldHint
+	Name   string // display name (namespaced mod::task becomes mod__task as a tool)
+	Doc    string
+	Params []ParamInfo
+	// Destructive marks the task itself destructive. A call is refused unless
+	// the task is granted, and the tool advertises DestructiveHint.
+	Destructive bool
+	// ReachesDestructive says a run of this task can reach a destructive task
+	// through its dependencies or hooks. The tool advertises DestructiveHint.
+	// Authorization ignores it: the engine decides when the run reaches that task.
+	ReachesDestructive bool
+	// Network says the task, or anything a run of it can reach, uses the
+	// network. The tool advertises OpenWorldHint.
+	Network bool
+	// ReadOnly says the task declares itself read-only. The tool advertises
+	// ReadOnlyHint. A descriptor that leaves it false makes no read-only claim.
+	ReadOnly bool
 	// Returns is the task's [returns] outcome description (spec 023 US3),
 	// composed into the tool description as a "Returns:" trailer so agents can
 	// verify results against it. Like Doc and Instructions, it must already be
@@ -194,7 +205,7 @@ func toolName(name string) string {
 
 // toolFor derives an mcp.Tool from a task's metadata.
 func toolFor(t TaskInfo) *mcp.Tool {
-	destructive := t.Destructive
+	destructive := t.Destructive || t.ReachesDestructive
 	network := t.Network
 	desc := t.Doc
 	if t.Returns != "" {
@@ -211,7 +222,7 @@ func toolFor(t TaskInfo) *mcp.Tool {
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
 			OpenWorldHint:   &network,
-			ReadOnlyHint:    !destructive,
+			ReadOnlyHint:    t.ReadOnly,
 		},
 	}
 }
