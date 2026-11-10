@@ -1,13 +1,15 @@
 # An agent-driven workflow. The `summarize` task body is a natural-language
 # instruction run by an installed agent CLI (the agent executor). Tasks are also
-# exposed to agents over MCP; access is read-only by default and destructive
-# tasks are gated. Secrets always come from the environment, never this file.
+# exposed to agents over MCP; destructive tasks are refused unless the operator
+# allows them, and only [readonly] tasks claim to be read-only. Secrets always
+# come from the environment, never this file.
 
 # Drive an AI agent with a natural-language instruction (needs an agent CLI).
 summarize (agent):
     Summarize the most recent git changes in one short paragraph.
 
-# A safe, read-only task an agent may call as a tool.
+# A read-only task an agent may call as a tool.
+[readonly]
 [doc("List the project's documented tasks")]
 list-tasks:
     @echo "rune --list"

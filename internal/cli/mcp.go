@@ -52,11 +52,14 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 		if !visibleOn(t, a.goos) || t.Attr(ast.AttrContext) != nil {
 			continue
 		}
+		reachesDestructive, reachesNetwork := a.reach(t)
 		info := mcpserver.TaskInfo{
-			Name:        t.Name,
-			Doc:         t.Doc,
-			Destructive: t.Attr(ast.AttrConfirm) != nil,
-			Network:     t.Attr(ast.AttrNetwork) != nil,
+			Name:               t.Name,
+			Doc:                t.Doc,
+			Destructive:        t.Attr(ast.AttrConfirm) != nil,
+			ReachesDestructive: reachesDestructive,
+			Network:            t.Attr(ast.AttrNetwork) != nil || reachesNetwork,
+			ReadOnly:           t.Attr(ast.AttrReadonly) != nil,
 			// Static Runefile text, but capped like every agent-facing string
 			// so an absurd [returns] cannot bloat the tool list (FR-011).
 			Returns: capAgentText(t.Returns()),
@@ -81,6 +84,60 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 		out = append(out, info)
 	}
 	return out
+}
+
+// reach reports whether any task a run of t can reach through its
+// dependencies and hooks has [confirm] or [network] (spec 033 FR-005). t's own
+// attributes are not counted.
+func (a *mcpAdapter) reach(t *ast.Task) (destructive, network bool) {
+	type step struct {
+		name     string
+		failHook bool
+	}
+	var queue []step
+	queueEdges := func(t *ast.Task, runs, failHooks bool) {
+		if runs {
+			for _, e := range t.Deps {
+				queue = append(queue, step{e.Name, false})
+			}
+			for _, e := range t.PostHooks {
+				queue = append(queue, step{e.Name, false})
+			}
+		}
+		if failHooks {
+			for _, e := range t.FailHooks {
+				queue = append(queue, step{e.Name, true})
+			}
+		}
+	}
+	// A task run as a failure hook runs its dependencies and && hooks but not
+	// its own || hooks: the scheduler does not chain post-mortems. hookOnly
+	// marks such a task, so a later ordinary edge can still add them.
+	visited := map[string]bool{t.Name: true}
+	hookOnly := map[string]bool{}
+	queueEdges(t, true, true)
+	for len(queue) > 0 {
+		s := queue[0]
+		queue = queue[1:]
+		next, ok := a.tasks[s.name]
+		// A run skips a task unavailable on this host, and so never reaches
+		// what that task would run (FR-006).
+		if !ok || !next.AvailableOn(a.goos) {
+			continue
+		}
+		switch {
+		case !visited[next.Name]:
+			visited[next.Name] = true
+			hookOnly[next.Name] = s.failHook
+			destructive = destructive || next.Attr(ast.AttrConfirm) != nil
+			network = network || next.Attr(ast.AttrNetwork) != nil
+			queueEdges(next, true, !s.failHook)
+		case hookOnly[next.Name] && !s.failHook:
+			hookOnly[next.Name] = false
+			queueEdges(next, false, true)
+		}
+	}
+	return destructive, network
 }
 
 var _ mcpserver.ListEngine = (*mcpAdapter)(nil)

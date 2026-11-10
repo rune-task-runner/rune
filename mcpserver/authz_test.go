@@ -95,3 +95,20 @@ func TestDestructiveCallRefusedAtRuntime(t *testing.T) {
 		t.Error("engine must NOT run a refused destructive task")
 	}
 }
+
+// Spec 033 FR-010, research R4: a task that only reaches a destructive one is
+// not refused. The engine decides when a run gets to that task.
+func TestRefusalIgnoresReachesDestructive(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{{Name: "release", ReachesDestructive: true}}}
+	srv := New(eng, Options{AllowDestructiveFlag: grantFlag})
+	if got := srv.refusal("release"); got != "" {
+		t.Errorf("refusal(release) = %q, want none", got)
+	}
+	res, err := connect(t, srv).CallTool(context.Background(), &mcp.CallToolParams{Name: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eng.lastCall != "release" {
+		t.Errorf("the call did not reach the engine: %q", contentText(res))
+	}
+}

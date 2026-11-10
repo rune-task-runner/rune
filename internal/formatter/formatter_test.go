@@ -67,3 +67,23 @@ func TestFmtIdempotent(t *testing.T) {
 		t.Errorf("formatting is not idempotent:\nonce:\n%s\ntwice:\n%s", once, twice)
 	}
 }
+
+// Spec 033 FR-015: [readonly] formats on its own line beside [network], and
+// formatting the output again changes nothing.
+func TestFmtReadonly(t *testing.T) {
+	f, diags := parser.Parse("Runefile", "[readonly, network]\nt:\n    @echo hi\n")
+	if diags.HasErrors() {
+		t.Fatalf("parse: %v", diags)
+	}
+	once := Format(f)
+	if !strings.Contains(once, "[readonly]\n[network]\nt:\n") {
+		t.Errorf("want [readonly] and [network] on separate lines, got:\n%s", once)
+	}
+	f2, diags2 := parser.Parse("Runefile", once)
+	if diags2.HasErrors() {
+		t.Fatalf("re-parse of formatted output failed: %v", diags2)
+	}
+	if twice := Format(f2); twice != once {
+		t.Errorf("formatting is not idempotent:\nonce:\n%s\ntwice:\n%s", once, twice)
+	}
+}

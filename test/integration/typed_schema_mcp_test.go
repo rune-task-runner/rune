@@ -23,11 +23,11 @@ test +packages:path:
     @echo "testing {{packages}}"
 `
 
-// mcpToolsList drives one stdio MCP session through initialize + tools/list
-// and returns the raw JSON reply carrying id 2.
-func mcpToolsList(t *testing.T, dir string) string {
+// mcpToolsList drives one stdio MCP session, started with flags after mcp,
+// through initialize + tools/list and returns the raw JSON reply carrying id 2.
+func mcpToolsList(t *testing.T, dir string, flags ...string) string {
 	t.Helper()
-	cmd := exec.Command(runeBin, "mcp")
+	cmd := exec.Command(runeBin, append([]string{"mcp"}, flags...)...)
 	cmd.Dir = dir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

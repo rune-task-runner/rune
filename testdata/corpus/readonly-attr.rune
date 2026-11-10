@@ -1,0 +1,12 @@
+# The readonly attribute (spec 033): the author's claim that a task changes nothing.
+[readonly]
+status:
+    @echo ok
+
+[readonly, network]
+health:
+    @curl -fsS https://example.com/health
+
+[readonly]
+report: status && health
+    @echo report

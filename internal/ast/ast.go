@@ -356,6 +356,7 @@ const (
 	AttrContext          = "context"         // project-health hook injected into agent context (spec 021)
 	AttrParamDoc         = "param-doc"       // per-parameter description surfaced in agent tool schemas (spec 023)
 	AttrReturns          = "returns"         // task outcome description surfaced to agents and listings (spec 023)
+	AttrReadonly         = "readonly"        // claims read-only: sets MCP readOnlyHint
 )
 
 // KnownAttributes is the canonical accepted attribute set, in documentation
@@ -367,7 +368,7 @@ var KnownAttributes = []string{
 	AttrLinux, AttrMacos, AttrWindows, AttrUnix,
 	AttrNoCD, AttrWorkingDirectory, AttrEnv, AttrDoc, AttrScript,
 	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
-	AttrParamDoc, AttrReturns,
+	AttrParamDoc, AttrReturns, AttrReadonly,
 }
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a

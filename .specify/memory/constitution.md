@@ -1,13 +1,15 @@
 <!--
 Sync Impact Report
-- Version: 1.1.0 → 1.2.0
-- Rationale: MINOR amendment. Principle III gains a clause letting the built-in
-  function library grow through the normal spec process under stated
-  conditions: no new syntax, total and free of side effects, known to the
-  analyzer and the language registry, shipped with documentation and fixtures.
-  Prompted by spec 030 (safe parameter quoting), whose quote_each() built-in
-  grows the vocabulary without changing the grammar.
-- Modified principles: III Minimal, Total DSL (built-in library clause added).
+- Version: 1.2.0 → 1.3.0
+- Rationale: MINOR amendment. Principle VII no longer says the agent surface is
+  read-only by default, which was never true of a task without [confirm]: such
+  a task can run and write through the agent surface. Destructive tasks are
+  refused by default, and a task makes no read-only claim unless its author
+  declares one with the new [readonly] attribute, which maps to the MCP
+  read-only hint beside [confirm] and the destructive hint. Prompted by spec 033
+  (truthful MCP tool hints, issue #37). Approved by the maintainer on 2026-11-10.
+- Modified principles: VII AI-Native, Secure by Default (read-only clause
+  replaced, [readonly] mapping added).
 - Modified sections: none.
 - Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
@@ -72,9 +74,11 @@ grammar drift. Documentation is a tested fixture: examples are run and links are
 checked. CI runs on Linux, macOS, and Windows.
 
 ### VII. AI-Native, Secure by Default
-MCP (Model Context Protocol) is first-class: tasks are exposed as tools. The agent
-surface is read-only by default; destructiveness is author-declared via the
-`[confirm]` attribute, which maps to the MCP destructive hint. Secrets come only
+MCP (Model Context Protocol) is first-class: tasks are exposed as tools. Destructive
+tasks are refused on the agent surface by default, and a task makes no read-only
+claim unless its author declares one. Destructiveness is author-declared via the
+`[confirm]` attribute and read-only via `[readonly]`, which map to the MCP
+destructive and read-only hints. Secrets come only
 from the environment or the agent CLI's own session — never from a Runefile, and
 never surfaced in task descriptions, schemas, or listings. Any remote MCP endpoint
 is opt-in, localhost-bound, and token-gated.
@@ -134,4 +138,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.2.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-04
+**Version**: 1.3.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-10

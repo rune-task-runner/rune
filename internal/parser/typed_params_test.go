@@ -210,3 +210,30 @@ func TestParseRawKind(t *testing.T) {
 		}
 	}
 }
+
+// Spec 033 FR-001: [readonly] takes no arguments and combines with other
+// attributes the way [network] does.
+func TestParseReadonly(t *testing.T) {
+	f := mustParse(t, "[readonly]\nt:\n    @echo hi\n")
+	if f.Tasks[0].Attr(ast.AttrReadonly) == nil {
+		t.Errorf("[readonly] not recorded: %+v", f.Tasks[0].Attributes)
+	}
+	f = mustParse(t, "[readonly, network]\nt:\n    @echo hi\n")
+	if f.Tasks[0].Attr(ast.AttrReadonly) == nil || f.Tasks[0].Attr(ast.AttrNetwork) == nil {
+		t.Errorf("[readonly, network] attributes = %+v", f.Tasks[0].Attributes)
+	}
+	mustParse(t, "[readonly]\n[readonly]\nt:\n    @echo hi\n")
+
+	for _, name := range []string{ast.AttrNetwork, ast.AttrReadonly} {
+		_, diags := Parse("Runefile", "["+name+"(\"x\")]\nt:\n    @echo hi\n")
+		found := false
+		for i := range diags {
+			if diags[i].Code == diag.CodeUnexpectedToken {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("[%s(\"x\")]: want %s, got: %v", name, diag.CodeUnexpectedToken, diags)
+		}
+	}
+}

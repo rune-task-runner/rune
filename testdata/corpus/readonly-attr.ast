@@ -1,0 +1,17 @@
+File
+  Task status
+    doc: "The readonly attribute (spec 033): the author's claim that a task changes nothing."
+    Attr readonly
+    Body
+      @"echo ok"
+  Task health
+    Attr readonly
+    Attr network
+    Body
+      @"curl -fsS https://example.com/health"
+  Task report
+    Attr readonly
+    Deps: status
+    PostHooks: health
+    Body
+      @"echo report"

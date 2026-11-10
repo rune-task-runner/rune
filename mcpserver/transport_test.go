@@ -216,3 +216,39 @@ func TestHTTPToolsListMatchesStdio(t *testing.T) {
 		}
 	}
 }
+
+// Spec 033 FR-011 (quickstart AA): hints over HTTP are the ones a direct
+// client sees, for each descriptor field that sets one.
+func TestHTTPToolsListCarriesHints(t *testing.T) {
+	tasks := []TaskInfo{
+		{Name: "status", ReadOnly: true},
+		{Name: "release", ReachesDestructive: true},
+		{Name: "mirror", Network: true},
+	}
+	want := map[string]hintSet{
+		"status":  {readOnly: true},
+		"release": {destructive: true},
+		"mirror":  {openWorld: true},
+	}
+	addr, stop, err := New(&syncEngine{tasks: tasks}, Options{}).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	overHTTP, err := httpSession(t, addr, "secret").ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	direct := listedTools(t, &syncEngine{tasks: tasks}, Options{})
+	if !reflect.DeepEqual(overHTTP.Tools, direct) {
+		t.Errorf("tools differ:\nHTTP:   %+v\ndirect: %+v", overHTTP.Tools, direct)
+	}
+	if len(overHTTP.Tools) != len(want) {
+		t.Fatalf("listed %d tools, want %d", len(overHTTP.Tools), len(want))
+	}
+	for _, tl := range overHTTP.Tools {
+		if got := hintsOf(t, tl); got != want[tl.Name] {
+			t.Errorf("%s: hints %+v, want %+v", tl.Name, got, want[tl.Name])
+		}
+	}
+}

@@ -25,6 +25,7 @@ func Analyze(f *ast.File) diag.List {
 	a.collect()
 	a.checkConstraints()
 	a.checkContext()
+	a.checkReadonly()
 	a.checkExpressions()
 	a.checkDependencies()
 	a.checkCycles()
@@ -259,6 +260,36 @@ func (a *analyzer) checkContextClosure(hook *ast.Task) {
 			a.diags.Codef(diag.CodeInvalidAttribute, dep.Sp, "dependency %q of [context] task %q cannot use the agent executor", t.Name, hook.Name)
 		}
 		queue = append(queue, t.Edges()...)
+	}
+}
+
+// checkReadonly rejects a [readonly] claim that the task's own [confirm] or a
+// direct reference contradicts (spec 033, RUNE2018). It does not walk: each
+// [readonly] task answers for its own references, so a broken chain gives one
+// error, at the reference that needs the fix. OS attributes are ignored, so
+// the result is the same on every host.
+func (a *analyzer) checkReadonly() {
+	for _, t := range a.file.Tasks {
+		attr := t.Attr(ast.AttrReadonly)
+		if attr == nil {
+			continue
+		}
+		if t.Attr(ast.AttrConfirm) != nil {
+			a.diags.Codef(diag.CodeInvalidReadonly, attr.Span(), "[readonly] task %q cannot use [confirm]: remove one of them", t.Name)
+		}
+		for _, e := range t.Edges() {
+			target, ok := a.tasks[e.Name]
+			// An unknown target is checkDependencies' RUNE2001. A target with
+			// both attributes gets its own error above.
+			if !ok || target.Attr(ast.AttrReadonly) != nil {
+				continue
+			}
+			if target.Attr(ast.AttrConfirm) != nil {
+				a.diags.Codef(diag.CodeInvalidReadonly, e.Sp, "[readonly] task %q runs %q, which uses [confirm]: remove [readonly] from %q", t.Name, target.Name, t.Name)
+				continue
+			}
+			a.diags.Codef(diag.CodeInvalidReadonly, e.Sp, "[readonly] task %q runs %q, which is not [readonly]: add [readonly] to %q or remove it from %q", t.Name, target.Name, target.Name, t.Name)
+		}
 	}
 }
 

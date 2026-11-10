@@ -386,3 +386,109 @@ func TestListToolsDisallowOtherNames(t *testing.T) {
 		}
 	}
 }
+
+// hintSet is a tool's three hints as plain booleans.
+type hintSet struct{ readOnly, destructive, openWorld bool }
+
+// hintsOf reads a tool's hints. The server sets both pointer hints on every
+// tool, so a nil one fails the test (spec 033 R5).
+func hintsOf(t *testing.T, tool *mcp.Tool) hintSet {
+	t.Helper()
+	a := tool.Annotations
+	if a == nil || a.DestructiveHint == nil || a.OpenWorldHint == nil {
+		t.Fatalf("%s: annotations %+v, want both pointer hints set", tool.Name, a)
+	}
+	return hintSet{readOnly: a.ReadOnlyHint, destructive: *a.DestructiveHint, openWorld: *a.OpenWorldHint}
+}
+
+var readOnlyCases = []struct {
+	info TaskInfo
+	want hintSet
+}{
+	{TaskInfo{Name: "deploy"}, hintSet{}},
+	{TaskInfo{Name: "status", ReadOnly: true}, hintSet{readOnly: true}},
+	{TaskInfo{Name: "clean", Destructive: true}, hintSet{destructive: true}},
+	{TaskInfo{Name: "fetch", Network: true}, hintSet{openWorld: true}},
+}
+
+// Spec 033 FR-002, FR-012: only a descriptor that declares ReadOnly claims
+// it, and one that sets nothing gets hints from its own flags alone.
+func TestToolHintsReadOnly(t *testing.T) {
+	for _, c := range readOnlyCases {
+		if got := hintsOf(t, toolFor(c.info)); got != c.want {
+			t.Errorf("%s: hints %+v, want %+v", c.info.Name, got, c.want)
+		}
+	}
+}
+
+// Spec 033 FR-012: a client reads the same hints off the wire.
+func TestListToolsReadOnlyThroughClient(t *testing.T) {
+	eng := &fakeEngine{}
+	want := map[string]hintSet{}
+	for _, c := range readOnlyCases {
+		eng.tasks = append(eng.tasks, c.info)
+		want[c.info.Name] = c.want
+	}
+	res, err := connect(t, New(eng, Options{})).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != len(want) {
+		t.Fatalf("listed %d tools, want %d", len(res.Tools), len(want))
+	}
+	for _, tool := range res.Tools {
+		if got := hintsOf(t, tool); got != want[tool.Name] {
+			t.Errorf("%s: hints %+v, want %+v", tool.Name, got, want[tool.Name])
+		}
+	}
+}
+
+// listedTools lists engine's tools through a client of a server built with opts.
+func listedTools(t *testing.T, eng Engine, opts Options) []*mcp.Tool {
+	t.Helper()
+	res, err := connect(t, New(eng, opts)).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res.Tools
+}
+
+// Spec 033 FR-003, FR-012: a descriptor that reaches a destructive task
+// advertises the destructive hint, whether or not it is destructive itself.
+func TestToolHintsReachesDestructive(t *testing.T) {
+	for _, info := range []TaskInfo{
+		{Name: "release", ReachesDestructive: true},
+		{Name: "clean", Destructive: true, ReachesDestructive: true},
+	} {
+		if got, want := hintsOf(t, toolFor(info)), (hintSet{destructive: true}); got != want {
+			t.Errorf("%s: hints %+v, want %+v", info.Name, got, want)
+		}
+	}
+}
+
+// Spec 033 FR-010: a grant changes no hint, also for a task that only reaches
+// a destructive one.
+func TestListToolsSameWithGrantWhenReaching(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{
+		{Name: "release", ReachesDestructive: true},
+		{Name: "clean", Destructive: true},
+	}}
+	without := listedTools(t, eng, Options{})
+	with := listedTools(t, eng, Options{AllowDestructive: []string{"clean"}})
+	if !reflect.DeepEqual(without, with) {
+		t.Errorf("tools/list changed with a grant:\nwithout: %+v\nwith:    %+v", without, with)
+	}
+}
+
+// Spec 033 FR-010: an allowlist narrows calls, not hints.
+func TestListToolsSameWithAllowList(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{
+		{Name: "release", ReachesDestructive: true},
+		{Name: "status", ReadOnly: true},
+	}}
+	without := listedTools(t, eng, Options{})
+	with := listedTools(t, eng, Options{AllowList: []string{"status"}})
+	if !reflect.DeepEqual(without, with) {
+		t.Errorf("tools/list changed with an allowlist:\nwithout: %+v\nwith:    %+v", without, with)
+	}
+}

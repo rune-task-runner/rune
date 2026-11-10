@@ -19,7 +19,7 @@
       "name": "keyword.control.rune"
     },
     "attributes": {
-      "match": "\\[(private|confirm|group|parallel|cache|env|working-directory|network|no-cd|no-exit-message|linux|macos|windows|unix)\\b",
+      "match": "\\[(private|confirm|group|parallel|cache|env|working-directory|network|readonly|no-cd|no-exit-message|linux|macos|windows|unix)\\b",
       "name": "entity.other.attribute-name.rune"
     },
     "strings": {

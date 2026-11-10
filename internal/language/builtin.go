@@ -83,13 +83,13 @@ var builtinSettings = []Builtin{
 // builtinAttributes are the valid task attributes (mirrors ast Attr* constants).
 var builtinAttributes = []Builtin{
 	{Name: "private", Kind: BuiltinAttribute, Signature: "[private]", Documentation: "Hide the task from listings and disallow direct invocation."},
-	{Name: "confirm", Kind: BuiltinAttribute, Signature: "[confirm(\"Prompt?\")]", Documentation: "Ask for confirmation at a terminal before running; --yes approves non-interactively (maps to the MCP destructive hint)."},
+	{Name: "confirm", Kind: BuiltinAttribute, Signature: "[confirm(\"Prompt?\")]", Documentation: "Ask for confirmation at a terminal before running; --yes approves non-interactively (maps to the MCP destructive hint, on this task and any task that runs it)."},
 	{Name: "group", Kind: BuiltinAttribute, Signature: "[group(\"name\")]", Documentation: "Group the task under a heading in listings."},
 	{Name: "parallel", Kind: BuiltinAttribute, Signature: "[parallel]", Documentation: "Run this task's dependencies concurrently; the body starts only after all succeed."},
 	{Name: "cache", Kind: BuiltinAttribute, Signature: "[cache(inputs = [], outputs = [])]", Documentation: "Skip the task when inputs and outputs are unchanged since the last run."},
 	{Name: "env", Kind: BuiltinAttribute, Signature: "[env(\"KEY\", \"value\")]", Documentation: "Set an environment variable for the task."},
 	{Name: "working-directory", Kind: BuiltinAttribute, Signature: "[working-directory(\"./path\")]", Documentation: "Run the task in the given directory, relative to the Runefile."},
-	{Name: "network", Kind: BuiltinAttribute, Signature: "[network]", Documentation: "Declare the task uses the network (sets the MCP openWorldHint)."},
+	{Name: "network", Kind: BuiltinAttribute, Signature: "[network]", Documentation: "Declare the task uses the network (sets the MCP openWorldHint, on this task and any task that runs it)."},
 	{Name: "no-cd", Kind: BuiltinAttribute, Signature: "[no-cd]", Documentation: "Run the task in the invocation directory instead of the working directory."},
 	{Name: "no-exit-message", Kind: BuiltinAttribute, Signature: "[no-exit-message]", Documentation: "Suppress the trailing error banner on failure (exit code is unaffected)."},
 	{Name: "linux", Kind: BuiltinAttribute, Signature: "[linux]", Documentation: "Only available on Linux."},
@@ -101,6 +101,7 @@ var builtinAttributes = []Builtin{
 	{Name: "context", Kind: BuiltinAttribute, Signature: "[context]", Documentation: "Project-health hook: output is injected into agent context at session start."},
 	{Name: "param-doc", Kind: BuiltinAttribute, Signature: "[param-doc(\"name\", \"description\")]", Documentation: "Describe one parameter; surfaced to agents in the tool schema (spec 023)."},
 	{Name: "returns", Kind: BuiltinAttribute, Signature: "[returns(\"expected output\")]", Documentation: "Describe the task's successful output; surfaced to agents and listings (spec 023)."},
+	{Name: "readonly", Kind: BuiltinAttribute, Signature: "[readonly]", Documentation: "Claim the task changes nothing (sets the MCP readOnlyHint). Rune does not check the body."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

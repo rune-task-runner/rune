@@ -35,8 +35,8 @@ between them. Everything else builds on that. For the complete syntax in one pla
 
 ## 5. Sharing tasks with AI agents
 
-Rune is AI-native: tasks are first-class MCP tools, read-only by default and gated when
-destructive. See the **[AI agents (MCP) reference](../mcp.md)** and the
+Rune is AI-native: tasks are first-class MCP tools, and destructive tasks are refused until
+you allow them. See the **[AI agents (MCP) reference](../mcp.md)** and the
 **[MCP walkthrough](../use-cases/mcp-agents.md)**.
 
 ## 6. Putting it together
