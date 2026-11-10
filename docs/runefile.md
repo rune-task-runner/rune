@@ -371,7 +371,8 @@ the task is declined without reading stdin and the run fails with a message nami
 `[confirm]` tasks are refused unless the operator names them with `--allow-destructive`; see
 [Using Rune with AI Agents](mcp.md#security-model-secure-by-default). A task that runs a
 `[confirm]` or `[network]` task through a dependency or hook advertises the same MCP hint,
-but only the `[confirm]` task itself is refused.
+and over MCP a call that can run an ungranted `[confirm]` task is refused before anything
+runs.
 
 `[readonly]` is the author's claim that a task changes nothing, and Rune does not check the
 body. It changes nothing on the command line: the task runs and lists as it would without

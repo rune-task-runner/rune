@@ -163,8 +163,8 @@ func TestDestructiveMCP_UngrantedDirectCallRefused(t *testing.T) {
 	}
 }
 
-// US2 scenarios 3 and 4: a granted dependency runs; an ungranted one stops
-// the run before it or its dependent does anything.
+// US2 scenarios 3 and 4: a granted dependency runs; an ungranted one refuses
+// the call before anything runs, naming the task to grant (spec 034).
 func TestDestructiveMCP_DependencyFollowsGrant(t *testing.T) {
 	dir := writeRunefile(t, destructiveRunefile)
 	text, isError, _ := toolCall(t, dir, []string{"--allow-destructive", "clean"}, "release")
@@ -174,8 +174,9 @@ func TestDestructiveMCP_DependencyFollowsGrant(t *testing.T) {
 
 	dir = writeRunefile(t, destructiveRunefile)
 	text, isError, _ = toolCall(t, dir, nil, "release")
-	if !isError || !strings.Contains(text, "[exit 1]") {
-		t.Errorf("ungranted dependency: isError=%v text=%q, want isError and [exit 1]", isError, text)
+	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	if !isError || text != want {
+		t.Errorf("ungranted dependency: isError=%v text=%q, want %q", isError, text, want)
 	}
 	if exists(t, dir, "clean.done") || exists(t, dir, "release.done") {
 		t.Error("ungranted dependency: clean or release ran")

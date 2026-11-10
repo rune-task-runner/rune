@@ -239,10 +239,11 @@ func TestToolHintsMCP_GrantChangesNothing(t *testing.T) {
 	}
 }
 
-// Quickstart R, S, T (FR-010, SC-004): calls give the results they gave
-// before this change. The bare [exit 1] of a declined dependency is not
-// pinned: issue #38 will change it.
+// Quickstart R, S, T (FR-010, SC-004): hints change no call result. Since
+// spec 034, a call that can reach an ungranted [confirm] task is refused up
+// front, naming that task.
 func TestToolHintsMCP_CallsUnchanged(t *testing.T) {
+	const refusedRelease = `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
 	dir := writeRunefile(t, toolHintsRunefile)
 	text, isError, _ := toolCall(t, dir, nil, "clean")
 	if !isError || text != refusedText("clean") || exists(t, dir, "clean.done") {
@@ -251,8 +252,8 @@ func TestToolHintsMCP_CallsUnchanged(t *testing.T) {
 
 	dir = writeRunefile(t, toolHintsRunefile)
 	text, isError, _ = toolCall(t, dir, nil, "release")
-	if !isError || strings.Contains(text, "is destructive") {
-		t.Errorf("release without a grant: isError=%v text=%q, want an error without the destructive refusal", isError, text)
+	if !isError || text != refusedRelease {
+		t.Errorf("release without a grant: isError=%v text=%q, want %q", isError, text, refusedRelease)
 	}
 	if exists(t, dir, "clean.done") || exists(t, dir, "release.done") {
 		t.Error("release without a grant ran clean or itself")
@@ -264,12 +265,15 @@ func TestToolHintsMCP_CallsUnchanged(t *testing.T) {
 		t.Errorf("release with clean granted: isError=%v text=%q stderr=%q, want both markers", isError, text, stderr)
 	}
 
-	// Granting the task that reaches [confirm] does nothing: refusal reads the
-	// task's own [confirm], so the operator grants clean.
+	// Granting release permits nothing: a grant covers only its own task, and
+	// the refusal names clean, the task to grant.
 	dir = writeRunefile(t, toolHintsRunefile)
-	text, _, stderr = toolCall(t, dir, []string{"--allow-destructive", "release"}, "release")
+	text, isError, stderr = toolCall(t, dir, []string{"--allow-destructive", "release"}, "release")
 	if !strings.Contains(stderr, `task "release" is not destructive`) {
 		t.Errorf("--allow-destructive release: stderr %q, want the no-effect warning", stderr)
+	}
+	if !isError || text != refusedRelease {
+		t.Errorf("release with only release granted: isError=%v text=%q, want %q", isError, text, refusedRelease)
 	}
 	if exists(t, dir, "clean.done") || exists(t, dir, "release.done") {
 		t.Errorf("release with only release granted ran clean or itself: %q", text)

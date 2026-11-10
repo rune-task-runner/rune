@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -400,19 +401,28 @@ func TestAdapterReadOnlyFlag(t *testing.T) {
 
 // reach is one tool's destructive and network declarations as the adapter
 // reports them.
-type reach struct{ destructive, reaches, network bool }
+type reach struct {
+	destructive bool
+	reaches     []string
+	network     bool
+}
 
 func reachOf(a *mcpAdapter) map[string]reach {
 	got := map[string]reach{}
 	for _, ti := range a.Tasks() {
-		got[ti.Name] = reach{destructive: ti.Destructive, reaches: ti.ReachesDestructive, network: ti.Network}
+		got[ti.Name] = reach{destructive: ti.Destructive, reaches: ti.DestructiveReach, network: ti.Network}
 	}
 	return got
 }
 
+func (r reach) equal(o reach) bool {
+	return r.destructive == o.destructive && r.network == o.network && slices.Equal(r.reaches, o.reaches)
+}
+
 // Spec 033 FR-003 to FR-005, FR-014, SC-002: a task inherits the [confirm] and
 // [network] of everything its dependencies and hooks run, and nothing else.
-// Destructive stays the task's own [confirm], which authorization reads.
+// Destructive stays the task's own [confirm]. Spec 034 FR-005: the reached
+// [confirm] tasks are listed once each, in the order a run first reaches them.
 func TestAdapterReach(t *testing.T) {
 	const clean = "[confirm]\nclean:\n    @echo clean\n"
 	cases := []struct {
@@ -422,19 +432,19 @@ func TestAdapterReach(t *testing.T) {
 	}{
 		{
 			"dependency", "release: clean\n    @echo release\n" + clean,
-			map[string]reach{"release": {reaches: true}, "clean": {destructive: true}},
+			map[string]reach{"release": {reaches: []string{"clean"}}, "clean": {destructive: true}},
 		},
 		{
 			"post-hook", "post: && clean\n    @echo post\n" + clean,
-			map[string]reach{"post": {reaches: true}},
+			map[string]reach{"post": {reaches: []string{"clean"}}},
 		},
 		{
 			"failure hook", "bad: || clean\n    @exit 1\n" + clean,
-			map[string]reach{"bad": {reaches: true}},
+			map[string]reach{"bad": {reaches: []string{"clean"}}},
 		},
 		{
 			"three levels, confirm", "a: b\n    @echo a\nb: && c\n    @echo b\nc: || d\n    @echo c\n[confirm]\nd:\n    @echo d\n",
-			map[string]reach{"a": {reaches: true}, "b": {reaches: true}, "c": {reaches: true}, "d": {destructive: true}},
+			map[string]reach{"a": {reaches: []string{"d"}}, "b": {reaches: []string{"d"}}, "c": {reaches: []string{"d"}}, "d": {destructive: true}},
 		},
 		{
 			"three levels, network", "a: b\n    @echo a\nb: && c\n    @echo b\nc: || d\n    @echo c\n[network]\nd:\n    @echo d\n",
@@ -442,11 +452,11 @@ func TestAdapterReach(t *testing.T) {
 		},
 		{
 			"private target", "ship: _wipe\n    @echo ship\n[private]\n[confirm]\n_wipe:\n    @echo wipe\n",
-			map[string]reach{"ship": {reaches: true}},
+			map[string]reach{"ship": {reaches: []string{"_wipe"}}},
 		},
 		{
 			"diamond", "top: left right\n    @echo top\nleft: base\n    @echo left\nright: base\n    @echo right\n[confirm]\nbase:\n    @echo base\n",
-			map[string]reach{"top": {reaches: true}, "left": {reaches: true}, "right": {reaches: true}, "base": {destructive: true}},
+			map[string]reach{"top": {reaches: []string{"base"}}, "left": {reaches: []string{"base"}}, "right": {reaches: []string{"base"}}, "base": {destructive: true}},
 		},
 		{
 			"own confirm", clean,
@@ -463,7 +473,7 @@ func TestAdapterReach(t *testing.T) {
 		{
 			// A failure hook's own || hooks never run: post-mortems do not chain.
 			"failure hook of a failure hook, confirm", "bad: || cleanup\n    @exit 1\ncleanup: || wipe\n    @echo cleanup\n[confirm]\nwipe:\n    @echo wipe\n",
-			map[string]reach{"bad": {}, "cleanup": {reaches: true}},
+			map[string]reach{"bad": {}, "cleanup": {reaches: []string{"wipe"}}},
 		},
 		{
 			"failure hook of a failure hook, network", "bad: || cleanup\n    @exit 1\ncleanup: || probe\n    @echo cleanup\n[network]\nprobe:\n    @echo probe\n",
@@ -473,20 +483,40 @@ func TestAdapterReach(t *testing.T) {
 			// A failure hook still runs its dependencies and && hooks, and a
 			// dependency's own || hooks fire as usual.
 			"what a failure hook runs", "bad: || h\n    @exit 1\nh: d && p\n    @echo h\nd: || x\n    @echo d\n[network]\np:\n    @echo p\n[confirm]\nx:\n    @echo x\n",
-			map[string]reach{"bad": {reaches: true, network: true}},
+			map[string]reach{"bad": {reaches: []string{"x"}, network: true}},
 		},
 		{
 			// cleanup is queued first as top's failure hook, then reached as
 			// helper's dependency, where its || hooks do fire.
 			"failure hook also a dependency", "top: helper || cleanup\n    @exit 1\nhelper: cleanup\n    @echo helper\ncleanup: || wipe\n    @echo cleanup\n[confirm]\nwipe:\n    @echo wipe\n",
-			map[string]reach{"top": {reaches: true}},
+			map[string]reach{"top": {reaches: []string{"wipe"}}},
+		},
+		{
+			// A run reaches wipe, through stage, before clean.
+			"depth-first order", "ordered: stage clean\n    @echo ordered\nstage: wipe\n    @echo stage\n[confirm]\nwipe:\n    @echo wipe\n" + clean,
+			map[string]reach{"ordered": {reaches: []string{"wipe", "clean"}}, "stage": {reaches: []string{"wipe"}}},
+		},
+		{
+			// A task is named before what it runs, as the called task is.
+			"confirm under confirm", "outer: reset\n    @echo outer\n[confirm]\nreset: wipe\n    @echo reset\n[confirm]\nwipe:\n    @echo wipe\n",
+			map[string]reach{"outer": {reaches: []string{"reset", "wipe"}}, "reset": {destructive: true, reaches: []string{"wipe"}}},
+		},
+		{
+			"edge kinds in order", "t: d && p || f\n    @echo t\n[confirm]\nd:\n    @echo d\n[confirm]\np:\n    @echo p\n[confirm]\nf:\n    @echo f\n",
+			map[string]reach{"t": {reaches: []string{"d", "p", "f"}}},
+		},
+		{
+			// cleanup is first reached as a's failure hook, then as b's
+			// dependency, where its || hooks do fire.
+			"failure hook first, dependency later", "top: a b\n    @echo top\na: || cleanup\n    @echo a\nb: cleanup\n    @echo b\ncleanup: || wipe\n    @echo cleanup\n[confirm]\nwipe:\n    @echo wipe\n",
+			map[string]reach{"top": {reaches: []string{"wipe"}}, "a": {}, "b": {reaches: []string{"wipe"}}},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := reachOf(adapterFor(t, c.src))
 			for name, want := range c.want {
-				if g, ok := got[name]; !ok || g != want {
+				if g, ok := got[name]; !ok || !g.equal(want) {
 					t.Errorf("%s: %+v (listed %v), want %+v", name, g, ok, want)
 				}
 			}
@@ -500,19 +530,62 @@ func TestAdapterReachFollowsHostOS(t *testing.T) {
 	src := "dispatch: wipe-win\n    @echo dispatch\n[windows, confirm(\"Wipe?\")]\nwipe-win:\n    @echo wipe\n" +
 		"viawin: winonly\n    @echo viawin\n[windows]\nwinonly: clean\n    @echo winonly\n" +
 		"both: winonly clean\n    @echo both\n[confirm]\nclean:\n    @echo clean\n"
-	want := map[string]map[string]bool{
-		"linux":   {"dispatch": false, "viawin": false, "both": true},
-		"darwin":  {"dispatch": false, "viawin": false, "both": true},
-		"windows": {"dispatch": true, "viawin": true, "both": true},
+	elsewhere := map[string][]string{"dispatch": nil, "viawin": nil, "both": {"clean"}}
+	want := map[string]map[string][]string{
+		"linux":   elsewhere,
+		"darwin":  elsewhere,
+		"windows": {"dispatch": {"wipe-win"}, "viawin": {"clean"}, "both": {"clean"}},
 	}
 	for goos, tasks := range want {
 		a := adapterFor(t, src)
 		a.goos = goos
 		got := reachOf(a)
 		for name, reaches := range tasks {
-			if got[name].reaches != reaches {
-				t.Errorf("%s on %s: ReachesDestructive = %v, want %v", name, goos, got[name].reaches, reaches)
+			if !slices.Equal(got[name].reaches, reaches) {
+				t.Errorf("%s on %s: DestructiveReach = %q, want %q", name, goos, got[name].reaches, reaches)
 			}
+		}
+	}
+}
+
+// Spec 034 FR-003 (quickstart N, Windows half): a dependency available only on
+// Windows counts there, so the call is refused before anything runs.
+func TestServerRefusesReachOnHostOS(t *testing.T) {
+	a := adapterFor(t, "dispatch: wipe-win\n    @echo dispatch\n[windows, confirm(\"Wipe?\")]\nwipe-win:\n    @echo wipe\n")
+	a.goos = "windows"
+	cs := serverSession(t, mcpserver.New(a, mcpserver.Options{Version: "test", AllowDestructiveFlag: "--allow-destructive"}))
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "dispatch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `task "dispatch" can run destructive task "wipe-win"; to permit it, add wipe-win to --allow-destructive and restart the server`
+	if !res.IsError || resultText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, resultText(res), want)
+	}
+}
+
+// Spec 034 US3.1 (quickstart S): the endpoint an agent task opens refuses a
+// call that can reach a destructive task, even when the engine running the
+// agent task holds a grant for it, and nothing runs.
+func TestAgentEndpointRefusesReach(t *testing.T) {
+	dir := t.TempDir()
+	marker := func(name string) string { return filepath.ToSlash(filepath.Join(dir, name+".done")) }
+	src := "release: clean\n    @echo released > '" + marker("release") + "'\n" +
+		"[confirm]\nclean:\n    @echo cleaned > '" + marker("clean") + "'\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	eng.grants = map[string]bool{"clean": true}
+	cs := serverSession(t, mcpserver.New(eng.newAgentAdapter(), mcpserver.Options{Version: "test"}))
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `task "release" can run destructive task "clean"; it is not allowed in this session`
+	if !res.IsError || resultText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, resultText(res), want)
+	}
+	for _, name := range []string{"release", "clean"} {
+		if _, err := os.Stat(marker(name)); err == nil {
+			t.Errorf("%s ran although the call was refused", name)
 		}
 	}
 }

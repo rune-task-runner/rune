@@ -100,8 +100,9 @@ count on this host, because a run skips it.
 - A `false` hint means only that nothing was declared.
 - `RUNE2018` rejects a false `[readonly]` claim: a `[readonly]` task cannot use `[confirm]`,
   and every task it runs must be `[readonly]` too.
-- A tool can advertise `destructiveHint: true` without being refused. Only a `[confirm]` task
-  itself is refused, so `--allow-destructive` names that task, not a task that reaches it.
+- A tool whose `destructiveHint` comes from a task it can run is refused unless every
+  `[confirm]` task it can run is granted. The refusal names those tasks, and they are the
+  names `--allow-destructive` takes, not the task that reaches them.
 - `[readonly]` on an `agent` task covers what the task runs, not the tools its agent picks at
   run time.
 
@@ -207,7 +208,10 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
 
 - **Destructive tasks are refused by default.** A task marked `[confirm("…")]` is still
   listed, annotated with the MCP `DestructiveHint`, but a call to it is refused and nothing
-  runs. The refusal names the flag that permits it.
+  runs. A call that can run an ungranted `[confirm]` task through a dependency or hook is
+  refused too, before anything runs. The refusal names every task to add and the flag that
+  permits them, for example:
+  `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`.
 - **The operator allows destructive tasks one by one.** Start the server with
   `--allow-destructive clean,reset` (or the flag repeated) to let agents run those tasks.
   A granted task also runs when another task reaches it as a dependency or hook. A grant

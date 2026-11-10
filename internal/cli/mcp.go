@@ -52,14 +52,14 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 		if !visibleOn(t, a.goos) || t.Attr(ast.AttrContext) != nil {
 			continue
 		}
-		reachesDestructive, reachesNetwork := a.reach(t)
+		destructiveReach, reachesNetwork := a.reach(t)
 		info := mcpserver.TaskInfo{
-			Name:               t.Name,
-			Doc:                t.Doc,
-			Destructive:        t.Attr(ast.AttrConfirm) != nil,
-			ReachesDestructive: reachesDestructive,
-			Network:            t.Attr(ast.AttrNetwork) != nil || reachesNetwork,
-			ReadOnly:           t.Attr(ast.AttrReadonly) != nil,
+			Name:             t.Name,
+			Doc:              t.Doc,
+			Destructive:      t.Attr(ast.AttrConfirm) != nil,
+			DestructiveReach: destructiveReach,
+			Network:          t.Attr(ast.AttrNetwork) != nil || reachesNetwork,
+			ReadOnly:         t.Attr(ast.AttrReadonly) != nil,
 			// Static Runefile text, but capped like every agent-facing string
 			// so an absurd [returns] cannot bloat the tool list (FR-011).
 			Returns: capAgentText(t.Returns()),
@@ -86,57 +86,59 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 	return out
 }
 
-// reach reports whether any task a run of t can reach through its
-// dependencies and hooks has [confirm] or [network] (spec 033 FR-005). t's own
-// attributes are not counted.
-func (a *mcpAdapter) reach(t *ast.Task) (destructive, network bool) {
-	type step struct {
-		name     string
-		failHook bool
-	}
-	var queue []step
-	queueEdges := func(t *ast.Task, runs, failHooks bool) {
-		if runs {
-			for _, e := range t.Deps {
-				queue = append(queue, step{e.Name, false})
-			}
-			for _, e := range t.PostHooks {
-				queue = append(queue, step{e.Name, false})
-			}
-		}
-		if failHooks {
-			for _, e := range t.FailHooks {
-				queue = append(queue, step{e.Name, true})
-			}
-		}
-	}
+// reach lists the [confirm] tasks a run of t can reach through its
+// dependencies and hooks, each once, in the order a run first reaches them
+// (spec 034 FR-005), and reports whether any of the tasks it reaches has
+// [network] (spec 033 FR-005). t's own attributes are not counted.
+//
+// The walk is depth-first and names a task before what it runs, as the
+// refusal names the called task first. Edges follow the scheduler's order:
+// dependencies, then && hooks, then || hooks. So the list reads in the order
+// the Runefile does: for outer: reset and reset: wipe, it is reset, wipe.
+func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 	// A task run as a failure hook runs its dependencies and && hooks but not
 	// its own || hooks: the scheduler does not chain post-mortems. hookOnly
-	// marks such a task, so a later ordinary edge can still add them.
+	// marks such a task, so a later ordinary edge can still walk them.
 	visited := map[string]bool{t.Name: true}
 	hookOnly := map[string]bool{}
-	queueEdges(t, true, true)
-	for len(queue) > 0 {
-		s := queue[0]
-		queue = queue[1:]
-		next, ok := a.tasks[s.name]
+	var walk func(task *ast.Task, runs, failHooks bool)
+	visit := func(name string, failHook bool) {
+		next, ok := a.tasks[name]
 		// A run skips a task unavailable on this host, and so never reaches
-		// what that task would run (FR-006).
+		// what that task would run (spec 033 FR-006).
 		if !ok || !next.AvailableOn(a.goos) {
-			continue
+			return
 		}
 		switch {
 		case !visited[next.Name]:
 			visited[next.Name] = true
-			hookOnly[next.Name] = s.failHook
-			destructive = destructive || next.Attr(ast.AttrConfirm) != nil
+			hookOnly[next.Name] = failHook
+			if next.Attr(ast.AttrConfirm) != nil {
+				destructive = append(destructive, next.Name)
+			}
 			network = network || next.Attr(ast.AttrNetwork) != nil
-			queueEdges(next, true, !s.failHook)
-		case hookOnly[next.Name] && !s.failHook:
+			walk(next, true, !failHook)
+		case hookOnly[next.Name] && !failHook:
 			hookOnly[next.Name] = false
-			queueEdges(next, false, true)
+			walk(next, false, true)
 		}
 	}
+	walk = func(task *ast.Task, runs, failHooks bool) {
+		if runs {
+			for _, e := range task.Deps {
+				visit(e.Name, false)
+			}
+			for _, e := range task.PostHooks {
+				visit(e.Name, false)
+			}
+		}
+		if failHooks {
+			for _, e := range task.FailHooks {
+				visit(e.Name, true)
+			}
+		}
+	}
+	walk(t, true, true)
 	return destructive, network
 }
 
