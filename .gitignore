@@ -36,6 +36,7 @@ editors/vscode/*.vsix
 .agents/*
 .specify/*
 .help
+.docs/
 # …but the project constitution is a committed, reviewable artifact.
 !.specify/memory/
 !.specify/memory/constitution.md
