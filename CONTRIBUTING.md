@@ -23,7 +23,7 @@ Anything that makes Rune better is welcome. Good places to start, easiest first:
 
 You need:
 
-- **Go 1.24+** (the project builds on Go 1.25; CI derives the version from `go.mod`).
+- **Go 1.27+**.
 - **Docker** + **docker-compose** — the test suite runs inside a container (see
   [Verify](#verify-your-change)).
 - Optional: `golangci-lint` v2 and `goreleaser` for local linting / release dry-runs.

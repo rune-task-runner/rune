@@ -35,6 +35,7 @@ func TestCodeFor(t *testing.T) {
 		{"confirm declined", &TaskFailure{Err: errors.New(`task "x" was not confirmed`)}, ExitTaskFail},
 		{"agent not installed", &TaskFailure{Err: &agent.NotInstalledError{Name: "x"}}, ExitTaskFail},
 		{"shell error without status", &TaskFailure{Err: &shell.ExecError{Err: errors.New("parse")}}, ExitTaskFail},
+		{"command failure", &CommandFailure{Err: errors.New("x")}, ExitTaskFail},
 		{"unclassified", errors.New("other"), ExitUsage},
 	}
 	for _, tt := range tests {
@@ -162,5 +163,16 @@ func TestNoExitMessageInterruptExits130(t *testing.T) {
 	}
 	if msg := BannerMessage(err); msg != "" {
 		t.Errorf("banner = %q, want none for [no-exit-message]", msg)
+	}
+}
+
+func TestCommandFailureUnwrap(t *testing.T) {
+	inner := errors.New("inner")
+	err := &CommandFailure{Err: inner}
+	if !errors.Is(err, inner) {
+		t.Errorf("CommandFailure does not unwrap to its inner error")
+	}
+	if err.Error() != "inner" {
+		t.Errorf("Error() = %q, want %q", err.Error(), "inner")
 	}
 }

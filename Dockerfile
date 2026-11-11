@@ -9,7 +9,7 @@
 #
 # See docs/docker.md for usage and the minimal-image limitations.
 
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.27
 
 FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src
@@ -34,5 +34,7 @@ LABEL org.opencontainers.image.title="rune" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
 COPY --from=build /out/rune /rune
+# `rune --self-upgrade` reads this and declines: an image is upgraded by pulling a newer one.
+ENV RUNE_CONTAINER=1
 WORKDIR /work
 ENTRYPOINT ["/rune"]

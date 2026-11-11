@@ -37,7 +37,13 @@ func run(args []string) int {
 	// `-tags runetest` lets integration tests override the result via
 	// RUNE_TEST_VERSION (see versionhook*.go). A released binary's version is
 	// authoritative and cannot be spoofed at runtime.
-	root := newRootCmd(&opts, installedVersion(resolveVersion(version)), commit)
+	installed := installedVersion(resolveVersion(version))
+	// Release builds stamp main.version; a `go install` build reports a
+	// release without one. --self-upgrade tells the two apart by this.
+	stamped := installedStamped(version != devVersion)
+	root := newRootCmd(&opts, installed, commit, func(ctx context.Context, o *cli.Options) error {
+		return runSelfUpgrade(ctx, o, installed, stamped)
+	})
 	// Built-in subcommands. Registering any subcommand also makes Cobra add its
 	// `help` command automatically; `completion` is our own (newCompletionCmd).
 	root.AddCommand(newServeCmd(&opts), newVersionCmd(&opts), newCompletionCmd(), newAnalyzeCmd(&opts), newLSPCmd(&opts))
@@ -48,7 +54,10 @@ func run(args []string) int {
 	root.SetErr(os.Stderr)
 	root.SetArgs(args)
 
-	err := root.ExecuteContext(ctx)
+	err := selfUpgradeConflict(args)
+	if err == nil {
+		err = root.ExecuteContext(ctx)
+	}
 	// BannerMessage suppresses banners already rendered by the pipeline
 	// (validation diagnostics) or intentionally silenced ([no-exit-message]).
 	// The banner runs after Execute returned, where PersistentPreRunE (the

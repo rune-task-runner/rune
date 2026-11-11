@@ -15,3 +15,15 @@ func installedVersion(version string) string {
 	}
 	return version
 }
+
+// installedStamped makes an injected RUNE_TEST_VERSION count as a build-time
+// stamp, so a test binary reads as a release build to `--self-upgrade`
+// (which declines `go install` builds, recognized by a version that was not
+// stamped). RUNE_TEST_UNSTAMPED=1 turns that off for the test that wants a
+// `go install` build. Not compiled into production binaries.
+func installedStamped(stamped bool) bool {
+	if os.Getenv("RUNE_TEST_VERSION") != "" && os.Getenv("RUNE_TEST_UNSTAMPED") != "1" {
+		return true
+	}
+	return stamped
+}
