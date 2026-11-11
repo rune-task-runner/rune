@@ -73,7 +73,13 @@ const installMode = 0o750
 // wired to rel for it.
 func newInstall(t *testing.T, rel *upgradetest.Release, version string) (Config, *install) {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "bin")
+	// Resolved, because Run reports resolved paths: the temp directory is a
+	// link on macOS and a short name on Windows.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "bin")
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +140,10 @@ func (in *install) onlyBinary(t *testing.T, name string) {
 	}
 	var names []string
 	for _, e := range entries {
+		// Windows keeps the replaced binary until the next upgrade.
+		if runtime.GOOS == "windows" && e.Name() == filepath.Base(in.path)+oldSuffix {
+			continue
+		}
 		names = append(names, e.Name())
 	}
 	if !slices.Equal(names, []string{filepath.Base(in.path)}) {

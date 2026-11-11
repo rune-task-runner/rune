@@ -433,6 +433,9 @@ func TestSelfUpgradeRefusals(t *testing.T) {
 			"rune: self-upgrade: this rune was built with go install; run: go install github.com/rune-task-runner/rune/cmd/rune@latest")
 	})
 	t.Run("homebrew", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Homebrew does not run on Windows; its directory names mean nothing there")
+		}
 		in := newUpgradeInstall(t, rel, filepath.Join("Caskroom", "rune", "0.7.0"))
 		check(t, in, []string{"RUNE_TEST_VERSION=0.0.1"}, "0.0.1", "; run: brew upgrade rune")
 		if !strings.Contains(in.exec(t, t.TempDir(), []string{"RUNE_TEST_VERSION=0.0.1"}, "--self-upgrade").stderr, "this rune was installed with Homebrew (") {

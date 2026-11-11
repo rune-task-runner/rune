@@ -24,7 +24,7 @@ it pass. Every new function gets a unit test, and `internal/selfupgrade` reaches
 ## Conventions for every task
 
 - Tests run in Docker only: `docker compose run --rm -e GOFLAGS=-buildvcs=false test go test <pkgs>`.
-  Lint runs in the linter image: `docker run --rm -v "$PWD":/src -w /src golangci/golangci-lint:v2.13 golangci-lint run`.
+  Lint runs in the linter image: `docker run --rm -v "$PWD":/src -w /src golangci/golangci-lint:v2.14 golangci-lint run`.
 - Message texts, exit codes and file names are fixed by
   [contracts/cli-self-upgrade.md](contracts/cli-self-upgrade.md) and
   [data-model.md](data-model.md). Tests pin them as literal strings.
@@ -65,7 +65,7 @@ search in [contracts/toolchain.md](contracts/toolchain.md); compare the release 
 
 - [X] T004 [US6] In `go.mod` change `go 1.25.0` to `go 1.27.0`. Add no `toolchain` line (R1).
 - [X] T005 [P] [US6] In `Dockerfile` change `ARG GO_VERSION=1.25` to `ARG GO_VERSION=1.27`. In `Dockerfile.test` change `ARG GO_VERSION=1.25` to `1.27` and the comment `golang:1.25-bookworm` to `golang:1.27-bookworm`.
-- [X] T006 [P] [US6] In `.github/workflows/ci.yml` change all six `go-version: "1.25"` to `"1.27"` (keep `check-latest: true`). In the same file change the golangci-lint `version: v2.12` to `v2.13`. First confirm the image is built with Go 1.27: `docker run --rm golangci/golangci-lint:v2.13 golangci-lint version` must print `built with go1.27`. If it does not, find the lowest v2 release that does, use it here and in the conventions above, and report the change (R4).
+- [X] T006 [P] [US6] In `.github/workflows/ci.yml` change all six `go-version: "1.25"` to `"1.27"` (keep `check-latest: true`). In the same file change the golangci-lint `version: v2.12` to `v2.13`. First confirm the image is built with Go 1.27: `docker run --rm golangci/golangci-lint:v2.14 golangci-lint version` must print `built with go1.27`. If it does not, find the lowest v2 release that does, use it here and in the conventions above, and report the change (R4).
 - [X] T007 [P] [US6] In `.github/workflows/release.yml` and `.github/workflows/pages.yml` change `go-version: "1.25"` to `"1.27"`.
 - [X] T008 [P] [US6] In `docs/installation.md` replace "Requires Go 1.24 or newer (the project builds on Go 1.25):" with "Requires Go 1.27 or newer:" and add one sentence where platforms are described that macOS 13 or newer is required. In `CONTRIBUTING.md` replace the bullet "**Go 1.24+** (the project builds on Go 1.25; CI derives the version from `go.mod`)." with "**Go 1.27+**."
 - [X] T009 [US6] Rebuild the test image (`docker compose build test`), confirm `docker compose run --rm test go version` prints `go1.27.`, then run `docker compose run --rm -e GOFLAGS=-buildvcs=false test go mod tidy`. Expect `go.mod` to be rewritten into at most two `require` blocks. No dependency version may change; if one does, report it and stop.
@@ -467,6 +467,11 @@ Where the work differs from the task text above:
   and checks ownership again before replacing the binary. Not adopted: keeping a lock alive for as
   long as its recorded process exists, because a reused process id would then block upgrades
   with no time limit.
+- **T006, CI (2026-11-11)**: the linter is `v2.14`, not `v2.13`. The v2.13 binary lints a Go 1.27
+  module on go1.27.0 but cannot read the standard library that go1.27.4 builds (`export data
+  version 5 is greater than maximum supported version 4`), which is what CI installs. v2.14 reads
+  it and reports 0 issues; v2.15 also works but adds an errcheck rule that flags six existing
+  lines in `internal/lsp/protocol_test.go`, left for a separate change.
 - **T012, T076**: committed on 2026-11-11 when the maintainer asked.
 - Adding `sigstore-go` raised `golang.org/x/sys`, `x/term` and `x/text` (required by its module
   graph).

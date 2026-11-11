@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -127,8 +128,8 @@ func TestAcquireLockUnwritable(t *testing.T) {
 	_, err := acquireLock(filepath.Join(t.TempDir(), "absent"), time.Now())
 	wantReason(t, "missing directory", err, ReasonNotWritable)
 
-	if os.Geteuid() == 0 {
-		t.Skip("running as root: directory permissions are not enforced")
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("needs a non-root user on a system that enforces directory permissions")
 	}
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o555); err != nil {

@@ -59,7 +59,8 @@ finds only these. Older spec documents are history and stay as written.
 
 ### R4. Tooling that must move with it
 
-**Decision**: Raise the linter from `v2.12` to `v2.13` in `ci.yml`. Leave GoReleaser at `~> v2`,
+**Decision**: Raise the linter from `v2.12` to `v2.14` in `ci.yml` (first planned as `v2.13`, which
+failed in CI on go1.27.4; see the implementation notes in tasks.md). Leave GoReleaser at `~> v2`,
 the docs generator and everything else alone unless a gate fails.
 
 **Measured**: `golangci/golangci-lint:v2.12` reports "version 2.12.2 built with go1.26.2".

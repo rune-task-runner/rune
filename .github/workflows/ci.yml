@@ -43,7 +43,7 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.13
+          version: v2.14
 
   docs-site:
     name: docs-site

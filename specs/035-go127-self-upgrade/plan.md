@@ -77,7 +77,7 @@ about 11.6 MB to about 24 MB (R6).
 | Constraint: locked package layout | PASS | Additive only. |
 | Constraint: backward compatibility | PASS | No DSL change. Every existing command line parses as before (FR-004, SC-008). |
 | Constraint: surface changes carry their docs | PASS | No DSL surface change. The CLI flag ships with `docs/cli.md` and `docs/installation.md` in the same PR. |
-| Quality gates | PASS | All seven run on Go 1.27. Gate 1 needs linter v2.13 (R4). |
+| Quality gates | PASS | All seven run on Go 1.27. Gate 1 needs linter v2.14 (R4). |
 
 One recorded limit and one cost, both in Complexity Tracking. No unjustified violation.
 
@@ -110,7 +110,7 @@ go.mod, go.sum                   # go 1.27.0; sigstore-go v1.4.0
 Dockerfile                       # GO_VERSION=1.27; ENV RUNE_CONTAINER=1
 Dockerfile.test                  # GO_VERSION=1.27 and the comment that names the base image
 Dockerfile.goreleaser            # ENV RUNE_CONTAINER=1
-.github/workflows/ci.yml         # go-version "1.27" in six jobs; golangci-lint v2.13
+.github/workflows/ci.yml         # go-version "1.27" in six jobs; golangci-lint v2.14
 .github/workflows/release.yml    # go-version "1.27"
 .github/workflows/pages.yml      # go-version "1.27"
 

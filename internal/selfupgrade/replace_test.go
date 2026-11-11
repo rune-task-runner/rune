@@ -3,6 +3,7 @@ package selfupgrade
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -92,6 +93,10 @@ func TestAsideNameAndRemoveAside(t *testing.T) {
 	touch(target)
 	// Only the plain and the numbered names are Rune's to delete.
 	keep := []string{"rune.exe", "rune.exe.old.", "rune.exe.old.1a", "rune.exe.old.backup", "rune.exe.older"}
+	if runtime.GOOS == "windows" {
+		// Windows drops a trailing dot, which would make that name the plain .old.
+		keep = slices.Delete(keep, 1, 2)
+	}
 	for _, name := range keep[1:] {
 		touch(filepath.Join(dir, name))
 	}
@@ -101,7 +106,11 @@ func TestAsideNameAndRemoveAside(t *testing.T) {
 	}
 
 	// Pattern characters in the install path must not hide the leftovers.
-	odd := filepath.Join(t.TempDir(), "tools [x64]*")
+	oddName := "tools [x64]*"
+	if runtime.GOOS == "windows" {
+		oddName = "tools [x64]" // Windows forbids * in a name
+	}
+	odd := filepath.Join(t.TempDir(), oddName)
 	if err := os.Mkdir(odd, 0o755); err != nil {
 		t.Fatal(err)
 	}

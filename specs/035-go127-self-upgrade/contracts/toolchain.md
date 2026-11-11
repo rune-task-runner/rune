@@ -13,7 +13,7 @@ What the repository states about Go after this feature. Decisions referenced as 
 | `.github/workflows/pages.yml` | same |
 | `Dockerfile` | `ARG GO_VERSION=1.27` |
 | `Dockerfile.test` | `ARG GO_VERSION=1.27` |
-| `.github/workflows/ci.yml`, linter | `version: v2.13` (R4) |
+| `.github/workflows/ci.yml`, linter | `version: v2.14` (R4) |
 
 The selector names the minor only, so each build uses the newest 1.27 patch.
 

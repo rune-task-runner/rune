@@ -23,7 +23,7 @@ func copyRunningExe(t *testing.T, dir string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	target := filepath.Join(dir, "rune.exe")
 	dst, err := os.Create(target)
 	if err != nil {
