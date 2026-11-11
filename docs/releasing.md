@@ -91,7 +91,7 @@ sha256sum --check checksums.txt --ignore-missing
 # 2. Signature of the checksums file (covers every archive)
 cosign verify-blob \
   --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp 'https://github.com/rune-task-runner/rune/.*' \
+  --certificate-identity 'https://github.com/rune-task-runner/rune/.github/workflows/release.yml@refs/heads/main' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 
@@ -106,6 +106,28 @@ gh attestation verify oci://ghcr.io/rune-task-runner/rune:<version> --repo rune-
 ```
 
 Modifying any byte of an artifact makes steps 1–2 fail — that is the point.
+
+## What `rune --self-upgrade` depends on
+
+Every installed `rune` verifies a release this way before upgrading itself (see
+[Upgrading](installation.md#upgrading)). Changing any of the following strands existing
+installs: they refuse to upgrade and people must reinstall by hand.
+
+- **The signer.** Step 2 above, with exactly that identity and issuer. The release workflow
+  file keeps its name and path (`.github/workflows/release.yml`), releases are cut from `main`,
+  and signing stays keyless through GitHub Actions and the public Sigstore instance.
+- **The file names.** `checksums.txt`, `checksums.txt.sigstore.json`, and one archive per
+  platform named `rune_<version>_<os>_<arch>.tar.gz` (`.zip` for Windows), where `<version>` is
+  the tag without its `v`.
+- **The archive contents.** A regular file named `rune` (`rune.exe` in the zip) at the top
+  level. Other entries are ignored.
+- **The checksum list.** One line per archive: the SHA-256 in lowercase hex, two spaces, the
+  file name.
+- **The signature file.** A standard Sigstore bundle or the older cosign bundle. Both are
+  accepted, so a cosign upgrade in the workflow does not break installed binaries.
+- **Sizes.** An archive stays under 100 MiB and a binary under 200 MiB.
+- **Stable releases only.** The target is GitHub's "latest" release. Drafts and prereleases
+  are never offered.
 
 ## Local dry-run (no publish)
 

@@ -5,5 +5,7 @@
 # GoReleaser build_flag_templates (see .goreleaser.yaml).
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY rune /rune
+# `rune --self-upgrade` reads this and declines: an image is upgraded by pulling a newer one.
+ENV RUNE_CONTAINER=1
 WORKDIR /work
 ENTRYPOINT ["/rune"]

@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/rune-task-runner/rune/internal/cli"
 )
@@ -13,8 +15,14 @@ import (
 // capabilities (serve/mcp, version, completion, plus Cobra's auto-added help)
 // are registered as subcommands by the caller. Any first positional that does
 // not match a subcommand is a dynamic task invocation handled by RunE.
-func newRootCmd(opts *cli.Options, version, commit string) *cobra.Command {
-	var colorFlag string
+//
+// upgrade performs `--self-upgrade`. It runs before cli.Run, which is where
+// Runefile discovery starts, so the flag works with no Runefile or a broken one.
+func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) *cobra.Command {
+	var (
+		colorFlag   string
+		selfUpgrade bool
+	)
 	root := &cobra.Command{
 		Use:   "rune [global flags] [VAR=VALUE ...] [TASK [ARGS...]] ...",
 		Short: "A shared task runner for humans and AI agents",
@@ -64,7 +72,13 @@ func newRootCmd(opts *cli.Options, version, commit string) *cobra.Command {
 		// This fires only when no subcommand matched the first positional:
 		// built-in commands take precedence; `rune -- <task>` escapes to here.
 		// Trailing task flags pass through untouched (see SetInterspersed below).
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if selfUpgrade {
+				if err := upgradeConflict(cmd.Flags()); err != nil {
+					return err
+				}
+				return upgrade(cmd.Context(), opts)
+			}
 			return cli.Run(*opts, args)
 		},
 	}
@@ -93,11 +107,73 @@ func newRootCmd(opts *cli.Options, version, commit string) *cobra.Command {
 	f.BoolVar(&opts.Fmt, "fmt", false, "rewrite the Runefile in canonical formatting")
 	f.BoolVar(&opts.ClearCache, "clear-cache", false, "remove the project-local .rune/cache directory")
 	f.BoolVar(&opts.IgnoreVersion, "ignore-version", false, "bypass the Runefile's minimum_version check (prints a warning)")
+	f.BoolVar(&selfUpgrade, "self-upgrade", false, "upgrade this rune to the latest stable release; runs no task")
 	// --color is persistent so every subcommand (analyze, serve, help, …)
 	// inherits the same control — the one gate for all styled surfaces (FR-008).
 	root.PersistentFlags().StringVar(&colorFlag, "color", "auto", "when to colorize output: auto|always|never")
 
 	return root
+}
+
+// selfUpgradeConflict reports `--self-upgrade` combined with anything but
+// --color or --help. The root command enforces the same rule itself; this
+// parses a copy of the arguments with a throwaway root before Cobra
+// dispatches, because Cobra answers --version, and hands a leading built-in
+// command name to that command, before the root's own check can run. A parse
+// error is left for the real dispatch to report.
+func selfUpgradeConflict(args []string) error {
+	// Every ordinary invocation stops here, before a second root is built.
+	if !mentionsSelfUpgrade(args) {
+		return nil
+	}
+	probe := newRootCmd(&cli.Options{}, "", "", nil)
+	probe.InitDefaultHelpFlag()
+	probe.InitDefaultVersionFlag()
+	if err := probe.ParseFlags(args); err != nil {
+		return nil
+	}
+	flags := probe.Flags()
+	if set, _ := flags.GetBool("self-upgrade"); !set {
+		return nil
+	}
+	// --help keeps its usual precedence: it prints help and starts nothing.
+	if help, _ := flags.GetBool("help"); help {
+		return nil
+	}
+	return upgradeConflict(flags)
+}
+
+func mentionsSelfUpgrade(args []string) bool {
+	for _, a := range args {
+		if a == "--self-upgrade" || strings.HasPrefix(a, "--self-upgrade=") {
+			return true
+		}
+	}
+	return false
+}
+
+// upgradeConflict names what a parsed command line combines with
+// --self-upgrade, if anything: only --color (and --help, which Cobra answers
+// first) may accompany it.
+func upgradeConflict(flags *pflag.FlagSet) error {
+	conflict := ""
+	if flags.NArg() > 0 {
+		conflict = "task arguments"
+	}
+	// Unsorted, Visit walks the flags in the order they were typed, so the
+	// message names the first one.
+	sorted := flags.SortFlags
+	flags.SortFlags = false
+	flags.Visit(func(f *pflag.Flag) {
+		if conflict == "" && f.Name != "self-upgrade" && f.Name != "color" {
+			conflict = "--" + f.Name
+		}
+	})
+	flags.SortFlags = sorted
+	if conflict == "" {
+		return nil
+	}
+	return &cli.UsageError{Err: fmt.Errorf("--self-upgrade cannot be combined with %s", conflict)}
 }
 
 // subcommandNames returns the names and aliases of root's visible subcommands,

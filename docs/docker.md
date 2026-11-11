@@ -37,6 +37,11 @@ the variant matching your host automatically.
 docker buildx imagetools inspect ghcr.io/rune-task-runner/rune:latest   # see both platforms
 ```
 
+## Upgrading
+
+Upgrade by pulling a newer tag (`docker pull ghcr.io/rune-task-runner/rune:latest`). Inside the
+image `rune --self-upgrade` changes nothing and says so: a container is replaced, not patched.
+
 ## Verifying the image
 
 Images are signed with cosign (keyless) and carry build provenance — verify with public

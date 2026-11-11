@@ -34,5 +34,7 @@ LABEL org.opencontainers.image.title="rune" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}"
 COPY --from=build /out/rune /rune
+# `rune --self-upgrade` reads this and declines: an image is upgraded by pulling a newer one.
+ENV RUNE_CONTAINER=1
 WORKDIR /work
 ENTRYPOINT ["/rune"]

@@ -59,6 +59,7 @@ A clean exit `0` means the Runefile is valid; exit `3` means a static error (wit
 | `--fmt` | Rewrite the Runefile in canonical formatting. |
 | `--clear-cache` | Remove the project-local `.rune/cache` directory. |
 | `--ignore-version` | Bypass the Runefile's `minimum_version` check for this run, printing a warning. Cannot be enabled from a Runefile. |
+| `--self-upgrade` | Upgrade this `rune` to the latest stable release, after verifying its signature and checksum. Runs no task and reads no Runefile. Cannot be combined with other flags or task arguments, except `--color`. See [Upgrading](installation.md#upgrading). |
 | `--color <when>` | When to colorize output: `auto` (default; color only on a terminal), `always` (force color, even through a pipe), or `never`. Under `auto`, `NO_COLOR` disables color; an explicit `always`/`never` takes precedence over `NO_COLOR`. |
 | `--version` | Print version and commit. |
 | `-h`, `--help` | Show help. |
@@ -75,6 +76,7 @@ rune --fmt                       # canonically reformat the Runefile in place
 rune --watch test                # re-run tests on file changes
 rune --yes clean                 # run a [confirm] task without prompting
 rune --clear-cache               # drop the [cache] fingerprints
+rune --self-upgrade              # upgrade rune itself to the latest stable release
 ```
 
 ### Interactive task picker
@@ -121,10 +123,10 @@ See the [MCP guide](mcp.md) for exposing tasks to AI agents, [editor setup](../e
 
 | Code | Meaning |
 |------|---------|
-| `0` | All requested tasks succeeded. |
+| `0` | All requested tasks succeeded, or `--self-upgrade` upgraded or found nothing to upgrade. |
 | *N* | A task body failed with exit code *N*. The body can belong to the task you named, a dependency, or a later task on the command line; it is the failure the error message names. |
-| `1` | A task failed without a body exit code: a `[confirm]` prompt was declined or had no terminal, the interpreter is missing, or an `agent` task's CLI is missing or failed. |
-| `2` | Usage error: no Runefile found, unknown task, bad arguments, or an `agent` task with no `agent_cmd` set. |
+| `1` | A task failed without a body exit code: a `[confirm]` prompt was declined or had no terminal, the interpreter is missing, or an `agent` task's CLI is missing or failed. Also `--self-upgrade` when it could not upgrade. |
+| `2` | Usage error: no Runefile found, unknown task, bad arguments, or an `agent` task with no `agent_cmd` set. Also `--self-upgrade` combined with another flag or argument. |
 | `3` | Static validation error (parse/analyze). Nothing was executed. |
 | `130` | Interrupted (SIGINT / Ctrl-C). |
 

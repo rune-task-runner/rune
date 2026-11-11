@@ -44,6 +44,14 @@ type TaskFailure struct {
 func (e *TaskFailure) Error() string { return e.Err.Error() }
 func (e *TaskFailure) Unwrap() error { return e.Err }
 
+// CommandFailure marks a built-in command that could not do what was asked
+// (exit 1). It is the non-task counterpart of TaskFailure: without it such an
+// error would fall through to the usage exit code.
+type CommandFailure struct{ Err error }
+
+func (e *CommandFailure) Error() string { return e.Err.Error() }
+func (e *CommandFailure) Unwrap() error { return e.Err }
+
 // Interrupted marks a SIGINT (exit 130).
 type Interrupted struct{ Err error }
 
@@ -75,6 +83,10 @@ func CodeFor(err error) int {
 	var tf *TaskFailure
 	if errors.As(err, &tf) {
 		return bodyExitCode(err)
+	}
+	var cf *CommandFailure
+	if errors.As(err, &cf) {
+		return ExitTaskFail
 	}
 	// Default: treat unknown errors as usage problems.
 	return ExitUsage
