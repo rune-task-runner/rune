@@ -1,6 +1,6 @@
 module github.com/rune-task-runner/rune
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0

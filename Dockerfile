@@ -9,7 +9,7 @@
 #
 # See docs/docker.md for usage and the minimal-image limitations.
 
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.27
 
 FROM golang:${GO_VERSION}-bookworm AS build
 WORKDIR /src

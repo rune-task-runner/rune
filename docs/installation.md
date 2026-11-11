@@ -62,7 +62,7 @@ verify your download, see [Verifying releases](releasing.md#verifying-a-release)
 
 ## From source (Go)
 
-Requires Go 1.24 or newer (the project builds on Go 1.25):
+Requires Go 1.27 or newer. On macOS, Go 1.27 needs macOS 13 or newer:
 
 ```sh
 go install github.com/rune-task-runner/rune/cmd/rune@latest
