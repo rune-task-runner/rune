@@ -17,6 +17,25 @@ rune mcp
 
 Most local agent tooling launches the server this way and talks to it over stdin/stdout.
 
+When the client starts Rune outside the project directory, pass the Runefile explicitly:
+
+```sh
+rune mcp --file /path/to/project/Runefile
+```
+
+For a user-scoped client configuration, keep the project path in the server arguments:
+
+```json
+{
+  "mcpServers": {
+    "rune": {
+      "command": "rune",
+      "args": ["mcp", "--file", "/path/to/project/Runefile"]
+    }
+  }
+}
+```
+
 **Letting agents run destructive tasks:**
 
 ```sh

@@ -47,6 +47,7 @@ Tasks marked [confirm] are refused unless you name each one with
 	}
 
 	f := cmd.Flags()
+	f.StringVarP(&opts.File, "file", "f", "", "use a specific Runefile instead of upward discovery")
 	f.BoolVar(&useHTTP, "http", false, "serve over Streamable HTTP instead of stdio")
 	f.StringVar(&addr, "addr", "", "HTTP listen address (with --http)")
 	f.StringVar(&tokenFile, "token-file", "", "bearer-token file for HTTP auth (with --http)")

@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -53,5 +55,31 @@ func TestUS4_ServeHTTPRequiresToken(t *testing.T) {
 	r := run(t, dir, nil, "serve", "--http", "--addr", "127.0.0.1:0")
 	if r.code != 2 {
 		t.Errorf("exit = %d, want 2 (missing token); stderr=%s", r.code, r.stderr)
+	}
+}
+
+func TestUS4_MCPFileFlagLoadsRunefileOutsideWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	runefile := filepath.Join(root, "Runefile")
+	if err := os.WriteFile(runefile, []byte("status:\n    @echo loaded > loaded.done\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workdir := filepath.Join(root, "nested", "client")
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reply := mcpToolsList(t, workdir, "-f", runefile)
+	if !strings.Contains(reply, `"name":"status"`) {
+		t.Fatalf("mcp -f did not load the Runefile outside the working directory: %s", reply)
+	}
+	text, isError, stderr := toolCall(t, workdir, []string{"-f", runefile}, "status")
+	if isError || !strings.Contains(text, "[exit 0]") {
+		t.Fatalf("mcp -f tool call failed: isError=%v text=%q stderr=%q", isError, text, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "loaded.done")); err != nil {
+		t.Fatalf("task output was not created beside the Runefile: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workdir, "loaded.done")); err == nil {
+		t.Fatal("task output was created in the client working directory")
 	}
 }

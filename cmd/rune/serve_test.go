@@ -56,6 +56,20 @@ func TestServeAllowDestructiveFlag(t *testing.T) {
 	}
 }
 
+func TestServeFileFlag(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	if f := cmd.Flags().Lookup("file"); f == nil {
+		t.Fatal("serve has no --file flag")
+	}
+	if err := cmd.ParseFlags([]string{"-f", "../Runefile"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := opts.File, "../Runefile"; got != want {
+		t.Fatalf("file = %q, want %q", got, want)
+	}
+}
+
 // Spec 031 FR-007: --yes is not a serve/mcp flag in either position, so no
 // switch approves every destructive task; a bare --allow-destructive is a
 // usage error too.
