@@ -80,7 +80,18 @@ human should decide: the bump and the go-ahead.
 3. **Clear preflight.** `trigger` will happily dispatch even if preflight fails, but the
    workflow's own guard will then refuse (dirty tree or non-green CI). So resolve every ✗ from
    preflight *first*. Common ones: HEAD not pushed to `origin/main`, or CI still running —
-   both mean "wait, don't release yet."
+   both mean "wait, don't release yet." CI is always still running right after a merge **and
+   right after a previous release** (the workflow pushes a changelog commit to `main`, which
+   starts its own CI run). `git pull` first, then wait for that run (`gh run watch`) and re-run
+   `preflight` rather than triggering early.
+
+   **Read the changelog preview before asking for the go-ahead.** An empty preview for a
+   **stable** release is a stop sign, not a detail: it means the published notes would be
+   empty. (This happened when promoting v0.8.0 after two rcs; the workflow now builds a stable
+   release's notes from the previous stable tag, and the preview mirrors that.) An empty
+   preview for an rc is normal when only `build`/`ci`/`chore` commits landed since the last rc.
+   Also say out loud when a user-visible change is hidden because its PR title type is omitted
+   from the changelog (`build`, `ci`, `chore`, `test`, `style`).
 
 4. **Trigger.** Run `trigger <bump> [--pre]`. It prints the repo, bump, prerelease flag, and
    the tag it will cut, then dispatches. Because this tags, commits a changelog to `main`, and
@@ -90,10 +101,63 @@ human should decide: the bump and the go-ahead.
 
 5. **Approve + watch.** The workflow pauses on a protected `release` environment prompt that
    only authorized maintainers can approve in the Actions UI — tell the user to approve it
-   (you can't). Then run `watch` to follow the run to completion.
+   (you can't), and give them the run URL. Then run `watch` to follow the run to completion.
+   - A run that still shows `waiting` has **not** been approved yet, whatever was said in
+     chat: check `gh run view <id> --json status,jobs` and tell the user if it is still
+     waiting (Review deployments → tick `release` → Approve and deploy).
+   - A **stable** release prompts **twice**: once for `release`, and again for
+     `publish-extension`, which uses the same protected environment.
 
-6. **Verify.** Once green, run `verify <tag>` and walk the user through (or run, if `cosign`
-   and `gh` are present) the checksum, signature, and provenance checks.
+6. **Verify.** Once green, run `verify <tag>` and walk the user through (or run) every check
+   it prints. A green run is not proof; each of these has caught or would catch a real fault:
+   - **Release notes body is not empty** (it was empty from v0.7.0 to v0.8.0 without anyone
+     noticing; the workflow now repairs it, but look).
+   - **Tags:** `<version>`, `<version>-amd64`, `<version>-arm64`; each per-architecture tag has
+     the same digest as the index entry for that platform.
+   - **`latest`:** moved to the new version for a stable release, and did **not** move for an rc.
+   - **Signatures** on the index digest **and** both per-architecture digests, with the exact
+     workflow identity; **provenance** with `gh attestation verify`.
+   - **Bill of materials** retrievable from the registry.
+   - **Image contract:** `scripts/check-image.sh ghcr.io/<repo>:<version> <version>`.
+   - **Binary identity:** the binary in the image equals the one in the archive, per platform.
+   - For a stable release: Homebrew tap and Scoop bucket got their commits.
+
+   Tools: `cosign` ships in the `goreleaser/goreleaser` image, and `crane` installs with
+   `go install github.com/google/go-containerregistry/cmd/crane@v0.22.1` in a `golang`
+   container; neither needs to be on the host. A `docker pull` right after publishing can be
+   denied once by the registry; retry before treating it as a failure.
+
+7. **After a stable release, prove `--self-upgrade` for real.** It only upgrades to the latest
+   *stable* release, so this is the first moment it can run end to end. Take the previous
+   version's Linux binary (an rc of the same line works), run it as a non-root user in a
+   container **that has CA certificates** (`golang:*-bookworm`; `debian:*-slim` has none and
+   fails TLS), and check: it reports `upgraded`, the new binary's SHA-256 equals the release
+   archive's, a second run says `current`, and nothing is left beside the binary.
+
+## Use a release candidate to test the pipeline itself
+
+When a change touches **how** a release is built or published (the image build, signing, the
+workflow, the base image), cut an rc before the stable release. A prerelease runs the real
+workflow, but never moves `latest`, skips Homebrew and Scoop (`skip_upload: auto`), and never
+publishes the extension, so a fault stays contained. Changes to release steps cannot be
+exercised any other way: CI's dry run is a snapshot and skips publishing, signing and the
+changelog. Test such changes locally as far as possible first (run the exact `git cliff`
+commands with `GITHUB_TOKEN` set: without a token git-cliff's GitHub lookups get HTTP 403 and
+it panics), and say plainly that the next release is their first real run.
+
+## The container image and its base
+
+The image is built by ko inside GoReleaser, on a base image that lives in the **same** package
+under a `base-<id>` tag and is pinned by digest in `.goreleaser.yaml` and `.ko.yaml`
+(`test/release` fails if they differ). Before a release, the pinned base must be **signed**:
+
+- The **Base image** workflow (`base-image.yml`) builds, pushes and signs it. It is the only
+  build whose digest may be pinned: the digest depends on the crane binary that compresses the
+  layer, so the same script on another machine gives the same content under a different digest.
+- To sign a base that is already pinned, run it with the same distroless digest and
+  `expected_digest` set to the pinned digest; it refuses to sign anything else.
+- `cosign verify ghcr.io/<repo>@<base digest>` with the identity
+  `.../.github/workflows/base-image.yml@refs/heads/main` must succeed before you release.
 
 ## Recovery
 
@@ -110,6 +174,9 @@ Scoop commits went through). Diagnose first, then act.
 - **Tests run inside Docker on this project, never on the host** (project policy). If you need
   to validate anything test-related as part of release readiness, use `rune test` /
   `docker-compose run --rm test …`.
+- **Never commit, push, open a PR, edit a release, or run a publishing workflow on an implied
+  go-ahead.** Approval for one outward step (say, a registry copy) is not approval for the
+  next (a commit and PR). Ask for each.
 - **Don't relax the guards.** Dirty tree and non-green CI are refusals by design. The fix is to
   clean/push/wait, not to work around the check.
 - For local sanity before a release you can run `rune release-check` (validate GoReleaser

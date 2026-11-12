@@ -41,6 +41,9 @@ type koImage struct {
 }
 
 type releaseConfig struct {
+	Changelog struct {
+		Disable any `yaml:"disable"`
+	} `yaml:"changelog"`
 	Builds          []build   `yaml:"builds"`
 	Kos             []koImage `yaml:"kos"`
 	Dockers         any       `yaml:"dockers"`
@@ -209,5 +212,15 @@ func TestNoBuildxSections(t *testing.T) {
 	}
 	if !slices.Contains(sign.Args, "--recursive") {
 		t.Errorf("docker_signs args %v lack --recursive: the per-architecture images would be unsigned", sign.Args)
+	}
+}
+
+// GoReleaser documents that a disabled changelog also ignores the file passed
+// with --release-notes. The workflow passes git-cliff's notes that way, so
+// disabling it publishes releases with an empty body.
+func TestReleaseNotesNotDiscarded(t *testing.T) {
+	_, rel := configs(t)
+	if d := rel.Changelog.Disable; d != nil && d != false {
+		t.Errorf("changelog.disable = %v: GoReleaser would discard the --release-notes file and publish an empty release body", d)
 	}
 }

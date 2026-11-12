@@ -270,6 +270,37 @@ cmd_verify() {
     --certificate-identity-regexp 'https://github.com/${repo}/.*' \\
     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
   gh attestation verify oci://ghcr.io/${repo}:${nov} --repo ${repo}
+
+  # 5. the release page has notes (prints their length; 0 or 1 means empty)
+  gh api repos/${repo}/releases/tags/v${nov} --jq '.body | length'
+
+  # 6. image tags: each per-architecture tag names the image the index lists for it,
+  #    and latest moved only if this is a stable release
+  img=ghcr.io/${repo}
+  crane digest \$img:${nov}; crane digest \$img:latest
+  for arch in amd64 arm64; do
+    crane digest --platform linux/\$arch \$img:${nov}; crane digest \$img:${nov}-\$arch
+  done
+
+  # 7. signatures on the index AND both per-architecture digests, exact identity
+  for d in \$(crane digest \$img:${nov}) \\
+           \$(crane digest --platform linux/amd64 \$img:${nov}) \\
+           \$(crane digest --platform linux/arm64 \$img:${nov}); do
+    cosign verify \$img@\$d \\
+      --certificate-identity 'https://github.com/${repo}/.github/workflows/release.yml@refs/heads/main' \\
+      --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' >/dev/null && echo "signed \$d"
+  done
+
+  # 8. image bill of materials (SPDX), stored in the registry beside the image
+  sbom=\$img:\$(crane digest \$img:${nov} | tr : -).sbom
+  crane blob "\$img@\$(crane manifest "\$sbom" | jq -r '.layers[0].digest')" | head -c 300
+
+  # 9. image contract (configuration, files, behavior) on the published tag
+  scripts/check-image.sh \$img:${nov} ${nov}
+
+  # 10. the image contains the release binary (repeat with arm64)
+  crane export --platform linux/amd64 \$img:${nov} - | tar -xOf - /ko-app/rune | sha256sum
+  tar -xzOf rune_${nov}_linux_amd64.tar.gz rune | sha256sum
 EOF
 }
 

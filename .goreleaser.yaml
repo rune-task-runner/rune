@@ -38,10 +38,12 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
-# Single source of release notes is git-cliff (passed via --release-notes on the CLI);
-# GoReleaser's own changelog is disabled so the two never diverge.
-changelog:
-  disable: true
+# Single source of release notes is git-cliff: the release workflow renders them and
+# passes the file with --release-notes, which GoReleaser then uses as the release body
+# instead of generating its own changelog.
+# Do NOT add `changelog: disable: true` here. It also discards the --release-notes
+# file, and the release is published with an empty body (v0.7.0 to v0.8.0 shipped that
+# way). test/release guards this.
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
