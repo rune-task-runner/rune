@@ -77,6 +77,10 @@ inputs cover the whole lifecycle — **keep the bump the same** while working to
 | Promote rc → stable | `minor` | ✗ | `v0.5.0` |
 | Start the next line | `minor`/`patch`/`major` | either | bumps from the new stable |
 
+A stable release's changelog section and release notes cover everything since the previous
+**stable** release, including what its release candidates already listed. The candidates keep
+their own sections in `CHANGELOG.md` as history.
+
 > **Pre-1.0 (`0.y.z`):** by SemVer convention a breaking change bumps **minor**, not major.
 > You choose the bump; the tooling never auto-infers it.
 
