@@ -13,8 +13,12 @@
 # Example:
 #   scripts/build-base-image.sh sha256:0123... ghcr.io/rune-task-runner/rune-base:012345678901
 #
-# Prints the pushed index digest as the last line. The same input digest gives
-# the same output digest, with the same crane release (the workflow pins it).
+# Prints the pushed index digest as the last line. The image's content depends
+# only on the input digest, but its digest also depends on how crane compresses
+# the added layer, which varies with the Go release crane was built with. The
+# Base image workflow, with its pinned crane release binary, is therefore the
+# one build whose digest is pinned in .ko.yaml and .goreleaser.yaml; a build
+# on another machine can print a different digest for the same content.
 # The source label links the GHCR package to this repository. Needs crane, GNU tar, and a login for the
 # destination; no Docker daemon. CRANE_FLAGS is passed to every crane call
 # (for example --insecure for a local test registry).

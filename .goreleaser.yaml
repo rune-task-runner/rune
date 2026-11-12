@@ -66,7 +66,7 @@ release:
 kos:
   - id: rune
     build: rune
-    base_image: "ghcr.io/rune-task-runner/rune-base@sha256:13f17425edcae59a09595d5b9280e0bfae0d0f52f34a8071bed8681a5ce10101"
+    base_image: "ghcr.io/rune-task-runner/rune-base@sha256:44efecf469cd05923b7d60e53208353b7f067f5072f9dad420bf810631f16e35"
     repositories:
       - ghcr.io/rune-task-runner/rune
     platforms:
