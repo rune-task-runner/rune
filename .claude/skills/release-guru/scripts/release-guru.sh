@@ -142,7 +142,13 @@ cmd_changelog() {
   if [ -n "$bump" ]; then tag="$(next_version "$bump" "$PRE")"; fi
   head "Unreleased changelog preview${tag:+ (as $tag)}"
   if have git-cliff; then
-    if [ -n "$tag" ]; then git cliff --unreleased --tag "$tag" --strip header; else git cliff --unreleased --strip header; fi
+    # Mirrors the workflow: a stable release is described from the previous STABLE
+    # tag with the rc tags ignored, or a promoted release would preview as empty.
+    local stable; stable="$(last_stable)"
+    if [ -n "$tag" ] && [ "$PRE" != true ] && [ -n "$stable" ]; then
+      git cliff "v${stable}..HEAD" --ignore-tags 'rc\.[0-9]+$' --tag "$tag" --strip header
+    elif [ -n "$tag" ]; then git cliff --unreleased --tag "$tag" --strip header
+    else git cliff --unreleased --strip header; fi
   else
     warn "git-cliff not installed locally — showing raw Conventional-Commit subjects instead."
     warn "CI generates the real notes with git-cliff (see cliff.toml). Install: https://git-cliff.org"

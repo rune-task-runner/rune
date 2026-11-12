@@ -101,6 +101,10 @@ jobs:
             echo "::error::tag ${next} already exists; refusing to re-release"; exit 1
           fi
           echo "tag=${next}" >> "$GITHUB_OUTPUT"
+          # Empty when there is no stable tag yet (the very first release).
+          if git rev-parse -q --verify "refs/tags/v${last_stable}" >/dev/null 2>&1; then
+            echo "last_stable=v${last_stable}" >> "$GITHUB_OUTPUT"
+          fi
           echo "Releasing ${next} (last stable: v${last_stable}, target: v${target})"
 
       - name: Set up Go
@@ -121,8 +125,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git cliff --unreleased --tag "${{ steps.ver.outputs.tag }}" --prepend CHANGELOG.md
-          git cliff --latest --tag "${{ steps.ver.outputs.tag }}" --strip header > /tmp/release-notes.md
+          tag="${{ steps.ver.outputs.tag }}"
+          last_stable="${{ steps.ver.outputs.last_stable }}"
+          if [ "${{ inputs.prerelease }}" != "true" ] && [ -n "$last_stable" ]; then
+            # A stable release describes everything since the previous STABLE release.
+            # Its release candidates already took those commits into their own sections,
+            # so "since the latest tag" would leave a promoted release with empty notes.
+            # Ignoring the rc tags folds their commits into this section.
+            git cliff "${last_stable}..HEAD" --ignore-tags 'rc\.[0-9]+$' --tag "$tag" --prepend CHANGELOG.md
+            git cliff "${last_stable}..HEAD" --ignore-tags 'rc\.[0-9]+$' --tag "$tag" --strip header > /tmp/release-notes.md
+          else
+            git cliff --unreleased --tag "$tag" --prepend CHANGELOG.md
+            git cliff --latest --tag "$tag" --strip header > /tmp/release-notes.md
+          fi
           echo "----- release notes -----"; cat /tmp/release-notes.md
 
       - name: Commit changelog and create tag
