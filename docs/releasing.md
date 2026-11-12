@@ -103,7 +103,17 @@ cosign verify ghcr.io/rune-task-runner/rune:<version> \
   --certificate-identity-regexp 'https://github.com/rune-task-runner/rune/.*' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 gh attestation verify oci://ghcr.io/rune-task-runner/rune:<version> --repo rune-task-runner/rune
+
+# 5. Image bill of materials (SPDX), for the multi-platform image or one platform's image
+digest=$(crane digest ghcr.io/rune-task-runner/rune:<version>)          # add --platform linux/arm64 for one platform
+sbom=ghcr.io/rune-task-runner/rune:$(echo "$digest" | tr : -).sbom
+crane blob "ghcr.io/rune-task-runner/rune@$(crane manifest "$sbom" | jq -r '.layers[0].digest')"
 ```
+
+The signature in step 4 covers the multi-platform image and both per-platform images. The bill
+of materials in step 5 is stored in the registry beside the image, under a tag made from the
+image's digest; `cosign download sbom ghcr.io/rune-task-runner/rune@<digest>` fetches the same
+document.
 
 Modifying any byte of an artifact makes steps 1–2 fail — that is the point.
 
@@ -136,8 +146,53 @@ rune release-dryrun            # goreleaser release --snapshot --clean
 goreleaser check               # validate .goreleaser.yaml only
 ```
 
-A full local dry-run needs `goreleaser`, `cosign`, `syft`, and `docker` (buildx) installed.
-CI runs a lean dry-run (`check` + a snapshot skipping sign/sbom/docker) on every push/PR.
+A full local dry-run needs `goreleaser`, `cosign` and `syft` installed, and a running Docker
+daemon: in snapshot mode the image is loaded into it as `goreleaser.ko.local:<version>` and
+never pushed. CI runs a lean dry-run (`check` + a snapshot skipping sign/sbom) on every push/PR,
+then checks the image against its contract (`scripts/check-image.sh`) and compares the binary
+inside it with the archive binary (`scripts/compare-image-binary.sh`).
+
+## How the image is built
+
+The image is built by [ko](https://ko.build) inside the GoReleaser run (`kos` in
+`.goreleaser.yaml`), with no Docker daemon. It reuses the settings of the archive build, so the
+binary in the image is byte-identical to the one in the archive for the same platform.
+
+- ko pushes one multi-platform image as `<version>` and, for a stable release only, `latest`.
+- The workflow then tags the two images inside it as `<version>-amd64` and `<version>-arm64`
+  (step "Tag per-architecture images"). If that step fails, the release and the version tag are
+  already published, signed and attested (the step runs last). Do not rerun the job:
+  GitHub reruns a job from its first step, not from the failed one. Add the two tags by hand,
+  logged in to GHCR; the commands only point tags at images that already exist:
+
+  ```sh
+  repo=ghcr.io/rune-task-runner/rune
+  for arch in amd64 arm64; do
+    crane tag "${repo}@$(crane digest --platform "linux/${arch}" "${repo}:<version>")" "<version>-${arch}"
+  done
+  ```
+
+- cosign signs the multi-platform image and both per-platform images; the provenance
+  attestation is attached to the multi-platform digest.
+
+### Updating the base image
+
+Rune's image is built on `ghcr.io/rune-task-runner/rune-base`: distroless static (non-root)
+plus the `/work` directory, the `/rune` link and `RUNE_CONTAINER=1`, which ko cannot set
+itself. It is referenced by digest in two files. To move to a newer distroless:
+
+1. Find the new digest: `crane digest gcr.io/distroless/static-debian12:nonroot`.
+2. Run the **Base image** workflow on `main` with that digest. It builds, pushes and signs the
+   base and prints the new reference in the run summary.
+3. Put that reference in `.goreleaser.yaml` (`kos[0].base_image`) and `.ko.yaml`
+   (`defaultBaseImage`) in one pull request. `go test ./test/release/...` fails if only one of
+   them changes.
+
+The same distroless digest always produces the same base digest, so rerunning the workflow for
+a digest already in use changes nothing but adds the signature. When you do that, also fill in
+`expected_digest` with the digest the two files pin: the workflow then refuses to sign anything
+else. The `rune-base` package must stay public: local builds
+and CI pull it without credentials.
 
 ## Recovering from a failed release
 
@@ -183,8 +238,6 @@ The workflow is safe to re-run:
 
 - **SHA-pin** all third-party actions in the workflows (currently floating major tags); let
   Dependabot keep them current.
-- Migrate `dockers:` + `docker_manifests:` to **`dockers_v2:`** before GoReleaser v3 removes
-  the classic blocks.
 - Optionally publish moving **`v0` / `v0.4`** image tags in addition to `:<version>`/`:latest`.
 - **Linux packages** (`.deb` / `.rpm`) and additional package managers (apt, winget, nix).
 - **Apple notarization** / **Windows Authenticode** code-signing to remove OS "unidentified

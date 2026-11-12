@@ -53,52 +53,40 @@ release:
   # Tags like v1.2.0-rc.1 are auto-flagged as GitHub pre-releases.
   prerelease: auto
 
-# --- Container images (multi-arch GHCR) -------------------------------------
-# Per-arch images are built from Dockerfile.goreleaser (which COPYs the prebuilt,
-# version-stamped binary — no recompile) and combined into one manifest.
-dockers:
-  - id: rune-amd64
-    goos: linux
-    goarch: amd64
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    image_templates:
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-amd64"
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=A shared task runner for humans and AI agents"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.source=https://github.com/rune-task-runner/rune"
-      - "--label=org.opencontainers.image.licenses=MIT"
-  - id: rune-arm64
-    goos: linux
-    goarch: arm64
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    image_templates:
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-arm64"
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=A shared task runner for humans and AI agents"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.source=https://github.com/rune-task-runner/rune"
-      - "--label=org.opencontainers.image.licenses=MIT"
-
-docker_manifests:
-  - name_template: "ghcr.io/rune-task-runner/rune:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-amd64"
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-arm64"
-  # `latest` is skipped automatically for prereleases.
-  - name_template: "ghcr.io/rune-task-runner/rune:latest"
-    skip_push: auto
-    image_templates:
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-amd64"
-      - "ghcr.io/rune-task-runner/rune:{{ .Version }}-arm64"
+# --- Container image (multi-arch GHCR) --------------------------------------
+# Built and pushed by ko, with no Docker daemon. `build: rune` reuses the main
+# package, flags, ldflags and env of the archive build above, so the binary in
+# the image is byte-identical to the one in the archive (CI compares them).
+# The base image supplies what ko cannot set: the /work working directory, the
+# /rune link and RUNE_CONTAINER=1 (scripts/build-base-image.sh). It is pinned
+# by digest; .ko.yaml carries the same digest for local builds and
+# test/release fails when they differ.
+# ko publishes one multi-platform index. The release workflow adds the
+# <version>-amd64 and <version>-arm64 tags afterwards.
+kos:
+  - id: rune
+    build: rune
+    base_image: "ghcr.io/rune-task-runner/rune-base@sha256:13f17425edcae59a09595d5b9280e0bfae0d0f52f34a8071bed8681a5ce10101"
+    repositories:
+      - ghcr.io/rune-task-runner/rune
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    tags:
+      - "{{ .Version }}"
+      # Empty for a prerelease, and ko skips an empty tag: only a stable
+      # release moves `latest`.
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    bare: true
+    sbom: spdx
+    creation_time: "{{ .CommitTimestamp }}"
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "A shared task runner for humans and AI agents"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.source: "https://github.com/rune-task-runner/rune"
+      org.opencontainers.image.licenses: "MIT"
 
 # --- Supply chain: SBOMs, signing, provenance -------------------------------
 # One SPDX-JSON SBOM per archive (syft).
@@ -124,13 +112,15 @@ signs:
       - "--yes"
     output: true
 
-# Sign the published images/manifests with cosign keyless (by digest).
+# Sign the published image with cosign keyless (by digest). --recursive signs
+# the index and both per-architecture images it lists.
 docker_signs:
   - id: images
     cmd: cosign
-    artifacts: all
+    artifacts: manifests
     args:
       - sign
+      - "--recursive"
       - "${artifact}@${digest}"
       - "--yes"
     output: true

@@ -1,0 +1,77 @@
+name: Base image
+
+# Builds, pushes and signs ghcr.io/rune-task-runner/rune-base, the image Rune's
+# container image is built on (scripts/build-base-image.sh). Run it by hand when
+# the distroless base should move to a newer digest, then put the digest it
+# prints into .goreleaser.yaml and .ko.yaml in one pull request. The build is
+# deterministic: the same distroless digest always gives the same result, so
+# rerunning it for a digest already in use only adds the signature.
+# See "Updating the base image" in docs/releasing.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      distroless_digest:
+        description: "Digest of gcr.io/distroless/static-debian12:nonroot to build on (sha256:...)"
+        type: string
+        required: true
+      expected_digest:
+        description: "Base digest this build must reproduce (sha256:...), when signing a base that is already pinned. Empty for a new base."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: write # push the base image to GHCR
+  id-token: write # cosign keyless
+
+concurrency:
+  group: base-image
+  cancel-in-progress: false
+
+jobs:
+  base-image:
+    name: base-image
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned: the base digest is reproducible only with the same crane release.
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.7
+        with:
+          version: v0.22.1
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build and push
+        id: build
+        env:
+          DISTROLESS_DIGEST: ${{ inputs.distroless_digest }}
+          EXPECTED_DIGEST: ${{ inputs.expected_digest }}
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/rune-task-runner/rune-base
+          tag=$(printf '%s' "${DISTROLESS_DIGEST#sha256:}" | cut -c1-12)
+          digest=$(scripts/build-base-image.sh "$DISTROLESS_DIGEST" "${repo}:${tag}" | tail -n 1)
+          echo "ref=${repo}@${digest}" >> "$GITHUB_OUTPUT"
+          # Signing a different image than the one the configuration pins would
+          # leave the pinned one unsigned behind a green run.
+          if [ -n "$EXPECTED_DIGEST" ] && [ "$digest" != "$EXPECTED_DIGEST" ]; then
+            echo "built ${digest}, expected ${EXPECTED_DIGEST}: not signing" >&2
+            exit 1
+          fi
+      - name: Sign
+        run: cosign sign --yes --recursive "${{ steps.build.outputs.ref }}"
+      - name: Summary
+        run: |
+          {
+            echo "### Base image"
+            echo ""
+            echo "\`${{ steps.build.outputs.ref }}\`"
+            echo ""
+            echo "Put this reference in \`.goreleaser.yaml\` (\`kos[0].base_image\`) and \`.ko.yaml\` (\`defaultBaseImage\`)."
+          } >> "$GITHUB_STEP_SUMMARY"

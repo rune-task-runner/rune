@@ -24,9 +24,17 @@ test-race:
 build:
     go build -trimpath -ldflags "-s -w" -o dist/rune ./cmd/rune
 
-# Build the production container image.
+# Build the production image with ko and load it as rune:local (needs Go, ko, Docker; pushes nothing).
 docker:
-    docker buildx build -t rune:local --load .
+    scripts/build-image.sh load
+
+# Build the production image into dist/image as an OCI layout (needs Go and ko, no Docker daemon).
+docker-export:
+    scripts/build-image.sh export
+
+# Check rune:local against the image contract: configuration, files, behavior.
+docker-check:
+    scripts/check-image.sh rune:local
 
 # Verify the documentation inside Docker: every example validates and runs,
 # fenced rune blocks validate, internal links resolve (see test/docs).

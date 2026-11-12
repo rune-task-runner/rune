@@ -21,8 +21,8 @@ docker run --rm -v "$PWD":/work ghcr.io/rune-task-runner/rune greet Ada
 docker run --rm -v "$PWD":/work ghcr.io/rune-task-runner/rune build target=release
 ```
 
-The container's `ENTRYPOINT` is `/rune`, so everything after the image name goes straight to
-the CLI. Behavior for the default `sh` executor is identical to a native run — the shell is
+The container's `ENTRYPOINT` is the Rune binary, so everything after the image name goes
+straight to the CLI. Behavior for the default `sh` executor is identical to a native run: the shell is
 the pure-Go `mvdan.cc/sh` interpreter baked into the binary.
 
 ## Tags
@@ -57,15 +57,68 @@ gh attestation verify oci://ghcr.io/rune-task-runner/rune:<version> --repo rune-
 
 ## Building it yourself
 
-```sh
-docker buildx build -t rune:local --load .
+The image is built with [ko](https://ko.build), which compiles Rune and assembles the image
+without a Docker daemon. You need Go 1.27 or newer and ko:
 
-# With version metadata (so `rune --version` reports it):
-docker buildx build \
-  --build-arg VERSION="$(git describe --tags --always)" \
-  --build-arg COMMIT="$(git rev-parse --short HEAD)" \
-  -t rune:local --load .
+```sh
+go install github.com/google/ko@latest
 ```
+
+A container runtime is needed only to load or run the result, not to build it.
+
+```sh
+rune docker           # build and load into Docker as rune:local
+rune docker-check     # check rune:local against the image contract
+rune docker-export    # build both architectures into dist/image (OCI layout); no daemon needed
+```
+
+None of these pushes anything. Each one says what to install if Go or ko is missing. Without
+`rune` on your machine, run the script behind the tasks: `scripts/build-image.sh load` or
+`scripts/build-image.sh export`.
+
+A local image reports version `dev`. For one that reports a version, pass the stamps yourself.
+This loads the image as `ko.local/rune:local`; without `--platform` ko builds both
+architectures and loads the amd64 one, whatever your machine runs:
+
+```sh
+KO_DOCKER_REPO=ko.local/rune ko build --bare --tags local \
+  --platform "linux/$(go env GOHOSTARCH)" \
+  --ldflags "-s -w -X main.version=$(git describe --tags --always) -X main.commit=$(git rev-parse --short HEAD)" \
+  ./cmd/rune
+```
+
+### Publishing to your own registry
+
+Publishing is a separate, explicit step that names where the image goes:
+
+```sh
+KO_DOCKER_REPO=registry.example.com/you/rune ko build --bare ./cmd/rune
+```
+
+This pushes. ko uses the credentials of `docker login` (or `ko login`) for that registry; if
+they are missing or wrong the push fails with `UNAUTHORIZED` or `DENIED` from the registry, and
+nothing is published. `ghcr.io/rune-task-runner/rune` itself is published only by the release
+workflow.
+
+### What this build covers
+
+ko builds one static Go binary onto a minimal base image. It cannot add system packages, a
+shell, or anything that needs a C toolchain. For an image with more in it, see the second
+option under [Limitations](#limitations-of-the-minimal-image) below.
+
+### Image layout
+
+| Path or setting | Value |
+|---|---|
+| Binary | `/ko-app/rune`, the same file as in the release archive for that platform |
+| `/rune` | a link to the binary, so `--entrypoint /rune` keeps working |
+| Entrypoint | `/ko-app/rune` (releases up to v0.7.0 recorded `/rune`; both start Rune) |
+| Working directory | `/work` |
+| User | `65532` (non-root) |
+
+The base image is distroless static, plus `/work`, the `/rune` link and `RUNE_CONTAINER=1`.
+It is published as `ghcr.io/rune-task-runner/rune-base` and pinned by digest in `.ko.yaml`
+and `.goreleaser.yaml`.
 
 ## Limitations of the minimal image
 

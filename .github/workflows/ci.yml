@@ -82,8 +82,10 @@ jobs:
           go-version: "1.27"
           check-latest: true
       # Validate the whole config (catches deprecated keys, e.g. brews -> homebrew_casks),
-      # then build binaries + archives + checksums. Signing/SBOM/docker need cosign/syft/
-      # OIDC and are exercised by the real release job, so they are skipped here.
+      # then build binaries + archives + checksums + the container image. Signing and
+      # SBOMs need cosign/syft/OIDC and are exercised by the real release job, so they
+      # are skipped here. In snapshot mode ko loads the image into the runner's local
+      # Docker daemon as goreleaser.ko.local:<version>; nothing is pushed anywhere.
       - name: GoReleaser check
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -95,7 +97,21 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --snapshot --clean --skip=sign,sbom,docker
+          args: release --snapshot --clean --skip=sign,sbom
+      - name: Find the snapshot image
+        id: image
+        run: |
+          set -euo pipefail
+          # `|| true`: grep exits 1 when nothing matches, which under `pipefail`
+          # would abort the step before the message below is printed.
+          ref=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^goreleaser\.ko\.local:.*-next$' | head -n 1 || true)
+          test -n "$ref" || { echo "the snapshot loaded no goreleaser.ko.local image"; docker images; exit 1; }
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+      - name: Check image contract
+        run: scripts/check-image.sh "${{ steps.image.outputs.ref }}"
+      # The docs promise that the image contains the release binary.
+      - name: Compare image binary with the archive binary
+        run: scripts/compare-image-binary.sh "${{ steps.image.outputs.ref }}" dist/rune_linux_amd64*/rune
 
   golden:
     name: golden
