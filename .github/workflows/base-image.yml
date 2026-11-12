@@ -1,7 +1,9 @@
 name: Base image
 
-# Builds, pushes and signs ghcr.io/rune-task-runner/rune-base, the image Rune's
-# container image is built on (scripts/build-base-image.sh). Run it by hand when
+# Builds, pushes and signs the base image Rune's container image is built on
+# (scripts/build-base-image.sh). It is stored in the same package as Rune's
+# image, ghcr.io/rune-task-runner/rune, under the tag base-<id>, and referenced
+# only by digest. Run it by hand when
 # the distroless base should move to a newer digest, then put the digest it
 # prints into .goreleaser.yaml and .ko.yaml in one pull request. Pin the digest
 # this workflow prints, not one built elsewhere: the compressed layer, and so
@@ -56,8 +58,8 @@ jobs:
           EXPECTED_DIGEST: ${{ inputs.expected_digest }}
         run: |
           set -euo pipefail
-          repo=ghcr.io/rune-task-runner/rune-base
-          tag=$(printf '%s' "${DISTROLESS_DIGEST#sha256:}" | cut -c1-12)
+          repo=ghcr.io/rune-task-runner/rune
+          tag=base-$(printf '%s' "${DISTROLESS_DIGEST#sha256:}" | cut -c1-12)
           digest=$(scripts/build-base-image.sh "$DISTROLESS_DIGEST" "${repo}:${tag}" | tail -n 1)
           echo "ref=${repo}@${digest}" >> "$GITHUB_OUTPUT"
           # Signing a different image than the one the configuration pins would

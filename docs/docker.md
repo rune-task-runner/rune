@@ -30,7 +30,11 @@ the pure-Go `mvdan.cc/sh` interpreter baked into the binary.
 - `ghcr.io/rune-task-runner/rune:latest` — latest **stable** release (prereleases never move `latest`)
 - `ghcr.io/rune-task-runner/rune:<version>` — a specific release (e.g. `:1.2.3`, `:1.3.0-rc.1`)
 
-Each tag is a **multi-arch manifest** covering `linux/amd64` and `linux/arm64`; Docker pulls
+Tags that start with `base-` are not Rune: they hold the base image the release is built on
+(see [Image layout](#image-layout)) and contain no `rune` binary. Tags that start with `sha256-`
+hold signatures and bills of materials.
+
+Each release tag is a **multi-arch manifest** covering `linux/amd64` and `linux/arm64`; Docker pulls
 the variant matching your host automatically.
 
 ```sh
@@ -117,8 +121,8 @@ option under [Limitations](#limitations-of-the-minimal-image) below.
 | User | `65532` (non-root) |
 
 The base image is distroless static, plus `/work`, the `/rune` link and `RUNE_CONTAINER=1`.
-It is published as `ghcr.io/rune-task-runner/rune-base` and pinned by digest in `.ko.yaml`
-and `.goreleaser.yaml`.
+It is stored in the same package, under a `base-…` tag, and pinned by digest in `.ko.yaml` and
+`.goreleaser.yaml`.
 
 ## Limitations of the minimal image
 
