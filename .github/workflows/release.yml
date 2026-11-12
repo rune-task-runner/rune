@@ -136,7 +136,9 @@ jobs:
             git cliff "${last_stable}..HEAD" --ignore-tags 'rc\.[0-9]+$' --tag "$tag" --strip header > /tmp/release-notes.md
           else
             git cliff --unreleased --tag "$tag" --prepend CHANGELOG.md
-            git cliff --latest --tag "$tag" --strip header > /tmp/release-notes.md
+            # Not --latest: the new tag does not exist yet, so "latest" is the PREVIOUS
+            # release and its notes would be published under this one.
+            git cliff --unreleased --tag "$tag" --strip header > /tmp/release-notes.md
           fi
           echo "----- release notes -----"; cat /tmp/release-notes.md
 

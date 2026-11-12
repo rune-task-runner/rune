@@ -73,6 +73,12 @@ gh api -X PATCH repos/rune-task-runner/rune/releases/$id -F body=@notes.md
 The cause that time was `changelog: disable: true` in `.goreleaser.yaml`, which also discards
 the `--release-notes` file. `test/release` now fails if that setting comes back.
 
+**The release page shows the previous release's notes:**
+Until v0.8.0 the workflow rendered the notes with `git cliff --latest` before the new tag
+existed, which describes the previous release. Nobody saw it because the body was discarded
+anyway. The workflow now uses the same range for the notes as for `CHANGELOG.md`. The
+section in `CHANGELOG.md` for a tag is always the correct text; use it to repair a body.
+
 **A stable release's changelog section came out empty after release candidates:**
 The rc sections had already taken the commits. Fixed in the workflow (stable notes are built
 from the previous stable tag with rc tags ignored). If you see it in a `plan` preview, stop
