@@ -77,6 +77,11 @@ inputs cover the whole lifecycle — **keep the bump the same** while working to
 | Promote rc → stable | `minor` | ✗ | `v0.5.0` |
 | Start the next line | `minor`/`patch`/`major` | either | bumps from the new stable |
 
+The GitHub release body is the section git-cliff renders for that tag. The workflow hands it to
+GoReleaser with `--release-notes` and then checks that the published body matches, setting it
+if it does not. (Do not disable GoReleaser's `changelog` in `.goreleaser.yaml`: that also
+discards the notes file.)
+
 A stable release's changelog section and release notes cover everything since the previous
 **stable** release, including what its release candidates already listed. The candidates keep
 their own sections in `CHANGELOG.md` as history.

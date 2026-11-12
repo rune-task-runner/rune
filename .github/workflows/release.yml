@@ -136,7 +136,9 @@ jobs:
             git cliff "${last_stable}..HEAD" --ignore-tags 'rc\.[0-9]+$' --tag "$tag" --strip header > /tmp/release-notes.md
           else
             git cliff --unreleased --tag "$tag" --prepend CHANGELOG.md
-            git cliff --latest --tag "$tag" --strip header > /tmp/release-notes.md
+            # Not --latest: the new tag does not exist yet, so "latest" is the PREVIOUS
+            # release and its notes would be published under this one.
+            git cliff --unreleased --tag "$tag" --strip header > /tmp/release-notes.md
           fi
           echo "----- release notes -----"; cat /tmp/release-notes.md
 
@@ -177,6 +179,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+
+      # The release body must be the notes rendered above. GoReleaser takes them from
+      # --release-notes; this confirms it, and repairs the body if a configuration
+      # change ever drops them again (an empty body is otherwise easy to miss).
+      - name: Ensure the release notes are published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ steps.ver.outputs.tag }}"
+          squeeze() { tr -d '[:space:]'; }
+          want=$(squeeze < /tmp/release-notes.md)
+          got=$(gh release view "$tag" --json body --jq '.body' | squeeze)
+          if [ "$got" != "$want" ]; then
+            echo "::warning::the release body for ${tag} did not match the rendered notes; setting it"
+            gh release edit "$tag" --notes-file /tmp/release-notes.md
+          fi
 
       - name: Attest binary provenance (covers all archives via checksums)
         uses: actions/attest-build-provenance@v2
