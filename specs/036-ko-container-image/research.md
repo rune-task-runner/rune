@@ -190,6 +190,11 @@ prints it. The maintainer then updates the digest in `.goreleaser.yaml` and `.ko
 request; the drift test (R9) fails if only one is changed. `docs/releasing.md` documents the
 steps (FR-032).
 
+Correction after the first workflow run (2026-11-12): the base's content is deterministic, but
+its digest is not the same across machines. crane compresses the added layer, and the result
+depends on the Go release the crane binary was built with. The workflow, with a pinned crane
+release binary, is the canonical build, and its digest is the one that is pinned.
+
 The first base image is published by hand, because a manually started workflow can run only once
 it is on `main`. The script is deterministic, so running the workflow after the merge with the
 same distroless digest produces the same digest and adds the signature. No release is cut before

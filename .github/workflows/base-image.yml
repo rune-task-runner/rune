@@ -3,9 +3,11 @@ name: Base image
 # Builds, pushes and signs ghcr.io/rune-task-runner/rune-base, the image Rune's
 # container image is built on (scripts/build-base-image.sh). Run it by hand when
 # the distroless base should move to a newer digest, then put the digest it
-# prints into .goreleaser.yaml and .ko.yaml in one pull request. The build is
-# deterministic: the same distroless digest always gives the same result, so
-# rerunning it for a digest already in use only adds the signature.
+# prints into .goreleaser.yaml and .ko.yaml in one pull request. Pin the digest
+# this workflow prints, not one built elsewhere: the compressed layer, and so
+# the digest, depends on the crane binary. Here the same distroless digest
+# always gives the same result, so a rerun for a digest already in use only
+# adds the signature.
 # See "Updating the base image" in docs/releasing.md.
 
 on:
@@ -36,7 +38,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      # Pinned: the base digest is reproducible only with the same crane release.
+      # Pinned: the base digest is reproducible only with the same crane binary.
       - name: Install crane
         uses: imjasonh/setup-crane@v0.7
         with:

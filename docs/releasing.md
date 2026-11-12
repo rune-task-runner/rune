@@ -188,8 +188,11 @@ itself. It is referenced by digest in two files. To move to a newer distroless:
    (`defaultBaseImage`) in one pull request. `go test ./test/release/...` fails if only one of
    them changes.
 
-The same distroless digest always produces the same base digest, so rerunning the workflow for
-a digest already in use changes nothing but adds the signature. When you do that, also fill in
+Always pin the digest the workflow prints. A build of `scripts/build-base-image.sh` on another
+machine has the same content but can get a different digest, because the digest also depends
+on the crane binary that compresses the added layer. In the workflow the same distroless digest
+always produces the same base digest, so rerunning it for a digest already in use changes
+nothing but adds the signature. When you do that, also fill in
 `expected_digest` with the digest the two files pin: the workflow then refuses to sign anything
 else. The `rune-base` package must stay public: local builds
 and CI pull it without credentials.

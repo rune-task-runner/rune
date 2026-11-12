@@ -499,6 +499,14 @@ Measured results are in [baseline.md](baseline.md).
   platform settings. Not verified: whether the workflow's token may write to a package first
   pushed by hand (T049 will show; if denied, grant the repository write access in the package
   settings).
+- **T049, first attempts (2026-11-12)**: the workflow's first run was denied write access to
+  the hand-pushed package until the maintainer granted the repository Actions write access. The
+  second run pushed, but built `sha256:44efecf4...`, not the pinned `sha256:13f17425...`, and
+  refused to sign. The two have identical content (same uncompressed layer, same configuration);
+  only the compressed added layer differs (146 against 142 bytes), because the runner's crane
+  release binary and the locally built crane compress differently. The workflow's build is the
+  canonical one, so both configuration files now pin `sha256:44efecf4...`; the determinism claim
+  in research.md R11 holds per crane binary, not across machines.
 - **T047**: the local test registry container is removed. Prototype images and two Docker
   volumes (tools, build cache) remain on the machine.
 
