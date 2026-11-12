@@ -8,7 +8,7 @@
 #   docker-compose run --rm test go test ./test/docs/...   # docs verification
 #   docker-compose run --rm -e CGO_ENABLED=1 test go test -race ./...
 #
-# It mirrors the production Dockerfile's builder base (golang:1.27-bookworm),
+# It is built on golang:1.27-bookworm, the Go release the project builds with,
 # whose gcc satisfies the race detector's CGO requirement. CGO defaults to off
 # to match the shipped artifact; -race runs override it via CGO_ENABLED=1.
 ARG GO_VERSION=1.27

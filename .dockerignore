@@ -1,5 +1,6 @@
-# Keep the build context minimal and deterministic. The image build only needs
-# Go sources + go.mod/go.sum; everything below is irrelevant to it.
+# Build context of the test image (Dockerfile.test). The production image is
+# built by ko and uses no Docker build context. The test image only needs Go
+# sources + go.mod/go.sum; everything below is irrelevant to it.
 .git/
 dist/
 .rune/

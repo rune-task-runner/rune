@@ -48,7 +48,9 @@ rune --list        # see all dev tasks (or: go run ./cmd/rune --list)
 | `rune test` | Full test suite **inside Docker**. |
 | `rune test-race` | Test suite with the race detector, inside Docker. |
 | `rune build` | Build the static host binary into `dist/`. |
-| `rune docker` | Build the production container image. |
+| `rune docker` | Build the production container image with ko and load it as `rune:local` (needs [ko](https://ko.build): `go install github.com/google/ko@latest`). |
+| `rune docker-export` | Build the production image into `dist/image` as an OCI layout; no Docker daemon needed. |
+| `rune docker-check` | Check `rune:local` against the image contract (configuration, files, behavior). |
 | `rune docs-check` | Verify the documentation (examples, code blocks, links, site nav) inside Docker. |
 | `rune docs-site-gen` | Generate the documentation site's content tree from `docs/`. |
 | `rune docs-site-dev` | Serve the documentation site at <http://localhost:4321> with hot reload. |
@@ -121,7 +123,8 @@ example, `rune docs-check` is the fast check; if you don't have `rune`, run the
 | [`docs/`](docs/) | User documentation — guides, examples, reference. |
 | `test/integration`, `test/corpus`, `test/docs` | End-to-end, grammar-corpus, and documentation harnesses. |
 | [`Runefile`](Runefile) | Rune's own dev tasks. |
-| `Dockerfile`, `Dockerfile.test`, `docker-compose.yml` | Production image and the test harness. |
+| `.ko.yaml`, `scripts/build-image.sh`, `scripts/build-base-image.sh`, `scripts/check-image.sh` | The production image: built with ko, on a base image of Rune's own, checked against its contract. See [docs/docker.md](docs/docker.md). |
+| `Dockerfile.test`, `docker-compose.yml` | The test harness. |
 
 ## Propose it
 

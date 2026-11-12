@@ -138,16 +138,15 @@ jobs:
           git tag -a "${{ steps.ver.outputs.tag }}" -m "${{ steps.ver.outputs.tag }}"
           git push origin "${{ steps.ver.outputs.tag }}"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      # The image is built and pushed by ko inside GoReleaser, with no Docker
+      # daemon, emulation or builder. crane writes the registry credential that
+      # ko, cosign and crane itself read, and adds the per-architecture tags below.
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.7
       - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -176,10 +175,9 @@ jobs:
           # GoReleaser tags images with {{.Version}} (the tag WITHOUT the leading "v"),
           # so strip it to match the published ref.
           ver="${{ steps.ver.outputs.tag }}"; ver="${ver#v}"
-          digest=$(docker buildx imagetools inspect \
-            "ghcr.io/rune-task-runner/rune:${ver}" \
-            --format '{{ .Manifest.Digest }}')
+          digest=$(crane digest "ghcr.io/rune-task-runner/rune:${ver}")
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "version=${ver}" >> "$GITHUB_OUTPUT"
 
       - name: Attest image provenance
         uses: actions/attest-build-provenance@v2
@@ -187,6 +185,21 @@ jobs:
           subject-name: ghcr.io/rune-task-runner/rune
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
+
+      # ko publishes one multi-platform index under the version tag. These tags
+      # name the two images that index lists, so <version>-amd64 is the same
+      # image a pull of <version> gets on amd64. It runs last: a failure here must not
+      # cost the release its provenance, and the tags can be added by hand afterwards
+      # (docs/releasing.md).
+      - name: Tag per-architecture images
+        run: |
+          set -euo pipefail
+          repo=ghcr.io/rune-task-runner/rune
+          ver="${{ steps.image.outputs.version }}"
+          for arch in amd64 arm64; do
+            d=$(crane digest --platform "linux/${arch}" "${repo}:${ver}")
+            crane tag "${repo}@${d}" "${ver}-${arch}"
+          done
 
   # Publishes the VS Code extension for STABLE releases only (specs/015,
   # contracts/publishing-pipeline.md). Strictly additive: a failure here never

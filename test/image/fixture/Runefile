@@ -1,0 +1,10 @@
+# Mounted at /work by scripts/check-image.sh. Both tasks use only Rune's
+# built-in shell, because the production image has no other.
+
+# Greet someone.
+hello name="world":
+    echo "hi {{name}}"
+
+# Fail with a known exit code.
+fail:
+    exit 7
