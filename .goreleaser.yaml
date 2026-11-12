@@ -59,14 +59,15 @@ release:
 # the image is byte-identical to the one in the archive (CI compares them).
 # The base image supplies what ko cannot set: the /work working directory, the
 # /rune link and RUNE_CONTAINER=1 (scripts/build-base-image.sh). It is pinned
-# by digest; .ko.yaml carries the same digest for local builds and
+# by digest and kept in the same package as the image, under a base-<id> tag,
+# so there is one package to find and one set of permissions; .ko.yaml carries the same digest for local builds and
 # test/release fails when they differ.
 # ko publishes one multi-platform index. The release workflow adds the
 # <version>-amd64 and <version>-arm64 tags afterwards.
 kos:
   - id: rune
     build: rune
-    base_image: "ghcr.io/rune-task-runner/rune-base@sha256:44efecf469cd05923b7d60e53208353b7f067f5072f9dad420bf810631f16e35"
+    base_image: "ghcr.io/rune-task-runner/rune@sha256:44efecf469cd05923b7d60e53208353b7f067f5072f9dad420bf810631f16e35"
     repositories:
       - ghcr.io/rune-task-runner/rune
     platforms:

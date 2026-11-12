@@ -177,9 +177,10 @@ binary in the image is byte-identical to the one in the archive for the same pla
 
 ### Updating the base image
 
-Rune's image is built on `ghcr.io/rune-task-runner/rune-base`: distroless static (non-root)
+Rune's image is built on a base image of its own: distroless static (non-root)
 plus the `/work` directory, the `/rune` link and `RUNE_CONTAINER=1`, which ko cannot set
-itself. It is referenced by digest in two files. To move to a newer distroless:
+itself. It is stored in the same package as the image, as
+`ghcr.io/rune-task-runner/rune:base-<id>`, and referenced by digest in two files. To move to a newer distroless:
 
 1. Find the new digest: `crane digest gcr.io/distroless/static-debian12:nonroot`.
 2. Run the **Base image** workflow on `main` with that digest. It builds, pushes and signs the
@@ -194,8 +195,7 @@ on the crane binary that compresses the added layer. In the workflow the same di
 always produces the same base digest, so rerunning it for a digest already in use changes
 nothing but adds the signature. When you do that, also fill in
 `expected_digest` with the digest the two files pin: the workflow then refuses to sign anything
-else. The `rune-base` package must stay public: local builds
-and CI pull it without credentials.
+else.
 
 ## Recovering from a failed release
 

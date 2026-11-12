@@ -3,9 +3,10 @@
 # section in .goreleaser.yaml, which takes the same settings from its `builds`.
 # test/release fails when the two files disagree, so change them together.
 
-# distroless static (non-root) plus /work, the /rune link and RUNE_CONTAINER=1;
-# see scripts/build-base-image.sh and "Updating the base image" in docs/releasing.md.
-defaultBaseImage: ghcr.io/rune-task-runner/rune-base@sha256:44efecf469cd05923b7d60e53208353b7f067f5072f9dad420bf810631f16e35
+# distroless static (non-root) plus /work, the /rune link and RUNE_CONTAINER=1.
+# It lives in the same package as Rune's image, under a base-<id> tag, and is
+# referenced by digest; see scripts/build-base-image.sh and "Updating the base image" in docs/releasing.md.
+defaultBaseImage: ghcr.io/rune-task-runner/rune@sha256:44efecf469cd05923b7d60e53208353b7f067f5072f9dad420bf810631f16e35
 
 defaultPlatforms:
   - linux/amd64

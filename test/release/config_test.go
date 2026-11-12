@@ -91,13 +91,15 @@ func runeBuild(t *testing.T, file string, builds []build) build {
 	return build{}
 }
 
-var pinnedBase = regexp.MustCompile(`^ghcr\.io/rune-task-runner/rune-base@sha256:[0-9a-f]{64}$`)
+// The base image lives in the same package as Rune's image and is only ever
+// referenced by digest.
+var pinnedBase = regexp.MustCompile(`^ghcr\.io/rune-task-runner/rune@sha256:[0-9a-f]{64}$`)
 
 func TestBaseImagePinned(t *testing.T) {
 	ko, rel := configs(t)
 	img := image(t, rel)
 	if !pinnedBase.MatchString(ko.DefaultBaseImage) {
-		t.Errorf(".ko.yaml defaultBaseImage = %q, want rune-base pinned by digest", ko.DefaultBaseImage)
+		t.Errorf(".ko.yaml defaultBaseImage = %q, want the base image in the rune package, pinned by digest", ko.DefaultBaseImage)
 	}
 	if ko.DefaultBaseImage != img.BaseImage {
 		t.Errorf("base images differ:\n .ko.yaml         %q\n .goreleaser.yaml %q", ko.DefaultBaseImage, img.BaseImage)

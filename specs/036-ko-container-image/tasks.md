@@ -267,7 +267,7 @@ materials, proven on a real release in a fork.
   `scripts/build-base-image.sh "$digest" ghcr.io/rune-task-runner/rune-base:<first 12 hex>`,
   `cosign sign --yes ghcr.io/rune-task-runner/rune-base@<printed digest> --recursive`, and write
   the digest to the job summary with the two files to update.
-- [ ] T027 [US3] **Maintainer.** Fork verification, part 1. In a fork (or a scratch repository),
+- [X] T027 [US3] **Maintainer.** Fork verification, part 1. In a fork (or a scratch repository),
   with `repositories` in `.goreleaser.yaml` and the image name in `release.yml` pointed at the
   fork's GHCR path on a throwaway branch, cut `v0.0.1-rc.1` then `v0.0.1`. The fork has none of
   the publishing secrets, so on that branch also: set `skip_upload: true` on the Homebrew cask
@@ -278,15 +278,15 @@ materials, proven on a real release in a fork.
   platforms, per-architecture tag equals the index entry, `cosign verify` on 3 of 3 digests,
   `gh attestation verify` on the index digest, the contract script on the published tag, and the
   negative check on a hand-pushed image.
-- [ ] T028 [US3] From the fork release, find the command that retrieves the image's SPDX document
+- [X] T028 [US3] From the fork release, find the command that retrieves the image's SPDX document
   for a digest (try `cosign download sbom <repo>@<digest>`, then an OCI referrers query with
   `crane` or `oras`). Record the working command and a sample of its output in `baseline.md`. If
   no supported command retrieves it, set `sbom_directory` in `kos` and decide with the maintainer
   whether the SPDX files become release assets, which would amend SC-009.
-- [ ] T029 [US3] From the fork release, compare the GitHub release's asset list with v0.7.0's:
+- [X] T029 [US3] From the fork release, compare the GitHub release's asset list with v0.7.0's:
   six archives, `checksums.txt`, its `.sigstore.json` and `.pem`, six SPDX files. Record the
   result (SC-009).
-- [ ] T030 [US3] Confirm from the fork run's log that GoReleaser's ko pipe used the credential
+- [X] T030 [US3] Confirm from the fork run's log that GoReleaser's ko pipe used the credential
   written by `crane auth login` (R12) and that no step used the Docker daemon for the image
   (SC-010). If the login was not picked up, switch the login step to the form that works and
   record it.
@@ -405,7 +405,7 @@ materials, proven on a real release in a fork.
 - [X] T048 Commit when the maintainer asks, as one commit
   (`build(release): build the container image with ko`), with no AI attribution. After the pull
   request: wait for every check, including the extended `release-dryrun` job.
-- [ ] T049 **Maintainer.** After the merge, sign the base image: run the `base-image.yml`
+- [X] T049 **Maintainer.** After the merge, sign the base image: run the `base-image.yml`
   workflow on `main` with the distroless digest recorded in T007 and the pinned base digest as
   `expected_digest`. The build is deterministic, so
   it must print the digest already pinned in `.goreleaser.yaml` and `.ko.yaml`; if it prints a
@@ -507,6 +507,17 @@ Measured results are in [baseline.md](baseline.md).
   release binary and the locally built crane compress differently. The workflow's build is the
   canonical one, so both configuration files now pin `sha256:44efecf4...`; the determinism claim
   in research.md R11 holds per crane binary, not across machines.
+- **One package (2026-11-12, after v0.8.0-rc.1)**: the maintainer found two packages (`rune`
+  and `rune-base`) confusing. The base now lives in the `rune` package under the tag
+  `base-<id>` and is still referenced only by digest, which did not change
+  (`sha256:44efecf4...`). The base script no longer leaves per-architecture helper tags. This
+  supersedes the `rune-base` references in research.md R3 and R11, data-model.md and the
+  contracts. The `rune-base` package is deleted once the base is signed in its new place.
+- **v0.8.0-rc.1 (2026-11-12)**: the first release built with ko. Verified on GHCR: the three
+  tags and an unmoved `latest`; `cosign verify` on the index and both image digests;
+  `gh attestation verify`; bill of materials retrieval; 33 contract checks on the published tag;
+  image binary equal to the archive binary for both architectures; 15 release assets of the
+  same kinds as before. This settles T027 to T030 without a fork.
 - **T047**: the local test registry container is removed. Prototype images and two Docker
   volumes (tools, build cache) remain on the machine.
 

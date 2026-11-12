@@ -11,7 +11,7 @@
 #   scripts/build-base-image.sh <distroless-digest> <destination-ref>
 #
 # Example:
-#   scripts/build-base-image.sh sha256:0123... ghcr.io/rune-task-runner/rune-base:012345678901
+#   scripts/build-base-image.sh sha256:0123... ghcr.io/rune-task-runner/rune:base-012345678901
 #
 # Prints the pushed index digest as the last line. The image's content depends
 # only on the input digest, but its digest also depends on how crane compresses
@@ -44,7 +44,7 @@ esac
 case ${dest##*/} in
 *:*) ;;
 *)
-	echo "the destination must carry a tag, for example rune-base:$(printf '%s' "${digest#sha256:}" | cut -c1-12)" >&2
+	echo "the destination must carry a tag, for example rune:base-$(printf '%s' "${digest#sha256:}" | cut -c1-12)" >&2
 	usage
 	;;
 esac
@@ -69,16 +69,22 @@ tar -C "$work/layer" --owner=0 --group=0 --numeric-owner --mtime=@0 \
 tar -C "$work/layer" --owner=65532 --group=65532 --numeric-owner --mtime=@0 \
 	-rf "$work/layer.tar" work
 
+# Each architecture's image is pushed under the destination tag in turn and
+# then referenced by digest, so the package ends up with one tag for the base
+# and no per-architecture helper tags.
+repo=${dest%:*}
+manifests=""
 # shellcheck disable=SC2086 # CRANE_FLAGS is a list of flags on purpose
 for arch in amd64 arm64; do
 	crane append ${CRANE_FLAGS:-} --platform "linux/$arch" \
-		-b "$source_image" -f "$work/layer.tar" -t "$dest-$arch" >/dev/null
+		-b "$source_image" -f "$work/layer.tar" -t "$dest" >/dev/null
 	crane mutate ${CRANE_FLAGS:-} --platform "linux/$arch" \
 		--workdir /work --env RUNE_CONTAINER=1 \
 		--label "org.opencontainers.image.source=https://github.com/rune-task-runner/rune" \
-		-t "$dest-$arch" "$dest-$arch" >/dev/null
+		-t "$dest" "$dest" >/dev/null
+	manifests="$manifests -m $repo@$(crane digest ${CRANE_FLAGS:-} "$dest")"
 done
-# shellcheck disable=SC2086
-crane index append ${CRANE_FLAGS:-} -m "$dest-amd64" -m "$dest-arm64" -t "$dest" >/dev/null
+# shellcheck disable=SC2086 # $manifests is a list of -m arguments on purpose
+crane index append ${CRANE_FLAGS:-} $manifests -t "$dest" >/dev/null
 # shellcheck disable=SC2086
 crane digest ${CRANE_FLAGS:-} "$dest"
