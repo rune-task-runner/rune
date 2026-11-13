@@ -278,3 +278,20 @@ func TestHTTPToolsListCarriesHints(t *testing.T) {
 		}
 	}
 }
+
+// Spec 041 FR-015: the filters apply over Streamable HTTP as on stdio.
+func TestHTTPAllowListFiltersList(t *testing.T) {
+	srv := New(&syncEngine{tasks: sampleEngine().tasks}, Options{AllowList: []string{"logs", "greet"}, DenyList: []string{"greet"}})
+	addr, stop, err := srv.StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	res, err := httpSession(t, addr, "secret").ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 1 || res.Tools[0].Name != "logs" {
+		t.Errorf("tools over HTTP = %+v, want only logs", res.Tools)
+	}
+}

@@ -27,6 +27,20 @@ This lets agents run the `[confirm]` task `clean`. Name each task you allow, sep
 commas (`--allow-destructive clean,reset`) or with the flag repeated. Every other
 `[confirm]` task stays refused; see [Security model](#security-model-secure-by-default).
 
+**Choosing which tasks agents see:**
+
+```sh
+rune mcp --allow build,test
+rune mcp --deny deploy
+```
+
+`--allow` exposes only the tasks you name. `--deny` hides the tasks you name and keeps the
+rest, including tasks added to the Runefile later. Both take names separated by commas
+(not spaces) or the flag repeated, and a task named in both is hidden. A hidden task is not in the tool
+list, and a call to it fails the same way as a call to a tool that does not exist. A name
+that is not a task in the Runefile stops the server with exit code 2 and suggests the
+closest task. Imported tasks use the Runefile form, `tools::lint`.
+
 **Streamable HTTP (opt-in, for networked clients):**
 
 ```sh
@@ -44,6 +58,8 @@ never enabled by default.
 
 - Every **non-private** task **available on the host OS** is exposed as an MCP tool. Add
   `[private]` to hide a task (it remains callable only as a dependency of another task).
+  The operator can narrow this further for one server with `--allow` and `--deny`; see
+  [Starting the server](#starting-the-server).
   A task restricted to another platform (`[linux]`/`[macos]`/`[windows]`/`[unix]`) is not
   registered at all, so an agent can never see — or attempt — a platform-incompatible
   command; calling such a task by a remembered name is rejected at the protocol layer as
@@ -218,6 +234,16 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   never covers any other task, including a destructive dependency of the granted task.
 - **There is no blanket switch.** No option allows all destructive tasks, and
   `rune serve` and `rune mcp` do not accept `--yes`.
+- **The operator chooses which tasks are tools.** `--allow` and `--deny` narrow the tool
+  list. They never add to it: a private task, the `[context]` hook, and a task restricted
+  to another OS stay unexposed even when `--allow` names them.
+- **`--allow` and `--deny` cover direct calls only.** The dependencies and hooks of an
+  exposed task still run, whether or not they are exposed. With `release: deploy`,
+  `--deny deploy` stops an agent calling `deploy` but not `release`. To stop a task running
+  at all, hide the tasks that depend on it too, or mark it `[confirm]`: a `[confirm]` task
+  the operator has not named in `--allow-destructive` is refused wherever a run reaches it.
+- **`--allow` grants nothing destructive.** A `[confirm]` task needs `--allow-destructive`
+  whichever of the two filters is set, and a grant does not make a hidden task a tool.
 - **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint` on the task and on
   every task that can reach it.
 - **Secrets come from the environment only.** API keys and secrets are read from the
@@ -256,7 +282,8 @@ summarize (agent):
 ```
 
 The endpoint an `agent` task opens for its own agent never lets that agent run a
-destructive task. Neither `--allow-destructive` nor `--yes` changes that.
+destructive task. Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
+`--deny` do not reach that endpoint either: they apply only to `rune serve` and `rune mcp`.
 
 ## See also
 

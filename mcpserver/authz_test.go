@@ -11,7 +11,6 @@ import (
 
 const (
 	refusedClean = `task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server`
-	notAuthGreet = `task "greet" is not authorized for this session`
 	grantFlag    = "--allow-destructive"
 )
 
@@ -33,27 +32,49 @@ func TestRefusalDestructiveNeedsGrant(t *testing.T) {
 	}
 }
 
-func TestRefusalAllowListNarrows(t *testing.T) {
-	srv := New(sampleEngine(), Options{AllowList: []string{"logs"}})
-	if got := srv.refusal(TaskInfo{Name: "logs"}); got != "" {
-		t.Errorf("allow-listed task refused: %q", got)
+// toolNames lists the names of the tools a client of srv sees.
+func toolNames(t *testing.T, srv *Server) []string {
+	t.Helper()
+	res, err := connect(t, srv).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	got := srv.refusal(TaskInfo{Name: "greet"})
-	if got != notAuthGreet {
-		t.Errorf("refusal(greet) = %q, want %q", got, notAuthGreet)
+	names := make([]string, len(res.Tools))
+	for i, tl := range res.Tools {
+		names[i] = tl.Name
 	}
-	if strings.Contains(got, "--allow-destructive") {
-		t.Errorf("an allowlist refusal must not point at --allow-destructive: %q", got)
+	return names
+}
+
+// Spec 041 FR-003: a task outside the allowlist is not a tool at all.
+func TestAllowListHidesFromList(t *testing.T) {
+	got := toolNames(t, New(sampleEngine(), Options{AllowList: []string{"logs"}}))
+	if !slices.Equal(got, []string{"logs"}) {
+		t.Errorf("tools = %q, want only logs", got)
 	}
 }
 
-// The allowlist is checked first, so a granted destructive task outside it is
-// refused the same way as any other task outside it (research R5).
-func TestRefusalAllowListBeforeGrant(t *testing.T) {
-	srv := New(sampleEngine(), Options{AllowList: []string{"logs"}, AllowDestructive: []string{"clean"}})
-	want := `task "clean" is not authorized for this session`
-	if got := srv.refusal(TaskInfo{Name: "clean", Destructive: true}); got != want {
-		t.Errorf("refusal(clean) = %q, want %q", got, want)
+// Spec 041 FR-007: a grant does not expose a task. A granted destructive task
+// outside the allowlist is hidden like any other, and a call never reaches the
+// engine.
+func TestAllowListHidesGrantedDestructive(t *testing.T) {
+	eng := sampleEngine()
+	srv := New(eng, Options{AllowList: []string{"logs"}, AllowDestructive: []string{"clean"}})
+	cs := connect(t, srv)
+	if _, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "clean"}); err == nil {
+		t.Error("calling the hidden task clean succeeded, want an unknown-tool error")
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// The filter left refusal: a hidden task has no handler, so refusal only
+// decides destructive authorization (spec 041 R1).
+func TestRefusalIgnoresAllowList(t *testing.T) {
+	srv := New(sampleEngine(), Options{AllowList: []string{"logs"}})
+	if got := srv.refusal(TaskInfo{Name: "greet"}); got != "" {
+		t.Errorf("refusal(greet) = %q, want none", got)
 	}
 }
 
@@ -185,12 +206,16 @@ func TestRefusalNamesReachedTasks(t *testing.T) {
 	}
 }
 
-// Spec 034 FR-010: the allowlist comes first, as for a destructive task.
-func TestRefusalAllowListBeforeReach(t *testing.T) {
-	srv := New(sampleEngine(), Options{AllowList: []string{"logs"}, AllowDestructiveFlag: grantFlag})
-	want := `task "release" is not authorized for this session`
-	if got := srv.refusal(TaskInfo{Name: "release", DestructiveReach: []string{"clean"}}); got != want {
-		t.Errorf("refusal(release) = %q, want %q", got, want)
+// Spec 041 FR-003: a task that only reaches a destructive one is hidden by the
+// allowlist like any other.
+func TestAllowListHidesReachingTask(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{
+		{Name: "logs"},
+		{Name: "release", DestructiveReach: []string{"clean"}},
+	}}
+	got := toolNames(t, New(eng, Options{AllowList: []string{"logs"}, AllowDestructiveFlag: grantFlag}))
+	if !slices.Equal(got, []string{"logs"}) {
+		t.Errorf("tools = %q, want only logs", got)
 	}
 }
 
