@@ -58,7 +58,7 @@ func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 			return errorResult(runErr.Error()), nil
 		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: formatResult(res)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: formatResult(res, s.outputLimit)}},
 			IsError: res.ExitCode != 0,
 		}, nil
 	}
@@ -216,16 +216,21 @@ func scalarArg(p ParamInfo, v any) (string, error) {
 	}
 }
 
-func formatResult(r Result) string {
+// formatResult renders a result as the text an agent receives. Each of
+// stdout and stderr is capped at limit first, whatever engine produced it, so
+// the text up to the exit line is at most twice the limit plus the exit line
+// and two line breaks (spec 042 FR-009).
+func formatResult(r Result, limit int) string {
+	stdout, stderr := capOutput(r.Stdout, limit), capOutput(r.Stderr, limit)
 	var b strings.Builder
-	if r.Stdout != "" {
-		b.WriteString(r.Stdout)
+	if stdout != "" {
+		b.WriteString(stdout)
 	}
-	if r.Stderr != "" {
-		if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
+	if stderr != "" {
+		if b.Len() > 0 && !strings.HasSuffix(stdout, "\n") {
 			b.WriteByte('\n')
 		}
-		b.WriteString(r.Stderr)
+		b.WriteString(stderr)
 	}
 	if b.Len() > 0 && !strings.HasSuffix(b.String(), "\n") {
 		b.WriteByte('\n')

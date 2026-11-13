@@ -662,8 +662,8 @@ func TestAgentEndpointIgnoresFilters(t *testing.T) {
 	eng.opts.Version = "test"
 
 	// The options executeAgent builds its endpoint from.
-	opts := eng.agentMCPOptions()
-	if want := (mcpserver.Options{Version: "test"}); !reflect.DeepEqual(opts, want) {
+	opts := eng.agentMCPOptions(4096)
+	if want := (mcpserver.Options{Version: "test", OutputLimit: 4096}); !reflect.DeepEqual(opts, want) {
 		t.Errorf("agentMCPOptions() = %+v, want %+v", opts, want)
 	}
 	srv := mcpserver.New(eng.newAgentAdapter(), opts)

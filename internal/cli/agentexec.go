@@ -41,7 +41,7 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 			contextText = adapter.gatherContext(e.ctx, e.opts.Stderr)
 
 			token := randomToken()
-			srv := mcpserver.New(adapter, e.agentMCPOptions())
+			srv := mcpserver.New(adapter, e.agentMCPOptions(adapter.limit()))
 			if addr, stop, err := srv.StartHTTP(mcpserver.HTTPConfig{Addr: "127.0.0.1:0", Token: token}); err == nil {
 				defer stop()
 				opts.MCPURL = "http://" + addr
@@ -73,9 +73,11 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 // destructive tasks, whatever flags started this run (spec 031 FR-015). No
 // AllowDestructiveFlag either, so a refusal there does not suggest a restart
 // that could never permit the task. No AllowList or DenyList: the serve
-// filters do not reach it (spec 041 FR-017).
-func (e *engine) agentMCPOptions() mcpserver.Options {
-	return mcpserver.Options{Version: e.opts.Version}
+// filters do not reach it (spec 041 FR-017). outputLimit is the
+// endpoint adapter's own limit, so the server never cuts a stream the adapter
+// already cut at a different size (spec 042).
+func (e *engine) agentMCPOptions(outputLimit int) mcpserver.Options {
+	return mcpserver.Options{Version: e.opts.Version, OutputLimit: outputLimit}
 }
 
 // newAgentAdapter builds an MCP engine adapter from the engine's module state.

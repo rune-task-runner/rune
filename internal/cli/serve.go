@@ -107,8 +107,8 @@ func newMCPAdapter(opts Options, runefile string) (*mcpAdapter, error) {
 // ServeMCP starts the MCP server over stdio (default) or Streamable HTTP.
 func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// Every check before the [context] hook below runs no Runefile code, so a
-	// bad --allow-destructive, --allow, or --deny value has no side effects
-	// (spec 031 FR-010, spec 041 FR-011).
+	// bad --allow-destructive, --allow, --deny, or --output-limit value has no
+	// side effects (spec 031 FR-010, spec 041 FR-011, spec 042 FR-023).
 	granted, err := parseTaskNames("--allow-destructive", opts.MCPAllowDestructive)
 	if err != nil {
 		return err
@@ -118,6 +118,10 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		return err
 	}
 	deny, err := parseTaskNames("--deny", opts.MCPDeny)
+	if err != nil {
+		return err
+	}
+	flagLimit, err := parseOutputLimitFlag(opts.MCPOutputLimit)
 	if err != nil {
 		return err
 	}
@@ -160,6 +164,9 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	for _, name := range granted {
 		adapter.grants[name] = true
 	}
+	// Every call captures with the limit the server is given below. The hook's
+	// capture has its own size.
+	adapter.outputLimit = flagLimit
 	// Run the [context] hook once at server start; its masked output becomes
 	// the instructions of every session's initialize result (spec 021 FR-002).
 	instructions := adapter.gatherContext(ctx, opts.Stderr)
@@ -168,6 +175,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		AllowDestructiveFlag: "--allow-destructive",
 		AllowList:            allow,
 		DenyList:             deny,
+		OutputLimit:          adapter.limit(),
 		Version:              opts.Version,
 		Instructions:         instructions,
 	})
@@ -188,6 +196,19 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		return srv.ServeHTTP(ctx, mcpserver.HTTPConfig{Addr: addr, Token: httpToken})
 	}
 	return srv.ServeStdio(ctx)
+}
+
+// parseOutputLimitFlag reads --output-limit. Nil, the flag not given, is 0:
+// the Runefile's setting or the default decides.
+func parseOutputLimitFlag(value *string) (int, error) {
+	if value == nil {
+		return 0, nil
+	}
+	limit, err := config.ParseOutputLimit(*value)
+	if err != nil {
+		return 0, usagef("--output-limit: %v", err)
+	}
+	return limit, nil
 }
 
 // parseTaskNames turns the raw values of a task-list flag into task names:
