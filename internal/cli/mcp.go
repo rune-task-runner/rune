@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"runtime"
 	"time"
@@ -34,6 +33,11 @@ type mcpAdapter struct {
 	// engine a call builds. Only the `rune serve` adapter has one; the agent
 	// task endpoint's adapter never does (spec 031 FR-015).
 	grants map[string]bool
+
+	// outputLimit caps each captured stream of a call. Zero falls back to
+	// `set mcp_output_limit`, then to the default; only `rune serve` sets it,
+	// from --output-limit (spec 042).
+	outputLimit int
 
 	// contextTimeout bounds the [context] hook run; zero means the fixed
 	// defaultContextTimeout. A field (not a global) so tests shrink it per
@@ -144,6 +148,18 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 
 var _ mcpserver.ListEngine = (*mcpAdapter)(nil)
 
+// limit is the output limit in force for this adapter's calls: the
+// operator's flag, else the Runefile's setting, else the default.
+func (a *mcpAdapter) limit() int {
+	switch {
+	case a.outputLimit > 0:
+		return a.outputLimit
+	case a.settings.MCPOutputLimit > 0:
+		return a.settings.MCPOutputLimit
+	}
+	return mcpserver.DefaultOutputLimit
+}
+
 // Call runs a task by name with named arguments, capturing stdout/stderr/exit.
 // With no lists, each variadic value is one element.
 func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]string) (mcpserver.Result, error) {
@@ -153,6 +169,12 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 // CallLists is Call with a variadic's elements as the agent sent them, so
 // quote_each keeps their boundaries (spec 030).
 func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string]string, lists map[string][]string) (mcpserver.Result, error) {
+	return a.call(ctx, name, args, lists, a.limit())
+}
+
+// call runs a task with each of stdout and stderr captured in at most limit
+// bytes.
+func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]string, lists map[string][]string, limit int) (mcpserver.Result, error) {
 	t, ok := a.tasks[name]
 	if !ok {
 		return mcpserver.Result{}, errorf("unknown task: %s", name)
@@ -164,14 +186,13 @@ func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string
 	if !t.AvailableOn(a.goos) {
 		return mcpserver.Result{}, availabilityErr(name, t, a.goos)
 	}
-	// syncWriter guards the capture buffers: [parallel] tasks (and their ||
-	// failure hooks) write concurrently, and when the mask set is empty
-	// maskOptions leaves the writers unwrapped, so the buffers themselves
-	// must be safe. With a non-empty set the mask writer's own lock sits on
-	// top; the extra mutex there is uncontended.
-	var outBuf, errBuf bytes.Buffer
-	outSink := &syncWriter{w: &outBuf}
-	errSink := &syncWriter{w: &errBuf}
+	// The capture is bounded while the task writes, not cut afterwards, so a
+	// task that prints without end cannot grow this long-lived server (spec
+	// 042 FR-015). The buffers lock themselves: [parallel] tasks and their ||
+	// failure hooks write concurrently, and with an empty mask set nothing
+	// else sits between those writers and the buffers.
+	outBuf := mcpserver.NewOutputBuffer(limit)
+	errBuf := mcpserver.NewOutputBuffer(limit)
 	scope := eval.NewScope(a.assigns, a.overrides)
 	// One host-OS truth per adapter: availability (above), dependency
 	// skipping (eng.goos below), and the os()/os_family() builtins must
@@ -180,9 +201,10 @@ func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string
 	scope.Arch = runtime.GOARCH
 
 	// The same masking choke point as the CLI path: the buffers only ever hold
-	// masked text, so the tool result an agent receives is safe by construction.
+	// masked text, so the tool result an agent receives is safe by
+	// construction, and a truncation cut can never split a secret.
 	mopts, flushMask := maskOptions(
-		Options{Stdin: nil, Stdout: outSink, Stderr: errSink, Cwd: a.workDir, Quiet: true},
+		Options{Stdin: nil, Stdout: outBuf, Stderr: errBuf, Cwd: a.workDir, Quiet: true},
 		a.maskSet,
 	)
 

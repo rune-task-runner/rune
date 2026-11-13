@@ -54,6 +54,10 @@ type Options struct {
 	// MCPDeny holds the raw --deny values: the tasks rune serve hides from
 	// agents. Only ServeMCP reads it.
 	MCPDeny []string
+	// MCPOutputLimit is the raw --output-limit value: the size that caps each
+	// of stdout and stderr in a tool result. Nil means the flag was not given,
+	// which an empty value is not. Only ServeMCP reads it (spec 042).
+	MCPOutputLimit *string
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own

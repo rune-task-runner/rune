@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/rune-task-runner/rune/internal/ast"
@@ -323,5 +324,32 @@ func TestWarnNoTasksExposed(t *testing.T) {
 	warnNoTasksExposed(&buf, style.New(false, &buf))
 	if want := "warning: no tasks are exposed to agents; check --allow and --deny\n"; buf.String() != want {
 		t.Errorf("warning = %q, want %q", buf.String(), want)
+	}
+}
+
+// Spec 042 FR-023: a bad --output-limit value stops ServeMCP before any
+// Runefile code runs, and before the Runefile is looked for.
+func TestServeMCPRejectsBadOutputLimit(t *testing.T) {
+	const src = "# Health.\n[context]\nhealth:\n    @echo ok > context.done\n\n# Build.\nbuild:\n    @echo b\n"
+	for _, v := range []string{"lots", "", "-1", "0", "10"} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := ServeMCP(Options{Cwd: dir, Stderr: &bytes.Buffer{}, MCPOutputLimit: &v}, false, "", "")
+		want := `--output-limit: invalid size "` + v + `": use a whole number of bytes or a KiB or MiB count, such as 65536 or 256KiB, from 1KiB to 1024MiB`
+		var ue *UsageError
+		if !errors.As(err, &ue) || err.Error() != want {
+			t.Errorf("ServeMCP with %q: error = %v\nwant usage error %q", v, err, want)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "context.done")); statErr == nil {
+			t.Errorf("ServeMCP with %q ran the [context] hook before failing", v)
+		}
+	}
+
+	bad := "lots"
+	err := ServeMCP(Options{Cwd: t.TempDir(), Stderr: &bytes.Buffer{}, MCPOutputLimit: &bad}, false, "", "")
+	if err == nil || !strings.HasPrefix(err.Error(), "--output-limit: ") {
+		t.Errorf("bad size without a Runefile: error = %v, want the size usage error", err)
 	}
 }

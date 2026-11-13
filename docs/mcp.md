@@ -41,6 +41,15 @@ list, and a call to it fails the same way as a call to a tool that does not exis
 that is not a task in the Runefile stops the server with exit code 2 and suggests the
 closest task. Imported tasks use the Runefile form, `tools::lint`.
 
+**Setting how much output a result carries:**
+
+```sh
+rune mcp --output-limit 256KiB
+```
+
+A tool result carries at most 64 KiB of stdout and 64 KiB of stderr; see
+[Output limit](#output-limit).
+
 **Streamable HTTP (opt-in, for networked clients):**
 
 ```sh
@@ -217,6 +226,53 @@ outcomes never change the reported exit code, and a hook that fails or is
 OS-skipped degrades to a one-line warning in the response's stderr portion. An
 `agent`-executor task cannot be a failure hook — the analyzer rejects it
 (RUNE2011) so a post-mortem can never spawn an agent session.
+
+## Output limit
+
+A tool result carries the task's stdout, its stderr, and an `[exit N]` line. Each of
+stdout and stderr is limited to 64 KiB (65,536 bytes) per call. Output within the limit is
+returned unchanged. Longer output keeps its beginning and its end, with one line between
+them that says how many bytes were left out:
+
+```text
+BEGIN build
+compiling pkg/a
+[truncated 2934504 bytes]
+linking
+build finished
+[exit 0]
+```
+
+- The limit counts the marker line too, so a stream never exceeds it. The beginning and the
+  end each get about half of the rest.
+- The `[exit N]` line is always present and complete. A whole result is at most twice the
+  limit plus 32 bytes, before any fix suggestion.
+- The server keeps only what it will return while the task runs, so a task that prints
+  gigabytes does not grow the server. The task itself is never stopped or slowed for
+  printing.
+- Secret masking happens before truncation, so a cut never exposes part of a secret.
+- The [fix suggestion](#fix-suggestions-on-failure) and the
+  [project context](#project-context-for-agents) keep their own 8 KiB limit.
+
+Change the limit for one server with `--output-limit`, or for every server of a Runefile
+with a setting. The flag wins when both are given:
+
+```sh
+rune mcp --output-limit 256KiB
+```
+
+```rune
+set mcp_output_limit := "256KiB"
+```
+
+A size is a whole number of bytes, or a count with a `KiB` or `MiB` unit written right
+after it: `65536`, `256KiB`, `1MiB`. It must be from `1KiB` to `1024MiB`. Any other value
+stops the server with exit code 2 (the flag) or a diagnostic at the setting, before any
+task runs. The limit cannot be turned off.
+
+The setting also applies to the endpoint an [agent task](#agent-task-bodies) opens for its
+own agent, which no `rune mcp` flag reaches. It has no effect on tasks run from the command
+line: their output goes to the terminal whole.
 
 ## Security model (secure by default)
 

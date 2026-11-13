@@ -198,9 +198,14 @@ set export                  # export Runefile variables into task environments
 set shell := ["bash", "-euo", "pipefail"]  # override the shell for (sh) bodies
 set secrets := ["DEPLOY_CFG"]   # mask these variables' values in all output
 set unmasked := ["OAUTH_METHOD"]  # exempt from built-in secret-name patterns
+set mcp_output_limit := "256KiB"  # bytes of stdout and of stderr an agent gets per call
 ```
 
 A bare `set name` is shorthand for `set name := true`.
+
+`mcp_output_limit` changes how much task output a tool result returns to an agent
+(default `64KiB` for each of stdout and stderr). It does not affect tasks run from the
+command line. See [Output limit](mcp.md#output-limit).
 
 ### Opt-in backward-compatibility pragma
 

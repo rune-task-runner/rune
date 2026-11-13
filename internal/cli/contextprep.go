@@ -19,6 +19,11 @@ const defaultContextTimeout = 10 * time.Second
 // a rune boundary, so it may keep up to 3 bytes fewer than the cap.
 const contextMaxBytes = 8 * 1024
 
+// contextCaptureBytes is the capture size of the [context] hook, whatever the
+// output limit. Its kept beginning is longer than contextMaxBytes: a
+// truncating capture keeps a little under half its limit from the start.
+const contextCaptureBytes = 2*contextMaxBytes + 128
+
 // contextTask returns the file's [context] task when one exists and is
 // available on goos; an OS-mismatched hook is treated as absent (FR-008).
 func contextTask(f *ast.File, goos string) *ast.Task {
@@ -49,7 +54,11 @@ func (a *mcpAdapter) gatherContext(ctx context.Context, stderr io.Writer) string
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	res, err := a.Call(cctx, t.Name, map[string]string{})
+	// The hook's text has its own cap and marker below, and nothing past
+	// contextMaxBytes is used. So the capture has its own size: a small
+	// output limit cannot cut the text before capAgentText sees the overflow,
+	// and a large one does not hold a noisy hook's output (spec 042 FR-011).
+	res, err := a.call(cctx, t.Name, map[string]string{}, nil, contextCaptureBytes)
 	if err != nil || res.ExitCode != ExitSuccess {
 		// One message, two surfaces: the stderr warning and the in-context
 		// notice must stay identical so users can grep for either.

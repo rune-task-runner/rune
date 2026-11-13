@@ -158,6 +158,11 @@ type Options struct {
 	// DenyList names tasks that are not exposed as tools, whether or not
 	// AllowList names them.
 	DenyList []string
+	// OutputLimit caps the bytes of Result.Stdout and of Result.Stderr that a
+	// tool result carries, marker included. Zero or less means
+	// DefaultOutputLimit. Other values are raised to MinOutputLimit or lowered
+	// to MaxOutputLimit.
+	OutputLimit int
 	// Version reported to clients.
 	Version string
 	// Instructions, when non-empty, is delivered to clients as the MCP
@@ -176,6 +181,7 @@ type Server struct {
 	// exposed counts the tasks registered as tools, exposable the tasks the
 	// engine offered.
 	exposed, exposable int
+	outputLimit        int // opts.OutputLimit, brought into range
 }
 
 // New builds an MCP server exposing engine's tasks as tools, except those
@@ -184,7 +190,12 @@ func New(engine Engine, opts Options) *Server {
 	if opts.Version == "" {
 		opts.Version = "dev"
 	}
-	srv := &Server{engine: engine, opts: opts, granted: make(map[string]bool, len(opts.AllowDestructive))}
+	srv := &Server{
+		engine:      engine,
+		opts:        opts,
+		granted:     make(map[string]bool, len(opts.AllowDestructive)),
+		outputLimit: clampLimit(opts.OutputLimit),
+	}
 	for _, name := range opts.AllowDestructive {
 		srv.granted[name] = true
 	}
