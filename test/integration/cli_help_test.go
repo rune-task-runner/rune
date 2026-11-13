@@ -31,7 +31,7 @@ func TestUS1Help_ServeHasFlagsExampleAndAlias(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("`rune serve --help` exit = %d, want 0; stderr=%s", r.code, r.stderr)
 	}
-	for _, want := range []string{"--http", "--addr", "--token-file", "Examples:", "mcp"} {
+	for _, want := range []string{"--http", "--addr", "--token-file", "--allow stringArray", "--deny stringArray", "Examples:", "mcp"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("`rune serve --help` missing %q; got:\n%s", want, r.stdout)
 		}

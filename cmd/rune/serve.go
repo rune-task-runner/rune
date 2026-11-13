@@ -32,11 +32,21 @@ HTTP, which additionally requires --token-file for bearer-token authentication.
 The 'mcp' alias is shorthand for stdio serving.
 
 Tasks marked [confirm] are refused unless you name each one with
---allow-destructive; no option allows all of them.`,
+--allow-destructive; no option allows all of them.
+
+Use --allow to expose only the tasks you name, and --deny to hide tasks. A
+task named in both is hidden. A hidden task is not listed and cannot be
+called, but the dependencies and hooks of an exposed task still run. A
+[confirm] task needs --allow-destructive whichever of these you set.`,
 		Example: `  rune mcp                                            # stdio (for local agents/IDEs)
   rune serve                                          # same as 'rune mcp'
   rune mcp --allow-destructive clean                  # let agents run the [confirm] task 'clean'
+  rune mcp --allow build,test                         # expose only 'build' and 'test'
+  rune mcp --deny deploy                              # expose everything except 'deploy'
   rune serve --http --addr :7777 --token-file ./tok   # HTTP transport`,
+		// A task list is one comma-separated value. Without this, the names
+		// after a space would be dropped and the tasks left exposed.
+		Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
 			if err := validateServeFlags(useHTTP, addr, tokenFile); err != nil {
 				return err
@@ -53,6 +63,8 @@ Tasks marked [confirm] are refused unless you name each one with
 	f.BoolVar(&mcpFlag, "mcp", false, "accepted for clarity; MCP is the only protocol")
 	f.BoolVar(&opts.MCPAllowIgnoreVersion, "ignore-version", false, "serve even if the Runefile's minimum_version is unmet (operator opt-in)")
 	f.StringArrayVar(&opts.MCPAllowDestructive, "allow-destructive", nil, "let agents run these [confirm] tasks (comma-separated, repeatable)")
+	f.StringArrayVar(&opts.MCPAllow, "allow", nil, "expose only these tasks to agents (comma-separated, repeatable)")
+	f.StringArrayVar(&opts.MCPDeny, "deny", nil, "hide these tasks from agents (comma-separated, repeatable)")
 
 	return cmd
 }

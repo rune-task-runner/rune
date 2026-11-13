@@ -41,11 +41,7 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 			contextText = adapter.gatherContext(e.ctx, e.opts.Stderr)
 
 			token := randomToken()
-			// No AllowDestructive: an agent task's own endpoint never permits
-			// destructive tasks, whatever flags started this run (spec 031 FR-015).
-			// No AllowDestructiveFlag either, so a refusal here does not suggest
-			// a restart that could never permit the task.
-			srv := mcpserver.New(adapter, mcpserver.Options{Version: e.opts.Version})
+			srv := mcpserver.New(adapter, e.agentMCPOptions())
 			if addr, stop, err := srv.StartHTTP(mcpserver.HTTPConfig{Addr: "127.0.0.1:0", Token: token}); err == nil {
 				defer stop()
 				opts.MCPURL = "http://" + addr
@@ -70,6 +66,16 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 		}
 	}
 	return nil
+}
+
+// agentMCPOptions is the authorization of the endpoint an agent task opens
+// for its own agent. No AllowDestructive: that endpoint never permits
+// destructive tasks, whatever flags started this run (spec 031 FR-015). No
+// AllowDestructiveFlag either, so a refusal there does not suggest a restart
+// that could never permit the task. No AllowList or DenyList: the serve
+// filters do not reach it (spec 041 FR-017).
+func (e *engine) agentMCPOptions() mcpserver.Options {
+	return mcpserver.Options{Version: e.opts.Version}
 }
 
 // newAgentAdapter builds an MCP engine adapter from the engine's module state.

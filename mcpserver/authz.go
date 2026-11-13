@@ -7,9 +7,9 @@ import (
 )
 
 // refusal returns why a task may not be CALLED in this session, or "" when it
-// may (Q3/FR-028, spec 031). Private tasks are never registered as tools, so
-// they never reach here. The refusals, checked in this order:
-//   - an operator AllowList, when set, narrows callable tasks;
+// may (Q3/FR-028, spec 031). Private tasks and tasks the operator's AllowList
+// and DenyList hide are never registered as tools, so they never reach here
+// (spec 041). The refusals, checked in this order:
 //   - a destructive ([confirm]) task must be named in AllowDestructive. No
 //     value grants every destructive task;
 //   - every destructive task in t.DestructiveReach must be granted too, so a
@@ -20,9 +20,6 @@ import (
 // into the flag they name. They say to add the names, because restarting with
 // only the refused names would drop the existing grants.
 func (s *Server) refusal(t TaskInfo) string {
-	if len(s.opts.AllowList) > 0 && !slices.Contains(s.opts.AllowList, t.Name) {
-		return fmt.Sprintf("task %q is not authorized for this session", t.Name)
-	}
 	// One list, the called task first, so a single restart permits the call.
 	var named []string
 	own := t.Destructive && !s.granted[t.Name]

@@ -485,15 +485,193 @@ func TestListToolsSameWithGrantWhenReaching(t *testing.T) {
 	}
 }
 
-// Spec 033 FR-010: an allowlist narrows calls, not hints.
-func TestListToolsSameWithAllowList(t *testing.T) {
+// Spec 041 FR-008: an allowlist changes which tools are listed and nothing
+// about the ones left.
+func TestAllowListKeepsListedToolsUnchanged(t *testing.T) {
 	eng := &fakeEngine{tasks: []TaskInfo{
 		{Name: "release", DestructiveReach: []string{"clean"}},
-		{Name: "status", ReadOnly: true},
+		{Name: "status", ReadOnly: true, Doc: "Shows status.", Params: []ParamInfo{{Name: "verbose"}}},
 	}}
 	without := listedTools(t, eng, Options{})
 	with := listedTools(t, eng, Options{AllowList: []string{"status"}})
-	if !reflect.DeepEqual(without, with) {
-		t.Errorf("tools/list changed with an allowlist:\nwithout: %+v\nwith:    %+v", without, with)
+	if len(with) != 1 {
+		t.Fatalf("listed %d tools, want 1: %+v", len(with), with)
+	}
+	if !reflect.DeepEqual(with[0], without[1]) {
+		t.Errorf("status changed under an allowlist:\nwithout: %+v\nwith:    %+v", without[1], with[0])
+	}
+}
+
+// listedNames lists the tool names a client of a server built with opts sees.
+func listedNames(t *testing.T, eng Engine, opts Options) []string {
+	t.Helper()
+	var names []string
+	for _, tl := range listedTools(t, eng, opts) {
+		names = append(names, tl.Name)
+	}
+	return names
+}
+
+// Spec 041 FR-002, FR-003: only allowlisted tasks are registered, and the
+// server counts them.
+func TestAllowListRegistersOnlyNamed(t *testing.T) {
+	eng := sampleEngine()
+	opts := Options{AllowList: []string{"logs"}}
+	if got := listedNames(t, eng, opts); !reflect.DeepEqual(got, []string{"logs"}) {
+		t.Errorf("tools = %q, want only logs", got)
+	}
+	exposed, exposable := New(eng, opts).Exposure()
+	if exposed != 1 || exposable != len(eng.tasks) {
+		t.Errorf("Exposure() = %d, %d, want 1, %d", exposed, exposable, len(eng.tasks))
+	}
+}
+
+// Spec 041 FR-004, SC-003: a call to a hidden task gets the response a call to
+// a name no task has gets, apart from the name it echoes.
+func TestHiddenCallEqualsMissingCall(t *testing.T) {
+	eng := sampleEngine()
+	cs := connect(t, New(eng, Options{AllowList: []string{"logs"}}))
+	_, hidden := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "greet"})
+	_, missing := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "nosuch"})
+	if hidden == nil || missing == nil {
+		t.Fatalf("hidden err = %v, missing err = %v, want both non-nil", hidden, missing)
+	}
+	h := strings.ReplaceAll(hidden.Error(), "greet", "NAME")
+	m := strings.ReplaceAll(missing.Error(), "nosuch", "NAME")
+	if h != m {
+		t.Errorf("responses differ:\nhidden:  %s\nmissing: %s", hidden, missing)
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// Spec 041 FR-002: the denylist removes tasks, wins over the allowlist, and
+// ignores names no task has. The SDK lists tools sorted by name.
+func TestDenyListHides(t *testing.T) {
+	all := []string{"clean", "docker__push", "fetch", "greet", "logs"}
+	cases := []struct {
+		name string
+		opts Options
+		want []string
+	}{
+		{"deny one", Options{DenyList: []string{"logs"}}, all[:4]},
+		{"deny wins", Options{AllowList: []string{"logs", "greet"}, DenyList: []string{"logs"}}, []string{"greet"}},
+		{"nothing left", Options{AllowList: []string{"logs"}, DenyList: []string{"logs"}}, nil},
+		{"unknown name", Options{DenyList: []string{"nosuch"}}, all},
+		{"namespaced by task name", Options{DenyList: []string{"docker::push"}}, []string{"clean", "fetch", "greet", "logs"}},
+		{"tool name is not a task name", Options{DenyList: []string{"docker__push"}}, all},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			eng := sampleEngine()
+			if got := listedNames(t, eng, c.opts); !reflect.DeepEqual(got, c.want) {
+				t.Errorf("tools = %q, want %q", got, c.want)
+			}
+			exposed, exposable := New(eng, c.opts).Exposure()
+			if exposed != len(c.want) || exposable != len(all) {
+				t.Errorf("Exposure() = %d, %d, want %d, %d", exposed, exposable, len(c.want), len(all))
+			}
+		})
+	}
+}
+
+func TestExposes(t *testing.T) {
+	cases := []struct {
+		allow, deny []string
+		want        bool
+	}{
+		{nil, nil, true},
+		{[]string{"a"}, nil, true},
+		{[]string{"b"}, nil, false},
+		{nil, []string{"a"}, false},
+		{nil, []string{"b"}, true},
+		{[]string{"a"}, []string{"a"}, false},
+		{[]string{"a"}, []string{"b"}, true},
+		{[]string{"b"}, []string{"a"}, false},
+	}
+	for _, c := range cases {
+		srv := New(&fakeEngine{}, Options{AllowList: c.allow, DenyList: c.deny})
+		if got := srv.exposes("a"); got != c.want {
+			t.Errorf("allow %q, deny %q: exposes(a) = %v, want %v", c.allow, c.deny, got, c.want)
+		}
+	}
+}
+
+// Spec 041 FR-007, FR-008: an exposed task keeps the destructive hint and the
+// refusal for a hidden destructive task it can reach.
+func TestFilterKeepsHintsOfReachingTask(t *testing.T) {
+	eng := &fakeEngine{tasks: []TaskInfo{
+		{Name: "release", DestructiveReach: []string{"clean"}},
+		{Name: "clean", Destructive: true},
+	}}
+	srv := New(eng, Options{AllowList: []string{"release"}, AllowDestructiveFlag: "--allow-destructive"})
+	cs := connect(t, srv)
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 1 || res.Tools[0].Name != "release" {
+		t.Fatalf("tools = %+v, want only release", res.Tools)
+	}
+	if h := res.Tools[0].Annotations.DestructiveHint; h == nil || !*h {
+		t.Errorf("release lost its destructive hint: %+v", res.Tools[0].Annotations)
+	}
+	call, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "release"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	if !call.IsError || contentText(call) != want {
+		t.Errorf("isError=%v text=%q, want %q", call.IsError, contentText(call), want)
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// Spec 041 R3: with no filter every offered task is exposed.
+func TestExposureUnfiltered(t *testing.T) {
+	eng := sampleEngine()
+	exposed, exposable := New(eng, Options{}).Exposure()
+	if want := len(eng.Tasks()); exposed != want || exposable != want {
+		t.Errorf("Exposure() = %d, %d, want %d, %d", exposed, exposable, want, want)
+	}
+}
+
+// A filter that leaves no tool still advertises the tools capability, so a
+// client sees an empty tool list, not a server without tool support (spec 041
+// FR-013). Without a filter the capabilities are as before.
+func TestEmptyFilteredServerAdvertisesTools(t *testing.T) {
+	filtered := connect(t, New(sampleEngine(), Options{AllowList: []string{"logs"}, DenyList: []string{"logs"}}))
+	if filtered.InitializeResult().Capabilities.Tools == nil {
+		t.Error("a filtered server with no tools left does not advertise the tools capability")
+	}
+	res, err := filtered.ListTools(context.Background(), nil)
+	if err != nil || len(res.Tools) != 0 {
+		t.Errorf("ListTools = %v, %v, want an empty list and no error", res, err)
+	}
+	unfiltered := connect(t, New(&fakeEngine{}, Options{}))
+	if unfiltered.InitializeResult().Capabilities.Tools != nil {
+		t.Error("an unfiltered server with no tasks changed its capabilities")
+	}
+}
+
+// A filtered server states the capabilities the SDK infers for an unfiltered
+// one with tools, so the filter changes nothing else a client negotiates.
+func TestFilteredCapabilitiesMatchInferred(t *testing.T) {
+	inferred := connect(t, New(sampleEngine(), Options{})).InitializeResult().Capabilities
+	for _, opts := range []Options{
+		{AllowList: []string{"logs"}},
+		{DenyList: []string{"logs"}},
+		{AllowList: []string{"logs"}, DenyList: []string{"logs"}},
+	} {
+		got := connect(t, New(sampleEngine(), opts)).InitializeResult().Capabilities
+		if !reflect.DeepEqual(got, inferred) {
+			t.Errorf("%+v: capabilities = %+v, want the inferred %+v", opts, got, inferred)
+		}
+	}
+	if capabilities(Options{}) != nil {
+		t.Error("an unfiltered server states capabilities instead of letting the SDK infer them")
 	}
 }

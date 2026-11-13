@@ -84,3 +84,69 @@ func TestServeHelpMentionsAllowDestructive(t *testing.T) {
 		t.Errorf("Example lacks the line %q:\n%s", want, cmd.Example)
 	}
 }
+
+// Spec 041: --allow and --deny are repeatable string arrays on serve/mcp.
+// Values stay raw here; internal/cli splits and validates them.
+func TestServeAllowDenyFlags(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	for name, usage := range map[string]string{
+		"allow": "expose only these tasks to agents (comma-separated, repeatable)",
+		"deny":  "hide these tasks from agents (comma-separated, repeatable)",
+	} {
+		f := cmd.Flags().Lookup(name)
+		if f == nil {
+			t.Fatalf("serve has no --%s flag", name)
+		}
+		if got := f.Value.Type(); got != "stringArray" {
+			t.Errorf("--%s type = %q, want stringArray", name, got)
+		}
+		if f.Usage != usage {
+			t.Errorf("--%s usage = %q, want %q", name, f.Usage, usage)
+		}
+	}
+	args := []string{"--allow", "build,test", "--allow", "lint", "--deny", "deploy", "--allow-destructive", "clean"}
+	if err := cmd.ParseFlags(args); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"build,test", "lint"}; !reflect.DeepEqual(opts.MCPAllow, want) {
+		t.Errorf("MCPAllow = %q, want %q", opts.MCPAllow, want)
+	}
+	if want := []string{"deploy"}; !reflect.DeepEqual(opts.MCPDeny, want) {
+		t.Errorf("MCPDeny = %q, want %q", opts.MCPDeny, want)
+	}
+	if want := []string{"clean"}; !reflect.DeepEqual(opts.MCPAllowDestructive, want) {
+		t.Errorf("MCPAllowDestructive = %q, want %q", opts.MCPAllowDestructive, want)
+	}
+}
+
+// Spec 041 FR-019: the help text names both flags with an example each.
+func TestServeHelpMentionsAllowDeny(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	for _, want := range []string{"--allow", "--deny", "still run"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+	for _, want := range []string{"rune mcp --allow build,test", "rune mcp --deny deploy"} {
+		if !strings.Contains(cmd.Example, want) {
+			t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
+		}
+	}
+}
+
+// A task list is one comma-separated value. A space-separated one would leave
+// every name after the first as a positional argument; dropping it silently
+// would expose a task the operator meant to hide.
+func TestServeRejectsPositionalArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"mcp", "--deny", "build", "deploy"},
+		{"mcp", "--allow", "build", "test"},
+		{"serve", "extra"},
+	} {
+		if code := run(args); code != 2 {
+			t.Errorf("run(%q) = %d, want 2", args, code)
+		}
+	}
+}

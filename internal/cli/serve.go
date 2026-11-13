@@ -107,8 +107,17 @@ func newMCPAdapter(opts Options, runefile string) (*mcpAdapter, error) {
 // ServeMCP starts the MCP server over stdio (default) or Streamable HTTP.
 func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// Every check before the [context] hook below runs no Runefile code, so a
-	// bad --allow-destructive value has no side effects (spec 031 FR-010).
-	granted, err := parseAllowDestructive(opts.MCPAllowDestructive)
+	// bad --allow-destructive, --allow, or --deny value has no side effects
+	// (spec 031 FR-010, spec 041 FR-011).
+	granted, err := parseTaskNames("--allow-destructive", opts.MCPAllowDestructive)
+	if err != nil {
+		return err
+	}
+	allow, err := parseTaskNames("--allow", opts.MCPAllow)
+	if err != nil {
+		return err
+	}
+	deny, err := parseTaskNames("--deny", opts.MCPDeny)
 	if err != nil {
 		return err
 	}
@@ -120,7 +129,13 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkGrant(granted, adapter.tasks); err != nil {
+	if err := checkTaskNames("--allow-destructive", granted, adapter.tasks); err != nil {
+		return err
+	}
+	if err := checkTaskNames("--allow", allow, adapter.tasks); err != nil {
+		return err
+	}
+	if err := checkTaskNames("--deny", deny, adapter.tasks); err != nil {
 		return err
 	}
 	ctx := opts.ctx()
@@ -137,6 +152,8 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		}
 	}
 	warnNonDestructive(opts.Stderr, opts.themeStderr(), granted, adapter.tasks)
+	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--allow", allow, adapter.tasks)
+	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--deny", deny, adapter.tasks)
 	// The analyzer rejects [confirm] anywhere in the [context] hook's closure,
 	// so setting the grant before the hook runs never approves anything there.
 	adapter.grants = make(map[string]bool, len(granted))
@@ -149,28 +166,41 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	srv := mcpserver.New(adapter, mcpserver.Options{
 		AllowDestructive:     granted,
 		AllowDestructiveFlag: "--allow-destructive",
+		AllowList:            allow,
+		DenyList:             deny,
 		Version:              opts.Version,
 		Instructions:         instructions,
 	})
+	// The counts are reported only when a filter was given, so the startup
+	// line of an unfiltered server does not change (spec 041 FR-016).
+	var exp *exposure
+	if len(allow) > 0 || len(deny) > 0 {
+		exposed, exposable := srv.Exposure()
+		exp = &exposure{exposed: exposed, exposable: exposable}
+		// With nothing exposable the filters are not what emptied the list.
+		if exposed == 0 && exposable > 0 {
+			warnNoTasksExposed(opts.Stderr, opts.themeStderr())
+		}
+	}
 	// Server chrome is dimmed like the rest of Rune's meta output (014 C3).
-	fmt.Fprintln(opts.Stderr, opts.themeStderr().Muted.Render(startupLine(useHTTP, addr, destructiveOnly(granted, adapter.tasks, adapter.goos))))
+	fmt.Fprintln(opts.Stderr, opts.themeStderr().Muted.Render(startupLine(useHTTP, addr, exp, destructiveOnly(granted, adapter.tasks, adapter.goos))))
 	if useHTTP {
 		return srv.ServeHTTP(ctx, mcpserver.HTTPConfig{Addr: addr, Token: httpToken})
 	}
 	return srv.ServeStdio(ctx)
 }
 
-// parseAllowDestructive turns the raw --allow-destructive values into task
-// names: each value is split on commas, each item trimmed, and a repeated
-// name kept once at its first position (spec 031 R1).
-func parseAllowDestructive(values []string) ([]string, error) {
+// parseTaskNames turns the raw values of a task-list flag into task names:
+// each value is split on commas, each item trimmed, and a repeated name kept
+// once at its first position (spec 031 R1). flag names the flag in the error.
+func parseTaskNames(flag string, values []string) ([]string, error) {
 	var names []string
 	seen := map[string]bool{}
 	for _, v := range values {
 		for _, item := range strings.Split(v, ",") {
 			name := strings.TrimSpace(item)
 			if name == "" {
-				return nil, usagef("--allow-destructive: empty task name")
+				return nil, usagef("%s: empty task name", flag)
 			}
 			if seen[name] {
 				continue
@@ -182,10 +212,11 @@ func parseAllowDestructive(values []string) ([]string, error) {
 	return names, nil
 }
 
-// checkGrant rejects the first name that is not a task of the loaded
-// Runefile, suggesting the closest one. Every task the CLI accepts by name
-// counts, including private, OS-restricted, and imported (ns::task) ones.
-func checkGrant(names []string, tasks map[string]*ast.Task) error {
+// checkTaskNames rejects the first name given to flag that is not a task of
+// the loaded Runefile, suggesting the closest one. Every task the CLI accepts
+// by name counts, including private, OS-restricted, and imported (ns::task)
+// ones.
+func checkTaskNames(flag string, names []string, tasks map[string]*ast.Task) error {
 	for _, name := range names {
 		if _, ok := tasks[name]; ok {
 			continue
@@ -194,9 +225,9 @@ func checkGrant(names []string, tasks map[string]*ast.Task) error {
 		// on every run.
 		candidates := slices.Sorted(maps.Keys(tasks))
 		if s, ok := suggest.Nearest(name, candidates); ok {
-			return usagef("unknown task in --allow-destructive: %s (did you mean %q?)", name, s)
+			return usagef("unknown task in %s: %s (did you mean %q?)", flag, name, s)
 		}
-		return usagef("unknown task in --allow-destructive: %s", name)
+		return usagef("unknown task in %s: %s", flag, name)
 	}
 	return nil
 }
@@ -213,6 +244,28 @@ func warnNonDestructive(w io.Writer, theme style.Theme, names []string, tasks ma
 	}
 }
 
+// warnNeverExposed prints one warning per name given to flag (--allow or
+// --deny) whose task can never be a tool on any host: a private task or the
+// [context] hook. Such a name has no effect, but it must not stop the server,
+// so a shared client configuration keeps working when a task becomes private
+// (spec 041 FR-012). A task restricted to another OS is silent, because one
+// client configuration may serve several hosts.
+func warnNeverExposed(w io.Writer, theme style.Theme, flag string, names []string, tasks map[string]*ast.Task) {
+	for _, name := range names {
+		if t, ok := tasks[name]; ok && (t.IsPrivate() || t.Attr(ast.AttrContext) != nil) {
+			fmt.Fprintf(w, "%s: %s %s has no effect: task %q is never exposed to agents\n",
+				theme.Warning.Render("warning"), flag, name, name)
+		}
+	}
+}
+
+// warnNoTasksExposed says that the filters left nothing for agents to call.
+// The server still starts: an allowlist of tasks restricted to another OS is
+// a valid shared configuration (spec 041 FR-013).
+func warnNoTasksExposed(w io.Writer, theme style.Theme) {
+	fmt.Fprintf(w, "%s: no tasks are exposed to agents; check --allow and --deny\n", theme.Warning.Render("warning"))
+}
+
 // destructiveOnly keeps, in order, the granted names whose task has [confirm]
 // and can run on goos: the startup line lists only grants that take effect on
 // this host (spec 031 FR-012). A task restricted to another OS is accepted
@@ -227,20 +280,30 @@ func destructiveOnly(names []string, tasks map[string]*ast.Task, goos string) []
 	return out
 }
 
+// exposure is how many tasks a server exposes as tools, out of how many it
+// would without --allow and --deny.
+type exposure struct{ exposed, exposable int }
+
 // startupLine is the unstyled line the server prints on stderr when it
-// starts. With no destructive grant it is byte-identical to before spec 031.
-func startupLine(useHTTP bool, addr string, granted []string) string {
-	list := strings.Join(granted, ", ")
-	switch {
-	case useHTTP && len(granted) > 0:
-		return fmt.Sprintf("rune MCP server on http://%s (token required; destructive tasks allowed: %s)", addr, list)
-	case useHTTP:
-		return fmt.Sprintf("rune MCP server on http://%s (token required)", addr)
-	case len(granted) > 0:
-		return fmt.Sprintf("rune MCP server on stdio (destructive tasks allowed: %s)", list)
-	default:
-		return "rune MCP server on stdio"
+// starts. With no grant and no filter it is byte-identical to before spec
+// 031. exp is nil unless --allow or --deny was given (spec 041 FR-014).
+func startupLine(useHTTP bool, addr string, exp *exposure, granted []string) string {
+	line := "rune MCP server on stdio"
+	var parts []string
+	if useHTTP {
+		line = "rune MCP server on http://" + addr
+		parts = append(parts, "token required")
 	}
+	if exp != nil {
+		parts = append(parts, fmt.Sprintf("%d of %d tasks exposed", exp.exposed, exp.exposable))
+	}
+	if len(granted) > 0 {
+		parts = append(parts, "destructive tasks allowed: "+strings.Join(granted, ", "))
+	}
+	if len(parts) == 0 {
+		return line
+	}
+	return line + " (" + strings.Join(parts, "; ") + ")"
 }
 
 func readToken(path string) (string, error) {

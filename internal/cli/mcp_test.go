@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -614,5 +615,67 @@ func TestAgentEndpointHints(t *testing.T) {
 	}
 	if a := tools["status"]; a == nil || !a.ReadOnlyHint {
 		t.Errorf("status: annotations %+v, want readOnlyHint true", a)
+	}
+}
+
+// Spec 041 FR-005 (quickstart Q): an allowlist naming only a task restricted
+// to another OS exposes nothing, and never adds that task.
+func TestAllowOtherOSTaskStartsEmpty(t *testing.T) {
+	a := adapterFor(t, "everywhere:\n    @echo e\n[windows]\nwin-only:\n    @echo w\n")
+	a.goos = "linux"
+	srv := mcpserver.New(a, mcpserver.Options{AllowList: []string{"win-only"}})
+	res, err := serverSession(t, srv).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 0 {
+		t.Errorf("tools = %v, want none", res.Tools)
+	}
+	if exposed, exposable := srv.Exposure(); exposed != 0 || exposable != 1 {
+		t.Errorf("Exposure() = %d, %d, want 0, 1", exposed, exposable)
+	}
+}
+
+// Spec 041 FR-005: the allowlist never makes a private task or the [context]
+// hook a tool.
+func TestAllowNeverWidens(t *testing.T) {
+	a := adapterFor(t, "build:\n    @echo b\n\n_setup:\n    @echo s\n\n[context]\nhealth:\n    @echo ok\n")
+	srv := mcpserver.New(a, mcpserver.Options{AllowList: []string{"_setup", "health"}})
+	res, err := serverSession(t, srv).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Tools) != 0 {
+		t.Errorf("tools = %v, want none", res.Tools)
+	}
+}
+
+// Spec 041 FR-017: the endpoint an agent task opens for its own agent is built
+// without the serve filters, whatever the options of the run hold.
+func TestAgentEndpointIgnoresFilters(t *testing.T) {
+	src := "build:\n    @echo b\n\ntest:\n    @echo t\n"
+	eng, _, _ := confirmEngine(t, src, nil, false, false)
+	eng.opts.MCPAllow = []string{"build"}
+	eng.opts.MCPDeny = []string{"test"}
+
+	eng.opts.MCPAllowDestructive = []string{"build"}
+	eng.opts.Version = "test"
+
+	// The options executeAgent builds its endpoint from.
+	opts := eng.agentMCPOptions()
+	if want := (mcpserver.Options{Version: "test"}); !reflect.DeepEqual(opts, want) {
+		t.Errorf("agentMCPOptions() = %+v, want %+v", opts, want)
+	}
+	srv := mcpserver.New(eng.newAgentAdapter(), opts)
+	res, err := serverSession(t, srv).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tl := range res.Tools {
+		names = append(names, tl.Name)
+	}
+	if want := []string{"build", "test"}; !slices.Equal(names, want) {
+		t.Errorf("agent endpoint tools = %q, want %q", names, want)
 	}
 }

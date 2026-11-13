@@ -48,6 +48,12 @@ type Options struct {
 	// `rune serve` flag, never settable from a Runefile; ServeMCP splits and
 	// validates it (spec 031).
 	MCPAllowDestructive []string
+	// MCPAllow holds the raw --allow values: the tasks rune serve exposes
+	// as tools. Only ServeMCP reads it.
+	MCPAllow []string
+	// MCPDeny holds the raw --deny values: the tasks rune serve hides from
+	// agents. Only ServeMCP reads it.
+	MCPDeny []string
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own

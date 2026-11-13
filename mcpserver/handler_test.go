@@ -400,13 +400,6 @@ func TestHandlerUnknownArgumentAfterRefusals(t *testing.T) {
 			map[string]any{"forcee": true},
 			`task "wipe" is destructive; to permit it, add wipe to --allow-destructive and restart the server`,
 		},
-		{
-			"allowlist",
-			Options{AllowList: []string{"get"}},
-			"build",
-			map[string]any{"targte": "x"},
-			`task "build" is not authorized for this session`,
-		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -419,6 +412,20 @@ func TestHandlerUnknownArgumentAfterRefusals(t *testing.T) {
 				t.Errorf("engine ran %q", eng.lastCall)
 			}
 		})
+	}
+}
+
+// Spec 041 FR-004: a hidden task has no handler, so a call to it is the
+// server's unknown-tool error whatever its arguments, and nothing runs.
+func TestHandlerHiddenToolNeverReachesEngine(t *testing.T) {
+	eng := unknownArgsEngine()
+	cs := connect(t, New(eng, Options{AllowList: []string{"get"}}))
+	_, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "build", Arguments: map[string]any{"targte": "x"}})
+	if err == nil {
+		t.Error("calling the hidden task build succeeded, want an unknown-tool error")
+	}
+	if eng.lastCall != "" {
+		t.Errorf("engine ran %q", eng.lastCall)
 	}
 }
 

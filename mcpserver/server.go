@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -150,8 +151,13 @@ type Options struct {
 	// such as the endpoint of a rune agent task: the refusal then offers no
 	// remedy.
 	AllowDestructiveFlag string
-	// AllowList, when non-empty, narrows callable tasks to these names.
+	// AllowList, when non-empty, exposes only these tasks as tools. A task
+	// outside it is not listed and cannot be called. It never adds a task the
+	// Engine does not offer.
 	AllowList []string
+	// DenyList names tasks that are not exposed as tools, whether or not
+	// AllowList names them.
+	DenyList []string
 	// Version reported to clients.
 	Version string
 	// Instructions, when non-empty, is delivered to clients as the MCP
@@ -167,9 +173,13 @@ type Server struct {
 	opts    Options
 	granted map[string]bool // opts.AllowDestructive as a set
 	mcp     *mcp.Server
+	// exposed counts the tasks registered as tools, exposable the tasks the
+	// engine offered.
+	exposed, exposable int
 }
 
-// New builds an MCP server exposing engine's non-private tasks as tools.
+// New builds an MCP server exposing engine's tasks as tools, except those
+// opts.AllowList and opts.DenyList hide.
 func New(engine Engine, opts Options) *Server {
 	if opts.Version == "" {
 		opts.Version = "dev"
@@ -180,13 +190,49 @@ func New(engine Engine, opts Options) *Server {
 	}
 	srv.mcp = mcp.NewServer(
 		&mcp.Implementation{Name: "rune", Version: opts.Version},
-		&mcp.ServerOptions{Instructions: opts.Instructions},
+		&mcp.ServerOptions{Instructions: opts.Instructions, Capabilities: capabilities(opts)},
 	)
 	for _, t := range engine.Tasks() {
+		srv.exposable++
+		// A hidden task is never registered, so the SDK answers a call to it
+		// exactly as it answers a name no task has (spec 041 FR-004).
+		if !srv.exposes(t.Name) {
+			continue
+		}
 		srv.mcp.AddTool(toolFor(t), srv.handler(t))
+		srv.exposed++
 	}
 	return srv
 }
+
+// capabilities returns the capabilities a filtered server states outright, or
+// nil to let the SDK infer them. The SDK advertises tools only when one is
+// registered, and a filter that leaves none must still read as an empty tool
+// list, not as a server without tool support (spec 041 FR-013). The values are
+// the ones the SDK infers for a server with tools, so a filtered server looks
+// the same whether or not any tool is left.
+func capabilities(opts Options) *mcp.ServerCapabilities {
+	if len(opts.AllowList) == 0 && len(opts.DenyList) == 0 {
+		return nil
+	}
+	return &mcp.ServerCapabilities{
+		Logging: &mcp.LoggingCapabilities{},
+		Tools:   &mcp.ToolCapabilities{ListChanged: true},
+	}
+}
+
+// exposes reports whether the filters leave a task a tool: named in AllowList
+// when one is given, and not named in DenyList, which wins.
+func (s *Server) exposes(name string) bool {
+	if len(s.opts.AllowList) > 0 && !slices.Contains(s.opts.AllowList, name) {
+		return false
+	}
+	return !slices.Contains(s.opts.DenyList, name)
+}
+
+// Exposure reports how many tasks are exposed as tools and how many the
+// Engine offered.
+func (s *Server) Exposure() (exposed, exposable int) { return s.exposed, s.exposable }
 
 // MCP returns the underlying mcp.Server (for transports/tests).
 func (s *Server) MCP() *mcp.Server { return s.mcp }
