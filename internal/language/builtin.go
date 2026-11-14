@@ -76,6 +76,7 @@ var builtinSettings = []Builtin{
 	{Name: "agent_provider", Kind: BuiltinSetting, Signature: "set agent_provider := \"name\"", Documentation: "Named agent provider for (agent) tasks."},
 	{Name: "secrets", Kind: BuiltinSetting, Signature: "set secrets := [\"NAME\"]", Documentation: "Extra environment variable names whose values are masked as *** in all output."},
 	{Name: "unmasked", Kind: BuiltinSetting, Signature: "set unmasked := [\"NAME\"]", Documentation: "Variable names exempted from the built-in secret-name masking patterns."},
+	{Name: "mcp_output_limit", Kind: BuiltinSetting, Signature: "set mcp_output_limit := \"256KiB\"", Documentation: "Largest stdout and stderr, each, that a tool result returns to an agent (default 64KiB)."},
 	{Name: "minimum_version", Kind: BuiltinSetting, Signature: "set minimum_version := \"0.8.0\"", Documentation: "Pin the minimum Rune binary version required to run this Runefile."},
 	{Name: "rune_version", Kind: BuiltinSetting, Signature: "set rune_version := \"0.8.0\"", Documentation: "Declare the Rune language version this Runefile targets."},
 }

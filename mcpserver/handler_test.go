@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -22,7 +24,7 @@ func TestFormatResultWithFixSuggestion(t *testing.T) {
 		ExitCode:      1,
 		FixSuggestion: "SUGGESTION: check the fixtures",
 	}
-	got := formatResult(r)
+	got := formatResult(r, DefaultOutputLimit)
 	want := "running tests\n" +
 		"warning: failure hook x\n" +
 		"[exit 1]\n" +
@@ -35,11 +37,11 @@ func TestFormatResultWithFixSuggestion(t *testing.T) {
 
 func TestFormatResultWithoutFixSuggestionLegacy(t *testing.T) {
 	r := Result{Stdout: "ok\n", ExitCode: 0}
-	if got, want := formatResult(r), "ok\n[exit 0]"; got != want {
+	if got, want := formatResult(r, DefaultOutputLimit), "ok\n[exit 0]"; got != want {
 		t.Errorf("legacy layout changed:\n got %q\nwant %q", got, want)
 	}
 	r = Result{Stdout: "boom\n", ExitCode: 1}
-	if got, want := formatResult(r), "boom\n[exit 1]"; got != want {
+	if got, want := formatResult(r, DefaultOutputLimit), "boom\n[exit 1]"; got != want {
 		t.Errorf("legacy failure layout changed:\n got %q\nwant %q", got, want)
 	}
 }
@@ -652,5 +654,115 @@ func TestHandlerReachRefusalBeforeArguments(t *testing.T) {
 	}
 	if eng.lastCall != "" {
 		t.Errorf("engine ran %q", eng.lastCall)
+	}
+}
+
+// Spec 042 (contracts/mcp-results.md): every engine's result is capped, so
+// these use a plain Engine that returns fixed strings, as an embedder's would.
+
+// callResult calls the "logs" tool of a server whose engine returns r.
+func callResult(t *testing.T, r Result, opts Options) *mcp.CallToolResult {
+	t.Helper()
+	eng := sampleEngine()
+	eng.result = r
+	return callTool(t, connect(t, New(eng, opts)), "logs", nil)
+}
+
+var markerLineRE = regexp.MustCompile(`(?m)^\[truncated \d+ bytes\]$`)
+
+func TestFormatResultCapsStdout(t *testing.T) {
+	out := numbered(3_000_000)
+	res := callResult(t, Result{Stdout: string(out)}, Options{})
+	text := contentText(res)
+	if len(text) > 65568 {
+		t.Errorf("result is %d bytes, want at most 65568", len(text))
+	}
+	if !strings.HasPrefix(text, string(out[:1000])) {
+		t.Error("result does not start with the first output")
+	}
+	if n := len(markerLineRE.FindAllString(text, -1)); n != 1 {
+		t.Errorf("marker lines = %d, want 1", n)
+	}
+	if !strings.HasSuffix(text, string(out[len(out)-1000:])+"[exit 0]") {
+		t.Errorf("result does not end with the last output and the exit line: %q", text[len(text)-40:])
+	}
+	if res.IsError {
+		t.Error("exit 0 was marked as an error")
+	}
+}
+
+func TestFormatResultCapsBothStreams(t *testing.T) {
+	out := string(numbered(3_000_000))
+	text := contentText(callResult(t, Result{Stdout: out, Stderr: out}, Options{}))
+	if len(text) > 131104 {
+		t.Errorf("result is %d bytes, want at most 131104", len(text))
+	}
+	if n := len(markerLineRE.FindAllString(text, -1)); n != 2 {
+		t.Errorf("marker lines = %d, want 2", n)
+	}
+	if !strings.HasSuffix(text, "\n[exit 0]") {
+		t.Errorf("result does not end with the exit line: %q", text[len(text)-40:])
+	}
+}
+
+func TestFormatResultExitAndErrorFlag(t *testing.T) {
+	out := string(numbered(3_000_000))
+	res := callResult(t, Result{Stdout: out, ExitCode: 3}, Options{})
+	if !res.IsError {
+		t.Error("exit 3 was not marked as an error")
+	}
+	if text := contentText(res); !strings.HasSuffix(text, "\n[exit 3]") {
+		t.Errorf("result does not end with [exit 3]: %q", text[len(text)-40:])
+	}
+}
+
+func TestFormatResultFixSuggestionAfterExit(t *testing.T) {
+	out := string(numbered(3_000_000))
+	text := contentText(callResult(t, Result{Stdout: out, ExitCode: 1, FixSuggestion: "SUGGESTION: rerun"}, Options{}))
+	want := "\n[exit 1]\n[fix suggestion - from Runefile || failure hooks]\nSUGGESTION: rerun"
+	if !strings.HasSuffix(text, want) {
+		t.Errorf("result tail = %q", text[len(text)-120:])
+	}
+}
+
+func TestFormatResultWithinLimitUnchanged(t *testing.T) {
+	out, errOut := strings.Repeat("o", 60000), strings.Repeat("e", 60000)
+	text := contentText(callResult(t, Result{Stdout: out, Stderr: errOut}, Options{}))
+	if want := out + "\n" + errOut + "\n[exit 0]"; text != want {
+		t.Errorf("a result within the limit changed: %d bytes, want %d", len(text), len(want))
+	}
+}
+
+func TestFormatResultFramingBound(t *testing.T) {
+	// Both streams exactly at the limit, neither ending in a line break, and
+	// the longest exit code: the framing must still fit the 32 bytes.
+	// MinInt, not MinInt64: ExitCode is an int, and the 64-bit constant does
+	// not compile where int is 32 bits.
+	stream := strings.Repeat("z", 1024)
+	got := formatResult(Result{Stdout: stream, Stderr: stream, ExitCode: math.MinInt}, 1024)
+	if len(got) > 2*1024+32 {
+		t.Errorf("result is %d bytes, want at most %d", len(got), 2*1024+32)
+	}
+	if strings.Contains(got, "[truncated") {
+		t.Error("streams at the limit were truncated")
+	}
+}
+
+func TestOptionsOutputLimit(t *testing.T) {
+	out := string(numbered(3_000_000))
+	stdoutLen := func(opts Options) int {
+		return len(strings.TrimSuffix(contentText(callResult(t, Result{Stdout: out}, opts)), "[exit 0]"))
+	}
+	if n := stdoutLen(Options{OutputLimit: 1024}); n > 1024 {
+		t.Errorf("limit 1024 returned %d bytes", n)
+	}
+	if n := stdoutLen(Options{OutputLimit: 262144}); n <= 65536 || n > 262144 {
+		t.Errorf("limit 262144 returned %d bytes", n)
+	}
+	if n := stdoutLen(Options{}); n > 65536 || n < 65000 {
+		t.Errorf("default limit returned %d bytes", n)
+	}
+	if n := stdoutLen(Options{OutputLimit: 10}); n > 1024 || n < 900 {
+		t.Errorf("limit 10 returned %d bytes, want it raised to 1024", n)
 	}
 }

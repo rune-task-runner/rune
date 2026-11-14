@@ -23,6 +23,9 @@ type Settings struct {
 	AgentCmd   []string // set agent_cmd := ["claude", "-p"]
 	Secrets    []string // set secrets := ["NAME", ...] — extra names whose values are masked
 	Unmasked   []string // set unmasked := ["NAME", ...] — names exempt from built-in mask patterns
+	// MCPOutputLimit is the bytes of each of stdout and stderr a tool result
+	// returns to an agent: set mcp_output_limit := "256KiB". Zero when absent.
+	MCPOutputLimit int
 }
 
 // ResolveSettings evaluates a file's settings into a Settings value. String and
@@ -117,6 +120,8 @@ func ResolveSettings(f *ast.File, ev *eval.Evaluator) (Settings, diag.List) {
 		case "unmasked":
 			unmaskedEntries = evalNamed(set)
 			s.Unmasked = names(unmaskedEntries)
+		case "mcp_output_limit":
+			s.MCPOutputLimit = evalOutputLimit(set, evalStr, &diags)
 		}
 	}
 
@@ -133,4 +138,25 @@ func ResolveSettings(f *ast.File, ev *eval.Evaluator) (Settings, diag.List) {
 		}
 	}
 	return s, diags
+}
+
+// evalOutputLimit resolves `set mcp_output_limit`. An invalid size is a
+// diagnostic on the value, so a typo fails before any task runs instead of
+// silently leaving the default in force.
+func evalOutputLimit(set *ast.Setting, evalStr func(*ast.Setting) string, diags *diag.List) int {
+	if set.Value == nil {
+		diags.Add(diag.New(set.Span(), "invalid mcp_output_limit: it needs a size, such as set mcp_output_limit := \"256KiB\""))
+		return 0
+	}
+	before := len(*diags)
+	v := evalStr(set)
+	if len(*diags) > before {
+		return 0
+	}
+	limit, err := ParseOutputLimit(v)
+	if err != nil {
+		diags.Add(diag.New(set.Value.Span(), "invalid mcp_output_limit: "+err.Error()))
+		return 0
+	}
+	return limit
 }

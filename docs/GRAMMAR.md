@@ -150,3 +150,25 @@ adds names the patterns miss, `unmasked` exempts false positives. Listing the
 same name in both is a static error citing both spans. A listed name absent
 from the environment is inert. See the
 [secret masking guide](how-to/secret-masking.md) for semantics and limits.
+
+## MCP output limit setting
+
+One string-valued setting caps the task output a tool result returns to an
+agent:
+
+```rune
+set mcp_output_limit := "256KiB"
+```
+
+```text
+size := DIGITS [ "B" | "KiB" | "MiB" ]
+```
+
+The value is a whole number of bytes, or a count of `KiB` (1,024 bytes) or
+`MiB` (1,048,576 bytes), with the unit written right after the digits and
+spelled exactly. It must be from `1KiB` to `1024MiB`. Any other value is
+rejected with a diagnostic at the value before any task runs. The limit applies to
+stdout and to stderr separately, on `rune mcp`, `rune serve`, and the endpoint
+an agent task opens; `rune mcp --output-limit` overrides it for one server.
+Without the setting the limit is `64KiB`. Tasks run from the command line are
+not affected. See [Output limit](mcp.md#output-limit).

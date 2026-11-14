@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -293,5 +294,25 @@ func TestHTTPAllowListFiltersList(t *testing.T) {
 	}
 	if len(res.Tools) != 1 || res.Tools[0].Name != "logs" {
 		t.Errorf("tools over HTTP = %+v, want only logs", res.Tools)
+	}
+}
+
+// TestHTTPResultIsCapped: the output limit holds on HTTP as on stdio (spec
+// 042 FR-018).
+func TestHTTPResultIsCapped(t *testing.T) {
+	eng := sampleEngine()
+	eng.result = Result{Stdout: string(numbered(10_000))}
+	srv := New(eng, Options{OutputLimit: 1024})
+	addr, stop, err := srv.StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "tok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	text := contentText(callTool(t, httpSession(t, addr, "tok"), "logs", nil))
+	if len(text) > 1056 {
+		t.Errorf("result is %d bytes, want at most 1056", len(text))
+	}
+	if !strings.Contains(text, "\n[truncated ") || !strings.HasSuffix(text, "[exit 0]") {
+		t.Errorf("result has no marker or exit line: %q", text)
 	}
 }

@@ -150,3 +150,68 @@ func TestServeRejectsPositionalArguments(t *testing.T) {
 		}
 	}
 }
+
+// Spec 042: --output-limit is one string, and only a flag the command line
+// set reaches the options, so an empty value is reported and not ignored.
+func TestServeOutputLimitFlag(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	f := cmd.Flags().Lookup("output-limit")
+	if f == nil {
+		t.Fatal("serve has no --output-limit flag")
+	}
+	if got := f.Value.Type(); got != "string" {
+		t.Errorf("flag type = %q, want string", got)
+	}
+	if want := "cap each of stdout and stderr in a tool result (default 64KiB; such as 256KiB or 1MiB)"; f.Usage != want {
+		t.Errorf("usage = %q, want %q", f.Usage, want)
+	}
+
+	cases := []struct {
+		args []string
+		want *string
+	}{
+		{nil, nil},
+		{[]string{"--output-limit", "256KiB"}, new("256KiB")},
+		{[]string{"--output-limit", ""}, new("")},
+		{[]string{"--output-limit=1KiB", "--output-limit", "4KiB"}, new("4KiB")},
+	}
+	for _, c := range cases {
+		cmd := newServeCmd(&cli.Options{})
+		if err := cmd.ParseFlags(c.args); err != nil {
+			t.Fatal(err)
+		}
+		got := givenFlag(cmd, "output-limit", cmd.Flags().Lookup("output-limit").Value.String())
+		if (got == nil) != (c.want == nil) || (got != nil && *got != *c.want) {
+			t.Errorf("%q: got %v, want %v", c.args, got, c.want)
+		}
+	}
+}
+
+// The value reaches cli.Options through the command itself. An invalid one
+// fails in ServeMCP before a Runefile is looked for, which shows it arrived.
+func TestServeOutputLimitReachesServeMCP(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	cmd.SetArgs([]string{"--output-limit", ""})
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	err := cmd.Execute()
+	if err == nil || !strings.HasPrefix(err.Error(), `--output-limit: invalid size ""`) {
+		t.Errorf("error = %v, want the size usage error", err)
+	}
+	if opts.MCPOutputLimit == nil || *opts.MCPOutputLimit != "" {
+		t.Errorf("MCPOutputLimit = %v, want an empty value", opts.MCPOutputLimit)
+	}
+}
+
+func TestServeHelpMentionsOutputLimit(t *testing.T) {
+	cmd := newServeCmd(&cli.Options{})
+	for _, want := range []string{"--output-limit", "[truncated N bytes]", "mcp_output_limit"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+	if want := "rune mcp --output-limit 256KiB"; !strings.Contains(cmd.Example, want) {
+		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
+	}
+}
