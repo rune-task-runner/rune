@@ -215,3 +215,21 @@ func TestServeHelpMentionsOutputLimit(t *testing.T) {
 		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
 	}
 }
+
+// Spec 043: --no-reload is off by default and reaches the options.
+func TestServeNoReloadFlag(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	if f := cmd.Flags().Lookup("no-reload"); f == nil || f.DefValue != "false" {
+		t.Fatalf("--no-reload flag = %+v, want a boolean that defaults to false", f)
+	}
+	if err := cmd.ParseFlags([]string{"--no-reload"}); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.MCPNoReload {
+		t.Error("--no-reload did not set MCPNoReload")
+	}
+	if want := "--no-reload"; !strings.Contains(cmd.Long, want) || !strings.Contains(cmd.Example, "rune mcp --no-reload") {
+		t.Errorf("help does not explain %s:\n%s\n%s", want, cmd.Long, cmd.Example)
+	}
+}

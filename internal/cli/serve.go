@@ -39,13 +39,29 @@ type loadedModule struct {
 // unmet minimum_version to a warning: callers pass the CLI --ignore-version flag
 // on interactive paths and the operator-only opt on the MCP/agent path.
 func loadModule(opts Options, runefile string, allowIgnoreVersion bool) (*loadedModule, error) {
+	mod, _, err := loadModulePaths(opts, runefile, allowIgnoreVersion)
+	return mod, err
+}
+
+// loadModulePaths is loadModule that also returns the files the load read or
+// looked for, the Runefile first: its imports and modules at any depth, and
+// the names it tried that do not exist. They come back when the load fails
+// too, so a server can wait for the file that broke it (spec 043 FR-003).
+func loadModulePaths(opts Options, runefile string, allowIgnoreVersion bool) (*loadedModule, []string, error) {
+	rec := &pathRecorder{}
+	rec.add(runefile)
+	mod, err := loadModuleFrom(opts, runefile, allowIgnoreVersion, rec)
+	return mod, rec.paths, err
+}
+
+func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec *pathRecorder) (*loadedModule, error) {
 	root := filepath.Dir(runefile)
 	source, err := os.ReadFile(runefile)
 	if err != nil {
 		return nil, &UsageError{Err: err}
 	}
 	file, diags := parser.Parse(runefile, string(source))
-	src := newSourceProvider(runefile, source)
+	src := rec.wrap(newSourceProvider(runefile, source))
 	// Enforce minimum_version before imports/analysis on the MCP/agent path too.
 	if err := enforceMinimumVersion(opts, file, src, allowIgnoreVersion); err != nil {
 		return nil, err
@@ -81,13 +97,15 @@ func loadModule(opts Options, runefile string, allowIgnoreVersion bool) (*loaded
 	}, nil
 }
 
-// newMCPAdapter builds an mcpserver.Engine from a resolved Runefile.
-func newMCPAdapter(opts Options, runefile string) (*mcpAdapter, error) {
+// newMCPAdapter builds an mcpserver.Engine from a resolved Runefile. paths
+// are the files the load touched, as loadModulePaths returns them, also when
+// it fails.
+func newMCPAdapter(opts Options, runefile string) (adapter *mcpAdapter, paths []string, err error) {
 	// On the MCP/agent path, ignoring an unmet minimum_version is an operator-only
 	// opt (disabled by default) — never the CLI --ignore-version flag.
-	mod, err := loadModule(opts, runefile, opts.MCPAllowIgnoreVersion)
+	mod, paths, err := loadModulePaths(opts, runefile, opts.MCPAllowIgnoreVersion)
 	if err != nil {
-		return nil, err
+		return nil, paths, err
 	}
 	return &mcpAdapter{
 		file:      mod.file,
@@ -101,7 +119,7 @@ func newMCPAdapter(opts Options, runefile string) (*mcpAdapter, error) {
 		now:       func() string { return "" },
 		maskSet:   deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked),
 		goos:      runtime.GOOS,
-	}, nil
+	}, paths, nil
 }
 
 // ServeMCP starts the MCP server over stdio (default) or Streamable HTTP.
@@ -129,7 +147,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if err != nil {
 		return &UsageError{Err: err}
 	}
-	adapter, err := newMCPAdapter(opts, runefile)
+	adapter, paths, err := newMCPAdapter(opts, runefile)
 	if err != nil {
 		return err
 	}
@@ -158,15 +176,25 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	warnNonDestructive(opts.Stderr, opts.themeStderr(), granted, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--allow", allow, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--deny", deny, adapter.tasks)
+	rl := &reloader{
+		opts:      opts,
+		runefile:  runefile,
+		granted:   granted,
+		allow:     allow,
+		deny:      deny,
+		flagLimit: flagLimit,
+		useHTTP:   useHTTP,
+	}
+	if !opts.MCPNoReload {
+		// Watching starts before the [context] hook, which can run for
+		// seconds: a save made while it runs is loaded once the server is up.
+		defer rl.open(paths)()
+	}
 	// The analyzer rejects [confirm] anywhere in the [context] hook's closure,
 	// so setting the grant before the hook runs never approves anything there.
-	adapter.grants = make(map[string]bool, len(granted))
-	for _, name := range granted {
-		adapter.grants[name] = true
-	}
 	// Every call captures with the limit the server is given below. The hook's
 	// capture has its own size.
-	adapter.outputLimit = flagLimit
+	rl.configure(adapter)
 	// Run the [context] hook once at server start; its masked output becomes
 	// the instructions of every session's initialize result (spec 021 FR-002).
 	instructions := adapter.gatherContext(ctx, opts.Stderr)
@@ -178,6 +206,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		OutputLimit:          adapter.limit(),
 		Version:              opts.Version,
 		Instructions:         instructions,
+		Reloadable:           !opts.MCPNoReload,
 	})
 	// The counts are reported only when a filter was given, so the startup
 	// line of an unfiltered server does not change (spec 041 FR-016).
@@ -192,6 +221,12 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	}
 	// Server chrome is dimmed like the rest of Rune's meta output (014 C3).
 	fmt.Fprintln(opts.Stderr, opts.themeStderr().Muted.Render(startupLine(useHTTP, addr, exp, destructiveOnly(granted, adapter.tasks, adapter.goos))))
+	if !opts.MCPNoReload {
+		rl.srv = srv
+		// The reloader stops before ServeMCP returns: it writes to
+		// opts.Stderr, which the caller owns again after that.
+		defer rl.start(ctx)()
+	}
 	if useHTTP {
 		return srv.ServeHTTP(ctx, mcpserver.HTTPConfig{Addr: addr, Token: httpToken})
 	}

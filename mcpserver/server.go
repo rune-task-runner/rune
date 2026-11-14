@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -170,18 +172,28 @@ type Options struct {
 	// [context] hook's project-health text (spec 021 FR-002). It must
 	// already be masked; this package never processes it.
 	Instructions string
+	// Reloadable says the server's tasks may be replaced with Replace. The
+	// server then states the tools capability with listChanged from the
+	// start, even with no tool.
+	Reloadable bool
 }
 
 // Server wraps an mcp.Server built from a Runefile's tasks.
 type Server struct {
-	engine  Engine
 	opts    Options
 	granted map[string]bool // opts.AllowDestructive as a set
 	mcp     *mcp.Server
-	// exposed counts the tasks registered as tools, exposable the tasks the
-	// engine offered.
-	exposed, exposable int
-	outputLimit        int // opts.OutputLimit, brought into range
+	// state is what calls run against. A call loads it once, so it never
+	// sees the engine of one load and the tasks of another (spec 043).
+	state atomic.Pointer[snapshot]
+	// swapMu makes a Replace one step for tools/list: Replace holds it for
+	// writing, a list for reading. Calls do not take it, so a Replace never
+	// waits for a task.
+	swapMu sync.RWMutex
+	// registered is the JSON of each registered tool by tool name, guarded
+	// by swapMu.
+	registered   map[string][]byte
+	instructions atomic.Pointer[string]
 }
 
 // New builds an MCP server exposing engine's tasks as tools, except those
@@ -191,39 +203,32 @@ func New(engine Engine, opts Options) *Server {
 		opts.Version = "dev"
 	}
 	srv := &Server{
-		engine:      engine,
-		opts:        opts,
-		granted:     make(map[string]bool, len(opts.AllowDestructive)),
-		outputLimit: clampLimit(opts.OutputLimit),
+		opts:       opts,
+		granted:    make(map[string]bool, len(opts.AllowDestructive)),
+		registered: map[string][]byte{},
 	}
 	for _, name := range opts.AllowDestructive {
 		srv.granted[name] = true
 	}
+	srv.instructions.Store(&opts.Instructions)
 	srv.mcp = mcp.NewServer(
 		&mcp.Implementation{Name: "rune", Version: opts.Version},
-		&mcp.ServerOptions{Instructions: opts.Instructions, Capabilities: capabilities(opts)},
+		&mcp.ServerOptions{Capabilities: capabilities(opts)},
 	)
-	for _, t := range engine.Tasks() {
-		srv.exposable++
-		// A hidden task is never registered, so the SDK answers a call to it
-		// exactly as it answers a name no task has (spec 041 FR-004).
-		if !srv.exposes(t.Name) {
-			continue
-		}
-		srv.mcp.AddTool(toolFor(t), srv.handler(t))
-		srv.exposed++
-	}
+	srv.mcp.AddReceivingMiddleware(srv.middleware)
+	srv.Replace(engine, opts.OutputLimit)
 	return srv
 }
 
-// capabilities returns the capabilities a filtered server states outright, or
-// nil to let the SDK infer them. The SDK advertises tools only when one is
+// capabilities returns the capabilities a filtered or reloadable server
+// states outright, or nil to let the SDK infer them. The SDK advertises tools only when one is
 // registered, and a filter that leaves none must still read as an empty tool
 // list, not as a server without tool support (spec 041 FR-013). The values are
 // the ones the SDK infers for a server with tools, so a filtered server looks
-// the same whether or not any tool is left.
+// the same whether or not any tool is left. A reloadable server may gain its
+// first tool later, so it states them too (spec 043 FR-020).
 func capabilities(opts Options) *mcp.ServerCapabilities {
-	if len(opts.AllowList) == 0 && len(opts.DenyList) == 0 {
+	if !opts.Reloadable && len(opts.AllowList) == 0 && len(opts.DenyList) == 0 {
 		return nil
 	}
 	return &mcp.ServerCapabilities{
@@ -243,7 +248,10 @@ func (s *Server) exposes(name string) bool {
 
 // Exposure reports how many tasks are exposed as tools and how many the
 // Engine offered.
-func (s *Server) Exposure() (exposed, exposable int) { return s.exposed, s.exposable }
+func (s *Server) Exposure() (exposed, exposable int) {
+	snap := s.state.Load()
+	return snap.exposed, snap.exposable
+}
 
 // MCP returns the underlying mcp.Server (for transports/tests).
 func (s *Server) MCP() *mcp.Server { return s.mcp }

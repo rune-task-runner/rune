@@ -51,7 +51,7 @@ func watch(opts Options, runefile string, args []string) error {
 				return nil
 			}
 			if relevant(ev) {
-				debounce = time.After(100 * time.Millisecond)
+				debounce = time.After(reloadDebounce)
 			}
 		case <-debounce:
 			debounce = nil

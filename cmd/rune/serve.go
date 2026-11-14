@@ -44,13 +44,21 @@ A tool result carries at most 64KiB of stdout and 64KiB of stderr. Longer
 output keeps its beginning and its end around a "[truncated N bytes]" line.
 Use --output-limit to change the size, written as bytes or with a KiB or MiB
 unit, from 1KiB to 1024MiB. A Runefile can set the same with
-'set mcp_output_limit := "256KiB"'; the flag wins.`,
+'set mcp_output_limit := "256KiB"'; the flag wins.
+
+The server follows the Runefile while it runs. When the Runefile, or a file
+it imports or loads as a module, changes, the server loads it again and
+tells connected agents that the tool list changed. A change that leaves the
+Runefile invalid is reported on stderr and the previous tools stay. The
+flags above keep their values. Use --no-reload to keep the tasks read at
+start.`,
 		Example: `  rune mcp                                            # stdio (for local agents/IDEs)
   rune serve                                          # same as 'rune mcp'
   rune mcp --allow-destructive clean                  # let agents run the [confirm] task 'clean'
   rune mcp --allow build,test                         # expose only 'build' and 'test'
   rune mcp --deny deploy                              # expose everything except 'deploy'
   rune mcp --output-limit 256KiB                      # return up to 256KiB of each stream
+  rune mcp --no-reload                                # ignore Runefile changes while running
   rune serve --http --addr :7777 --token-file ./tok   # HTTP transport`,
 		// A task list is one comma-separated value. Without this, the names
 		// after a space would be dropped and the tasks left exposed.
@@ -74,6 +82,7 @@ unit, from 1KiB to 1024MiB. A Runefile can set the same with
 	f.StringArrayVar(&opts.MCPAllowDestructive, "allow-destructive", nil, "let agents run these [confirm] tasks (comma-separated, repeatable)")
 	f.StringArrayVar(&opts.MCPAllow, "allow", nil, "expose only these tasks to agents (comma-separated, repeatable)")
 	f.StringArrayVar(&opts.MCPDeny, "deny", nil, "hide these tasks from agents (comma-separated, repeatable)")
+	f.BoolVar(&opts.MCPNoReload, "no-reload", false, "keep the tasks read at start; do not reload when the Runefile changes")
 	f.StringVar(&outputLimit, "output-limit", "", "cap each of stdout and stderr in a tool result (default 64KiB; such as 256KiB or 1MiB)")
 
 	return cmd

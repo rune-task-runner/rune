@@ -15,8 +15,8 @@ import (
 //   - every destructive task in t.DestructiveReach must be granted too, so a
 //     call never runs part of its work and then stops at one (spec 034).
 //
-// t is the descriptor the handler registered, so the check costs no Tasks()
-// rebuild. The texts carry task names, not tool names, so they can be pasted
+// t is the descriptor in the snapshot the call runs against, so the check
+// costs no Tasks() rebuild. The texts carry task names, not tool names, so they can be pasted
 // into the flag they name. They say to add the names, because restarting with
 // only the refused names would drop the existing grants.
 func (s *Server) refusal(t TaskInfo) string {

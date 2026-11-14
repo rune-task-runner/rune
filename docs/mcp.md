@@ -50,6 +50,14 @@ rune mcp --output-limit 256KiB
 A tool result carries at most 64 KiB of stdout and 64 KiB of stderr; see
 [Output limit](#output-limit).
 
+**Keeping the tasks read at start:**
+
+```sh
+rune mcp --no-reload
+```
+
+A running server follows the Runefile; see [Reloading](#reloading).
+
 **Streamable HTTP (opt-in, for networked clients):**
 
 ```sh
@@ -273,6 +281,41 @@ task runs. The limit cannot be turned off.
 The setting also applies to the endpoint an [agent task](#agent-task-bodies) opens for its
 own agent, which no `rune mcp` flag reaches. It has no effect on tasks run from the command
 line: their output goes to the terminal whole.
+
+## Reloading
+
+A running server follows its Runefile. It watches the Runefile and every file it imports or
+loads as a module. When one of them is saved, the server loads the Runefile again, replaces
+its tools, and sends connected clients a `notifications/tools/list_changed` message, within
+about two seconds. No restart is needed. The server reports each reload on stderr:
+
+```text
+reloaded Runefile: 1 tool added, 0 removed, 0 changed
+```
+
+- **A broken save keeps the last valid tools.** If the Runefile has a static error, the
+  server prints the same diagnostics as `rune` does, then
+  `reload failed: 1 static error(s); keeping the previous tools`. Nothing is replaced and no
+  task runs. The next valid save is loaded.
+- **A call uses one version of the Runefile.** A call that is running during a reload
+  finishes with the tasks it started with. Calls that start afterwards use the new ones.
+- **Clients are notified only when the tool list differs.** Editing only a task's body
+  changes what the next call runs, and sends no notification.
+- **Flags keep their values.** `--allow`, `--deny`, `--allow-destructive` and
+  `--output-limit` apply to the reloaded tasks as they did at start. If a reload removes a
+  task that a flag names, the server keeps running and prints a warning; the name applies
+  again if the task comes back. Settings such as `mcp_output_limit` are part of the Runefile
+  and reload with it.
+- **Project context.** On the HTTP transport, the `[context]` task runs again after each
+  successful reload, and sessions that start later receive its new output. A session that is
+  already open keeps the instructions it was given, so on stdio the task is not run again.
+- **What is not watched.** `.env` files and the scripts your tasks call. A reload reads
+  `.env` files again, but a change to one does not start a reload.
+
+With reloading, whoever can write the Runefile can change what a tool runs while the server
+is up. `[confirm]` tasks still need `--allow-destructive` by name, and `--allow` still
+limits which names are tools. To keep exactly the tasks read at start, run
+`rune mcp --no-reload`: the server then watches no file.
 
 ## Security model (secure by default)
 
