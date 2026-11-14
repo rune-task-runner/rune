@@ -58,6 +58,9 @@ type Options struct {
 	// of stdout and stderr in a tool result. Nil means the flag was not given,
 	// which an empty value is not. Only ServeMCP reads it (spec 042).
 	MCPOutputLimit *string
+	// MCPNoReload is --no-reload: rune serve keeps the tasks it read at
+	// start and watches no file. Only ServeMCP reads it (spec 043).
+	MCPNoReload bool
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own

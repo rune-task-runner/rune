@@ -487,7 +487,7 @@ func TestHandlerRawArguments(t *testing.T) {
 	call := func(raw json.RawMessage) (*fakeEngine, *mcp.CallToolResult) {
 		eng := &fakeEngine{tasks: []TaskInfo{task}, result: Result{Stdout: "ran"}}
 		req := &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: task.Name, Arguments: raw}}
-		res, err := New(eng, Options{}).handler(task)(context.Background(), req)
+		res, err := New(eng, Options{}).handler(task.Name)(context.Background(), req)
 		if err != nil {
 			t.Fatal(err)
 		}

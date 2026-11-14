@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rune-task-runner/rune/internal/suggest"
@@ -26,13 +27,25 @@ const (
 // arguments against the advertised schema (spec 023 FR-005: a violation never
 // reaches the engine), runs the task through the shared engine, and returns
 // {stdout, stderr, exitCode} as the tool result.
-func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
-	taskName := t.Name
-	names := make([]string, len(t.Params))
-	for i, p := range t.Params {
-		names[i] = p.Name
-	}
+//
+// The handler belongs to a tool name, not to one load of the task: it takes
+// the task and the engine from the snapshot current when the call starts, so
+// a Replace changes what later calls run without registering the tool again
+// (spec 043).
+func (s *Server) handler(tool string) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		snap := s.state.Load()
+		t, ok := snap.tasks[tool]
+		if !ok {
+			// A Replace removed the task after the SDK found the tool. The
+			// SDK's own answer for a name it does not know.
+			return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: fmt.Sprintf("unknown tool %q", tool)}
+		}
+		taskName := t.Name
+		names := make([]string, len(t.Params))
+		for i, p := range t.Params {
+			names[i] = p.Name
+		}
 		if msg := s.refusal(t); msg != "" {
 			return errorResult(msg), nil
 		}
@@ -49,16 +62,16 @@ func (s *Server) handler(t TaskInfo) mcp.ToolHandler {
 		}
 		var res Result
 		var runErr error
-		if le, ok := s.engine.(ListEngine); ok {
+		if le, ok := snap.engine.(ListEngine); ok {
 			res, runErr = le.CallLists(ctx, taskName, args, lists)
 		} else {
-			res, runErr = s.engine.Call(ctx, taskName, args)
+			res, runErr = snap.engine.Call(ctx, taskName, args)
 		}
 		if runErr != nil {
 			return errorResult(runErr.Error()), nil
 		}
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: formatResult(res, s.outputLimit)}},
+			Content: []mcp.Content{&mcp.TextContent{Text: formatResult(res, snap.outputLimit)}},
 			IsError: res.ExitCode != 0,
 		}, nil
 	}
