@@ -84,6 +84,12 @@ type mcpProc struct {
 // exit with status 0.
 func startMCP(t *testing.T, dir string, flags ...string) *mcpProc {
 	t.Helper()
+	return startMCPVersion(t, dir, "2024-11-05", flags...)
+}
+
+// startMCPVersion is startMCP with the protocol version the client asks for.
+func startMCPVersion(t *testing.T, dir, version string, flags ...string) *mcpProc {
+	t.Helper()
 	cmd := exec.Command(runeBin, append([]string{"mcp"}, flags...)...)
 	cmd.Dir = dir
 	stdin, err := cmd.StdinPipe()
@@ -126,7 +132,7 @@ func startMCP(t *testing.T, dir string, flags ...string) *mcpProc {
 		}
 	})
 
-	p.init = p.request("initialize", `{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"it","version":"0.0.0"}}`)
+	p.init = p.request("initialize", fmt.Sprintf(`{"protocolVersion":%q,"capabilities":{},"clientInfo":{"name":"it","version":"0.0.0"}}`, version))
 	p.send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 	return p
 }

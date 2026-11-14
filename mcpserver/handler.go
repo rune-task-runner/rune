@@ -26,7 +26,9 @@ const (
 // refuses argument names the task does not declare (spec 032), validates the
 // arguments against the advertised schema (spec 023 FR-005: a violation never
 // reaches the engine), runs the task through the shared engine, and returns
-// {stdout, stderr, exitCode} as the tool result.
+// its output and exit code as text and as structured content (spec 044). A
+// call that runs no task returns an error with text only: there is no exit
+// code to report.
 //
 // The handler belongs to a tool name, not to one load of the task: it takes
 // the task and the engine from the snapshot current when the call starts, so
@@ -70,9 +72,13 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 		if runErr != nil {
 			return errorResult(runErr.Error()), nil
 		}
+		// Capped once, then rendered twice: the fields cannot hold more, or
+		// other, output than the text.
+		res = capResult(res, snap.outputLimit)
 		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: formatResult(res, snap.outputLimit)}},
-			IsError: res.ExitCode != 0,
+			Content:           []mcp.Content{&mcp.TextContent{Text: renderText(res)}},
+			StructuredContent: structuredFrom(res),
+			IsError:           res.ExitCode != 0,
 		}, nil
 	}
 }
@@ -234,7 +240,14 @@ func scalarArg(p ParamInfo, v any) (string, error) {
 // the text up to the exit line is at most twice the limit plus the exit line
 // and two line breaks (spec 042 FR-009).
 func formatResult(r Result, limit int) string {
-	stdout, stderr := capOutput(r.Stdout, limit), capOutput(r.Stderr, limit)
+	return renderText(capResult(r, limit))
+}
+
+// renderText renders a result whose streams are already capped. It reads
+// nothing else, so the text is made of exactly the strings the structured
+// content carries (spec 044 FR-007).
+func renderText(r Result) string {
+	stdout, stderr := r.Stdout, r.Stderr
 	var b strings.Builder
 	if stdout != "" {
 		b.WriteString(stdout)

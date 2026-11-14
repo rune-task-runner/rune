@@ -19,14 +19,18 @@ import (
 
 // Result is the outcome of running a task on behalf of an agent.
 type Result struct {
+	// Stdout and Stderr must already be masked by the engine: this package
+	// only caps them, and every tool's output schema tells clients they hold
+	// no secret (spec 044).
 	Stdout   string
 	Stderr   string
 	ExitCode int
 	// FixSuggestion is the captured output of the task's || failure hooks
 	// (spec 022). Like Options.Instructions, it must already be masked and
 	// size-capped by the engine; this package never processes it, only
-	// renders it as a delimited section after the exit marker. Empty means
-	// no section is rendered.
+	// renders it as a delimited section after the exit marker and returns it
+	// as the fixSuggestion field of the structured content (spec 044). Empty
+	// means no section and no field.
 	FixSuggestion string
 }
 
@@ -161,9 +165,10 @@ type Options struct {
 	// AllowList names them.
 	DenyList []string
 	// OutputLimit caps the bytes of Result.Stdout and of Result.Stderr that a
-	// tool result carries, marker included. Zero or less means
-	// DefaultOutputLimit. Other values are raised to MinOutputLimit or lowered
-	// to MaxOutputLimit.
+	// tool result carries, marker included. A result carries each stream
+	// twice, in its text and in its structured content (spec 044), and the
+	// cap holds for each. Zero or less means DefaultOutputLimit. Other values
+	// are raised to MinOutputLimit or lowered to MaxOutputLimit.
 	OutputLimit int
 	// Version reported to clients.
 	Version string
@@ -287,6 +292,9 @@ func toolFor(t TaskInfo) *mcp.Tool {
 		Name:        toolName(t.Name),
 		Description: desc,
 		InputSchema: inputSchema(t.Params),
+		// The same for every tool, on every load, so it never makes a
+		// reload look like a change to the tool list.
+		OutputSchema: outputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			DestructiveHint: &destructive,
 			OpenWorldHint:   &network,
