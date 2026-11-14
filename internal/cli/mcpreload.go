@@ -23,10 +23,41 @@ import (
 const reloadDebounce = 100 * time.Millisecond
 
 // pathRecorder collects the files a load reads or looks for, each once, as
-// absolute cleaned paths in first-seen order.
+// absolute cleaned paths in first-seen order, and what each looked like just
+// before the load touched it.
 type pathRecorder struct {
 	paths []string
-	seen  map[string]bool
+	seen  map[string]fileStamp
+}
+
+// fileStamp is what a stat shows of a file. Two equal stamps mean the file
+// was not written in between.
+type fileStamp struct {
+	exists bool
+	size   int64
+	mtime  int64 // UnixNano
+}
+
+func stampOf(path string) fileStamp {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fileStamp{}
+	}
+	return fileStamp{exists: true, size: info.Size(), mtime: info.ModTime().UnixNano()}
+}
+
+// changed reports whether a recorded file is not as it was when the load
+// came to it: written, created or removed since. A load learns which files
+// to watch only by reading them, so a save can fall between the read and the
+// watch, where no event reports it. The caller checks after it has set up
+// the watch and loads again when this is true.
+func (r *pathRecorder) changed() bool {
+	for path, stamp := range r.seen {
+		if stampOf(path) != stamp {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *pathRecorder) add(path string) {
@@ -34,13 +65,15 @@ func (r *pathRecorder) add(path string) {
 	if err != nil {
 		abs = filepath.Clean(path)
 	}
-	if r.seen[abs] {
+	if _, ok := r.seen[abs]; ok {
 		return
 	}
 	if r.seen == nil {
-		r.seen = map[string]bool{}
+		r.seen = map[string]fileStamp{}
 	}
-	r.seen[abs] = true
+	// Before the caller reads the file: a write after this is seen either
+	// by changed or, once the file is watched, as an event.
+	r.seen[abs] = stampOf(abs)
 	r.paths = append(r.paths, abs)
 }
 
@@ -86,6 +119,9 @@ type reloader struct {
 	addDir, removeDir func(string) error
 	debounce          time.Duration
 	warnedWatch       bool
+	// pending asks run for one more reload: a file changed after a load
+	// read it and before it was watched.
+	pending bool
 }
 
 // configure gives a freshly loaded adapter the operator's grants and output
@@ -193,6 +229,10 @@ func (r *reloader) start(ctx context.Context) (stop func()) {
 func (r *reloader) run(ctx context.Context) {
 	var due <-chan time.Time
 	for {
+		if r.pending {
+			r.pending = false
+			due = time.After(r.debounce)
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -315,12 +355,14 @@ func symlinkTarget(path string) (string, bool) {
 // succeeded (FR-021, FR-023).
 func (r *reloader) reload(ctx context.Context) {
 	stderr, th := r.opts.Stderr, r.opts.themeStderr()
-	adapter, paths, err := newMCPAdapter(r.opts, r.runefile)
+	adapter, rec, err := loadMCPAdapter(r.opts, r.runefile)
+	paths := rec.paths
 	if err != nil {
 		fmt.Fprintln(stderr, th.Muted.Render(fmt.Sprintf("reload failed: %v; keeping the previous tools", err)))
 		// The failed load's files join the watch, so fixing or creating the
 		// one that broke it starts the next reload.
 		r.watch(append(append([]string{}, r.good...), paths...))
+		r.pending = rec.changed()
 		return
 	}
 	r.configure(adapter)
@@ -336,6 +378,7 @@ func (r *reloader) reload(ctx context.Context) {
 	change := r.srv.Replace(adapter, adapter.limit())
 	r.good = paths
 	r.watch(paths)
+	r.pending = rec.changed()
 	// After the tools, so the hook cannot delay the notification, and before
 	// the line below, so the line means new sessions get the new text.
 	if r.useHTTP {

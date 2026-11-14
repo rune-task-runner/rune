@@ -1266,3 +1266,134 @@ func TestReloaderMissedEvents(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestPathRecorderChanged(t *testing.T) {
+	dir := t.TempDir()
+	present, absent := filepath.Join(dir, "present.rune"), filepath.Join(dir, "sub", "absent.rune")
+	if err := os.WriteFile(present, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	record := func() *pathRecorder {
+		rec := &pathRecorder{}
+		rec.add(present)
+		rec.add(absent)
+		return rec
+	}
+	rec := record()
+	if rec.changed() {
+		t.Error("changed with no file touched")
+	}
+	if err := os.WriteFile(present, []byte("longer"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !rec.changed() {
+		t.Error("a written file is not reported")
+	}
+
+	rec = record()
+	if err := os.MkdirAll(filepath.Dir(absent), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if rec.changed() {
+		t.Error("changed when only a directory was made")
+	}
+	if err := os.WriteFile(absent, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !rec.changed() {
+		t.Error("a created file is not reported")
+	}
+
+	rec = record()
+	if err := os.Remove(present); err != nil {
+		t.Fatal(err)
+	}
+	if !rec.changed() {
+		t.Error("a removed file is not reported")
+	}
+}
+
+// A load learns which files to watch by reading them, so a save can land
+// after the read and before the watch, where no event reports it. The
+// reloader notices and loads again. Here the save happens inside the call
+// that sets up the watch, and no event is ever sent for it.
+func TestReloaderChangeBeforeWatch(t *testing.T) {
+	var stderr lockedBuffer
+	dir := t.TempDir()
+	runefile := filepath.Join(dir, "Runefile")
+	write := func(content string) {
+		if err := os.WriteFile(runefile, []byte(content), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	write(reloadBase)
+	opts := Options{Cwd: dir, Stderr: &stderr, Version: "1.0.0"}
+	adapter, _, err := newMCPAdapter(opts, runefile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lint := reloadBase + "\n# Lints.\nlint:\n    @echo linted\n"
+	events := make(chan fsnotify.Event)
+	saved := false
+	rl := &reloader{
+		opts: opts, runefile: runefile, srv: mcpserver.New(adapter, mcpserver.Options{Reloadable: true}),
+		events: events, errs: make(chan error),
+		files: map[string]bool{runefile: true},
+		addDir: func(string) error {
+			if !saved {
+				saved = true
+				write(lint + "\n# Tests.\ntest:\n    @echo tested\n")
+			}
+			return nil
+		},
+		removeDir: func(string) error { return nil },
+		debounce:  time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rl.run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+
+	write(lint)
+	events <- fsnotify.Event{Name: runefile, Op: fsnotify.Write}
+	deadline := time.Now().Add(reloadWait)
+	for strings.Count(stderr.String(), "reloaded Runefile: 1 tool added, 0 removed, 0 changed") < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the save made before the watch was never loaded:\n%s", stderr.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// ServeMCP checks the same gap for its first load.
+func TestReloaderRunStartsPending(t *testing.T) {
+	var stderr lockedBuffer
+	dir := t.TempDir()
+	runefile := filepath.Join(dir, "Runefile")
+	if err := os.WriteFile(runefile, []byte(reloadBase), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Cwd: dir, Stderr: &stderr, Version: "1.0.0"}
+	adapter, _, err := newMCPAdapter(opts, runefile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rl := &reloader{
+		opts: opts, runefile: runefile, srv: mcpserver.New(adapter, mcpserver.Options{Reloadable: true}),
+		events: make(chan fsnotify.Event), errs: make(chan error),
+		addDir: func(string) error { return nil }, removeDir: func(string) error { return nil },
+		debounce: time.Millisecond,
+		pending:  true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rl.run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	deadline := time.Now().Add(reloadWait)
+	for !strings.Contains(stderr.String(), "reloaded Runefile: 0 tools added, 0 removed, 0 changed") {
+		if time.Now().After(deadline) {
+			t.Fatalf("a pending reloader did not reload:\n%s", stderr.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

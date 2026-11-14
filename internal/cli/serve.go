@@ -101,11 +101,21 @@ func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec 
 // are the files the load touched, as loadModulePaths returns them, also when
 // it fails.
 func newMCPAdapter(opts Options, runefile string) (adapter *mcpAdapter, paths []string, err error) {
+	adapter, rec, err := loadMCPAdapter(opts, runefile)
+	return adapter, rec.paths, err
+}
+
+// loadMCPAdapter is newMCPAdapter that returns the whole record of the files
+// the load touched, so a server can tell whether one changed before it was
+// watched.
+func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, error) {
+	rec := &pathRecorder{}
+	rec.add(runefile)
 	// On the MCP/agent path, ignoring an unmet minimum_version is an operator-only
 	// opt (disabled by default) — never the CLI --ignore-version flag.
-	mod, paths, err := loadModulePaths(opts, runefile, opts.MCPAllowIgnoreVersion)
+	mod, err := loadModuleFrom(opts, runefile, opts.MCPAllowIgnoreVersion, rec)
 	if err != nil {
-		return nil, paths, err
+		return nil, rec, err
 	}
 	return &mcpAdapter{
 		file:      mod.file,
@@ -119,7 +129,7 @@ func newMCPAdapter(opts Options, runefile string) (adapter *mcpAdapter, paths []
 		now:       func() string { return "" },
 		maskSet:   deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked),
 		goos:      runtime.GOOS,
-	}, paths, nil
+	}, rec, nil
 }
 
 // ServeMCP starts the MCP server over stdio (default) or Streamable HTTP.
@@ -147,7 +157,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if err != nil {
 		return &UsageError{Err: err}
 	}
-	adapter, paths, err := newMCPAdapter(opts, runefile)
+	adapter, rec, err := loadMCPAdapter(opts, runefile)
 	if err != nil {
 		return err
 	}
@@ -188,7 +198,9 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if !opts.MCPNoReload {
 		// Watching starts before the [context] hook, which can run for
 		// seconds: a save made while it runs is loaded once the server is up.
-		defer rl.open(paths)()
+		defer rl.open(rec.paths)()
+		// A save between the load above and the watch is in no event.
+		rl.pending = rec.changed()
 	}
 	// The analyzer rejects [confirm] anywhere in the [context] hook's closure,
 	// so setting the grant before the hook runs never approves anything there.
