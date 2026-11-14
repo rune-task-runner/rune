@@ -300,7 +300,16 @@ func TestPathRecorder(t *testing.T) {
 	src("/a/missing")
 	src("/a/./found")
 	rec.add("/a/b/../missing")
-	if want := []string{"/a/found", "/a/missing"}; !slices.Equal(rec.paths, want) {
+	// Absolute as the host spells it: Windows adds the drive.
+	want := make([]string, 2)
+	for i, p := range []string{"/a/found", "/a/missing"} {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[i] = abs
+	}
+	if !slices.Equal(rec.paths, want) {
 		t.Errorf("paths = %v, want %v", rec.paths, want)
 	}
 }
@@ -1162,4 +1171,98 @@ func TestAgentEndpointNotReloadable(t *testing.T) {
 	if (&engine{}).agentMCPOptions(0).Reloadable {
 		t.Error("the agent task endpoint is reloadable")
 	}
+}
+
+// The watcher must never wait on the reloader: on Windows that stops the
+// watcher's Add and Remove, which the reloader is calling at that moment.
+// relay takes every event at once, keeps what fits, and says when it dropped
+// one.
+func TestRelayNeverBlocksTheWatcher(t *testing.T) {
+	inEvents := make(chan fsnotify.Event)
+	inErrs := make(chan error)
+	events := make(chan fsnotify.Event, 2)
+	errs := make(chan error, 1)
+	missed := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		relay(inEvents, inErrs, events, errs, missed)
+	}()
+
+	// Nothing reads events or errs. Every send below must still go through.
+	send := func(what string, deliver func() bool) {
+		t.Helper()
+		sent := make(chan bool, 1)
+		go func() { sent <- deliver() }()
+		select {
+		case <-sent:
+		case <-time.After(reloadWait):
+			t.Fatalf("relay did not take %s while the reloader was not reading", what)
+		}
+	}
+	for i := range 5 {
+		name := fmt.Sprintf("f%d", i)
+		send("event "+name, func() bool { inEvents <- fsnotify.Event{Name: name, Op: fsnotify.Write}; return true })
+	}
+	for _, msg := range []string{"first", "second"} {
+		send("error "+msg, func() bool { inErrs <- errors.New(msg); return true })
+	}
+
+	if got := []string{(<-events).Name, (<-events).Name}; !slices.Equal(got, []string{"f0", "f1"}) {
+		t.Errorf("kept events = %v, want the first two", got)
+	}
+	select {
+	case <-missed:
+	default:
+		t.Error("relay dropped events without reporting them")
+	}
+	if err := <-errs; err.Error() != "first" {
+		t.Errorf("kept error = %v, want the first", err)
+	}
+
+	close(inEvents)
+	close(inErrs)
+	select {
+	case <-done:
+	case <-time.After(reloadWait):
+		t.Fatal("relay did not end when the watcher closed its channels")
+	}
+	if _, open := <-events; open {
+		t.Error("relay left its event channel open")
+	}
+}
+
+// Dropped events lead to a reload, like a change.
+func TestReloaderMissedEvents(t *testing.T) {
+	missed := make(chan struct{}, 1)
+	var stderr lockedBuffer
+	dir := t.TempDir()
+	runefile := filepath.Join(dir, "Runefile")
+	if err := os.WriteFile(runefile, []byte(reloadBase), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Cwd: dir, Stderr: &stderr, Version: "1.0.0"}
+	adapter, _, err := newMCPAdapter(opts, runefile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rl := &reloader{
+		opts: opts, runefile: runefile, srv: mcpserver.New(adapter, mcpserver.Options{Reloadable: true}),
+		events: make(chan fsnotify.Event), errs: make(chan error), missed: missed,
+		addDir: func(string) error { return nil }, removeDir: func(string) error { return nil },
+		debounce: time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { rl.run(ctx); close(done) }()
+	missed <- struct{}{}
+	deadline := time.Now().Add(reloadWait)
+	for !strings.Contains(stderr.String(), "reloaded Runefile: 0 tools added, 0 removed, 0 changed") {
+		if time.Now().After(deadline) {
+			t.Fatalf("dropped events did not lead to a reload:\n%s", stderr.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
 }

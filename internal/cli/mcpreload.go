@@ -79,6 +79,9 @@ type reloader struct {
 
 	events <-chan fsnotify.Event
 	errs   <-chan error
+	// missed signals that relay dropped events. One of them may have been
+	// for a watched file.
+	missed <-chan struct{}
 	// addDir and removeDir are the watcher's Add and Remove.
 	addDir, removeDir func(string) error
 	debounce          time.Duration
@@ -96,7 +99,7 @@ func (r *reloader) configure(a *mcpAdapter) {
 }
 
 // open starts watching paths and returns a function that stops watching.
-// Changes made from then on wait in the watcher until start reads them, so
+// Changes made from then on are kept until start reads them, so
 // the caller opens before it runs Runefile code and starts once it has a
 // server: a save made in between is not lost. Where files cannot be watched,
 // open says so and the server keeps the tools it has.
@@ -106,12 +109,64 @@ func (r *reloader) open(paths []string) (closeWatch func()) {
 		r.warnWatch(err)
 		return func() {}
 	}
-	r.events, r.errs = w.Events, w.Errors
+	events := make(chan fsnotify.Event, relayBuffer)
+	errs := make(chan error, relayBuffer)
+	missed := make(chan struct{}, 1)
+	relayed := make(chan struct{})
+	go func() {
+		defer close(relayed)
+		relay(w.Events, w.Errors, events, errs, missed)
+	}()
+	r.events, r.errs, r.missed = events, errs, missed
 	r.addDir, r.removeDir = w.Add, w.Remove
 	r.debounce = reloadDebounce
 	r.good = paths
 	r.watch(paths)
-	return func() { _ = w.Close() }
+	return func() {
+		// Closing the watcher closes its channels, which ends relay.
+		_ = w.Close()
+		<-relayed
+	}
+}
+
+// relayBuffer is how many events and errors wait for the reloader before
+// relay drops one. A save is a handful of events.
+const relayBuffer = 64
+
+// relay moves the watcher's events and errors into channels that never
+// block it, until the watcher closes both. On Windows the watcher serves Add
+// and Remove on the thread that delivers events. The reloader calls them
+// while it is not reading, so an event delivered straight to it at that
+// moment would stop both for good. A dropped event is reported on missed,
+// which leads to a reload like any change.
+func relay(inEvents <-chan fsnotify.Event, inErrs <-chan error, events chan<- fsnotify.Event, errs chan<- error, missed chan<- struct{}) {
+	defer close(events)
+	for inEvents != nil || inErrs != nil {
+		select {
+		case ev, ok := <-inEvents:
+			if !ok {
+				inEvents = nil
+				continue
+			}
+			select {
+			case events <- ev:
+			default:
+				select {
+				case missed <- struct{}{}:
+				default:
+				}
+			}
+		case err, ok := <-inErrs:
+			if !ok {
+				inErrs = nil
+				continue
+			}
+			select {
+			case errs <- err:
+			default:
+			}
+		}
+	}
 }
 
 // start runs the reloader on what open watches, until the returned stop is
@@ -148,6 +203,8 @@ func (r *reloader) run(ctx context.Context) {
 			if r.relevant(ev) {
 				due = time.After(r.debounce)
 			}
+		case <-r.missed:
+			due = time.After(r.debounce)
 		case <-due:
 			due = nil
 			r.reload(ctx)
