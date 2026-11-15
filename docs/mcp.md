@@ -65,11 +65,29 @@ rune serve --http --addr 127.0.0.1:8765 --token-file ./mcp-token.txt
 ```
 
 - `--http` selects the Streamable HTTP transport (stdio is the default otherwise).
-- `--addr` sets the bind address.
+- `--addr` sets the bind address. The default is `127.0.0.1:7777`.
 - `--token-file` supplies a bearer token required on every request.
 
-A remote endpoint is **opt-in, intended to be localhost-bound, and token-gated** — it is
-never enabled by default.
+A remote endpoint is **opt-in, bound to loopback unless you name another address, and
+token-gated**. It is never enabled by default.
+
+The HTTP transport has no TLS. On a loopback address the token never leaves the machine. On
+any other address it crosses the network in cleartext, and anyone who can read the traffic can
+use it to run your tasks. The server still starts, and says so once on stderr:
+
+```text
+warning: serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext
+```
+
+What decides is the address the server bound, not how `--addr` is written:
+
+- An address in `127.0.0.0/8`, or `::1`, is loopback. No warning.
+- `--addr :7777`, `--addr 0.0.0.0:7777` and `--addr [::]:7777` bind every interface. Warning.
+- The address of a network interface, such as `192.168.1.5:7777`. Warning.
+- A host name counts as the address it resolves to. `localhost` is normally loopback.
+
+For a client on another machine, keep the server on loopback and reach it through something
+that encrypts, such as an SSH tunnel or a reverse proxy that terminates TLS.
 
 ## How tasks become tools
 
