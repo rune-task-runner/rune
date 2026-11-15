@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -21,24 +20,34 @@ func (s *Server) ServeStdio(ctx context.Context) error {
 type HTTPConfig struct {
 	Addr  string // e.g. 127.0.0.1:7777
 	Token string // required bearer token
+	// Warn, when set, is called once with a one-line message when the
+	// transport has bound an address that is not loopback: without TLS the
+	// bearer token then crosses the network in cleartext. It is called before
+	// any request is served, on the goroutine that started the transport.
+	Warn func(message string)
+}
+
+// cleartextWarning is what HTTPConfig.Warn receives.
+const cleartextWarning = "serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext"
+
+// warnCleartext reports a bound address that other machines can reach.
+func (cfg HTTPConfig) warnCleartext(bound net.Addr) {
+	if cfg.Warn != nil && !isLoopback(bound) {
+		cfg.Warn(cleartextWarning)
+	}
 }
 
 // ServeHTTP starts the Streamable HTTP transport. It binds the configured
-// address (localhost by default), requires a bearer token before any list/call
-// (SC-010), and refuses a non-localhost bind unless the address is explicit.
+// address (localhost by default) and requires a bearer token before any
+// list/call (SC-010). An address that is not loopback is bound as asked, not
+// refused: the transport has no TLS, so the token then crosses the network in
+// cleartext, and cfg.Warn is told.
 func (s *Server) ServeHTTP(ctx context.Context, cfg HTTPConfig) error {
 	if cfg.Token == "" {
 		return fmt.Errorf("a bearer token is required for the HTTP transport (use --token-file)")
 	}
 	if cfg.Addr == "" {
 		cfg.Addr = "127.0.0.1:0"
-	}
-	if !isLoopback(cfg.Addr) {
-		// Non-localhost binding must be an explicit operator choice; we still
-		// enforce the token, but require the address to be spelled out.
-		if cfg.Addr == "" {
-			return fmt.Errorf("binding a non-localhost address requires an explicit --addr")
-		}
 	}
 
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.mcp }, nil)
@@ -50,6 +59,7 @@ func (s *Server) ServeHTTP(ctx context.Context, cfg HTTPConfig) error {
 	if err != nil {
 		return err
 	}
+	cfg.warnCleartext(ln.Addr())
 	// The watcher closes the server on cancellation; `done` guarantees it also
 	// exits if Serve returns first (e.g. a listener error) — no leaked goroutine.
 	done := make(chan struct{})
@@ -79,6 +89,7 @@ func (s *Server) StartHTTP(cfg HTTPConfig) (addr string, stop func(), err error)
 	if err != nil {
 		return "", nil, err
 	}
+	cfg.warnCleartext(ln.Addr())
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s.mcp }, nil)
 	srv := &http.Server{Handler: s.tokenMiddleware(cfg.Token, handler)}
 	go func() { _ = srv.Serve(ln) }()
@@ -98,17 +109,11 @@ func (s *Server) tokenMiddleware(token string, next http.Handler) http.Handler {
 	})
 }
 
-// isLoopback reports whether addr binds a loopback host.
-func isLoopback(addr string) bool {
-	host := addr
-	if h, _, err := net.SplitHostPort(addr); err == nil {
-		host = h
-	}
-	if host == "" || host == "localhost" {
-		return true
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return strings.HasPrefix(host, "127.")
+// isLoopback reports whether a listener bound to a can be reached only from
+// this machine. The bound address is judged, not the text it came from: an
+// empty host binds every interface, and a host name is whatever it resolved
+// to. Anything that is not a TCP address counts as reachable.
+func isLoopback(a net.Addr) bool {
+	tcp, ok := a.(*net.TCPAddr)
+	return ok && tcp.IP.IsLoopback()
 }

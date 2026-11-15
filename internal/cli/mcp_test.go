@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -677,5 +679,35 @@ func TestAgentEndpointIgnoresFilters(t *testing.T) {
 	}
 	if want := []string{"build", "test"}; !slices.Equal(names, want) {
 		t.Errorf("agent endpoint tools = %q, want %q", names, want)
+	}
+}
+
+// Spec 045 FR-013: the endpoint an agent task opens binds loopback. It passes
+// the transport's warning on to stderr, so it could not leave loopback
+// unannounced.
+func TestAgentEndpointBindsLoopback(t *testing.T) {
+	a := adapterFor(t, "# Builds.\nbuild:\n    @echo built\n")
+	var stderr bytes.Buffer
+	eng := &engine{file: a.file, tasks: a.tasks, settings: a.settings, opts: Options{Stderr: &stderr}}
+
+	cfg := eng.agentHTTPConfig("tok")
+	if cfg.Addr != "127.0.0.1:0" || cfg.Token != "tok" || cfg.Warn == nil {
+		t.Fatalf("agentHTTPConfig = {Addr: %q, Token: %q, Warn set: %v}, want 127.0.0.1:0, tok and a Warn", cfg.Addr, cfg.Token, cfg.Warn != nil)
+	}
+	addr, stop, err := mcpserver.New(a, eng.agentMCPOptions(a.limit())).StartHTTP(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if tcp, err := net.ResolveTCPAddr("tcp", addr); err != nil || !tcp.IP.IsLoopback() {
+		t.Errorf("the agent endpoint bound %s (%v), want a loopback address", addr, err)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing for a loopback bind", stderr.String())
+	}
+
+	cfg.Warn("message")
+	if got := stderr.String(); got != "warning: message\n" {
+		t.Errorf("Warn printed %q, want %q", got, "warning: message\n")
 	}
 }

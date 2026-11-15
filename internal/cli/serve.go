@@ -132,6 +132,10 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 	}, rec, nil
 }
 
+// defaultHTTPAddr is where --http listens when --addr is not given. It is a
+// loopback address: the transport has no TLS.
+const defaultHTTPAddr = "127.0.0.1:7777"
+
 // ServeMCP starts the MCP server over stdio (default) or Streamable HTTP.
 func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// Every check before the [context] hook below runs no Runefile code, so a
@@ -180,7 +184,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 			return &UsageError{Err: err}
 		}
 		if addr == "" {
-			addr = "127.0.0.1:7777"
+			addr = defaultHTTPAddr
 		}
 	}
 	warnNonDestructive(opts.Stderr, opts.themeStderr(), granted, adapter.tasks)
@@ -240,7 +244,11 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		defer rl.start(ctx)()
 	}
 	if useHTTP {
-		return srv.ServeHTTP(ctx, mcpserver.HTTPConfig{Addr: addr, Token: httpToken})
+		return srv.ServeHTTP(ctx, mcpserver.HTTPConfig{
+			Addr:  addr,
+			Token: httpToken,
+			Warn:  warnTransport(opts.Stderr, opts.themeStderr()),
+		})
 	}
 	return srv.ServeStdio(ctx)
 }
@@ -324,6 +332,15 @@ func warnNeverExposed(w io.Writer, theme style.Theme, flag string, names []strin
 			fmt.Fprintf(w, "%s: %s %s has no effect: task %q is never exposed to agents\n",
 				theme.Warning.Render("warning"), flag, name, name)
 		}
+	}
+}
+
+// warnTransport returns what the HTTP transport calls with a warning about
+// the address it bound. The transport decides and words it; this prints it
+// like the other startup warnings (spec 045).
+func warnTransport(w io.Writer, theme style.Theme) func(string) {
+	return func(message string) {
+		fmt.Fprintf(w, "%s: %s\n", theme.Warning.Render("warning"), message)
 	}
 }
 

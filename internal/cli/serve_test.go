@@ -2,12 +2,16 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/parser"
@@ -351,5 +355,156 @@ func TestServeMCPRejectsBadOutputLimit(t *testing.T) {
 	err := ServeMCP(Options{Cwd: t.TempDir(), Stderr: &bytes.Buffer{}, MCPOutputLimit: &bad}, false, "", "")
 	if err == nil || !strings.HasPrefix(err.Error(), "--output-limit: ") {
 		t.Errorf("bad size without a Runefile: error = %v, want the size usage error", err)
+	}
+}
+
+// cleartextLine is the stderr line of spec 045, with colors off.
+const cleartextLine = "warning: serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext\n"
+
+// Spec 045 FR-006: the transport's warning is printed like the other startup
+// warnings, with only the word "warning" styled.
+func TestWarnTransport(t *testing.T) {
+	var buf bytes.Buffer
+	warnTransport(&buf, style.New(false, &buf))("message")
+	if got := buf.String(); got != "warning: message\n" {
+		t.Errorf("plain = %q, want %q", got, "warning: message\n")
+	}
+
+	buf.Reset()
+	theme := style.New(true, &buf)
+	warnTransport(&buf, theme)("message")
+	styled := theme.Warning.Render("warning")
+	if styled == "warning" {
+		t.Fatal("the colored theme does not style the word")
+	}
+	if got, want := buf.String(), styled+": message\n"; got != want {
+		t.Errorf("styled = %q, want %q", got, want)
+	}
+}
+
+// The address used when --addr is not given must never be one that warns
+// (spec 045 FR-003).
+func TestDefaultHTTPAddrIsLoopback(t *testing.T) {
+	if defaultHTTPAddr != "127.0.0.1:7777" {
+		t.Errorf("defaultHTTPAddr = %q, want 127.0.0.1:7777", defaultHTTPAddr)
+	}
+	addr, err := net.ResolveTCPAddr("tcp", defaultHTTPAddr)
+	if err != nil || !addr.IP.IsLoopback() {
+		t.Errorf("defaultHTTPAddr resolves to %v (%v), want a loopback address", addr, err)
+	}
+}
+
+// With no --addr the server uses the default address and prints no cleartext
+// warning (spec 045 US2 scenario 1). The context is done from the start, so
+// the server stops as soon as it is up, and the test holds whether or not
+// the default port is free on this machine.
+func TestServeMCPDefaultAddrIsQuiet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(reloadBase), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+	err := ServeMCP(Options{Cwd: dir, Stderr: &stderr, Ctx: ctx, MCPNoReload: true}, true, "", tokenFile(t))
+	if err == nil {
+		t.Error("ServeMCP returned nil for a server that was stopped")
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "rune MCP server on http://127.0.0.1:7777 (token required)\n") {
+		t.Errorf("stderr lacks the startup line of the default address:\n%s", got)
+	}
+	if strings.Contains(got, "cleartext") {
+		t.Errorf("the default address printed the cleartext warning:\n%s", got)
+	}
+}
+
+// serveHTTPForTest runs ServeMCP over HTTP on addr in a temp directory. stop
+// cancels it and returns what ServeMCP returned.
+func serveHTTPForTest(t *testing.T, addr string) (dir string, stderr *lockedBuffer, stop func() error) {
+	t.Helper()
+	dir = t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(reloadBase), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr = &lockedBuffer{}
+	ctx, cancel := context.WithCancel(context.Background())
+	opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx}
+	token := tokenFile(t)
+	done := make(chan error, 1)
+	go func() { done <- ServeMCP(opts, true, addr, token) }()
+	stopped := false
+	stop = func() error {
+		stopped = true
+		cancel()
+		return <-done
+	}
+	t.Cleanup(func() {
+		if !stopped {
+			_ = stop()
+		}
+	})
+	return dir, stderr, stop
+}
+
+// Spec 045 FR-001, FR-002, FR-004: a bind beyond loopback prints the warning
+// once, after the startup line, and the server runs and stops as any other.
+// A reload does not repeat it: the listener is not reopened.
+func TestServeMCPWarnsOnNonLoopbackBind(t *testing.T) {
+	dir, stderr, stop := serveHTTPForTest(t, "0.0.0.0:0")
+	fx := &reloadFixture{t: t, stderr: stderr}
+	fx.waitStderr(cleartextLine, 1)
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(reloadBase+"\n# Lints.\nlint:\n    @echo linted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.waitStderr("reloaded Runefile: 1 tool added, 0 removed, 0 changed", 1)
+	if err := stop(); !errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("ServeMCP = %v, want http.ErrServerClosed as for a loopback server", err)
+	}
+	got := stderr.String()
+	if n := strings.Count(got, "cleartext"); n != 1 {
+		t.Errorf("stderr holds the warning %d times, want once:\n%s", n, got)
+	}
+	startup := strings.Index(got, "rune MCP server on http://0.0.0.0:0 (token required)\n")
+	if startup < 0 || startup > strings.Index(got, cleartextLine) {
+		t.Errorf("want the startup line, then the warning:\n%s", got)
+	}
+}
+
+// Spec 045 FR-003: a loopback server prints no cleartext warning.
+func TestServeMCPQuietOnLoopbackBind(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	_, stderr, stop := serveHTTPForTest(t, addr)
+	// An answer proves the bind happened, so the absence below means
+	// something.
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	for deadline := time.Now().Add(reloadWait); ; time.Sleep(10 * time.Millisecond) {
+		resp, err := client.Post("http://"+addr, "application/json", nil)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("status without a token = %d, want 401", resp.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no answer from %s: %v\n%s", addr, err, stderr.String())
+		}
+	}
+	if err := stop(); !errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("ServeMCP = %v, want http.ErrServerClosed", err)
+	}
+	got := stderr.String()
+	if !strings.Contains(got, "rune MCP server on http://"+addr+" (token required)\n") {
+		t.Errorf("stderr lacks the startup line:\n%s", got)
+	}
+	if strings.Contains(got, "cleartext") {
+		t.Errorf("a loopback server printed the cleartext warning:\n%s", got)
 	}
 }

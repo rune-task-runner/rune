@@ -42,7 +42,7 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 
 			token := randomToken()
 			srv := mcpserver.New(adapter, e.agentMCPOptions(adapter.limit()))
-			if addr, stop, err := srv.StartHTTP(mcpserver.HTTPConfig{Addr: "127.0.0.1:0", Token: token}); err == nil {
+			if addr, stop, err := srv.StartHTTP(e.agentHTTPConfig(token)); err == nil {
 				defer stop()
 				opts.MCPURL = "http://" + addr
 				opts.MCPToken = token
@@ -66,6 +66,18 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 		}
 	}
 	return nil
+}
+
+// agentHTTPConfig is the transport of the endpoint an agent task opens for
+// its own agent: loopback, on a port the system picks. The transport's
+// warning goes to stderr, so the endpoint could not leave loopback
+// unannounced (spec 045 FR-013).
+func (e *engine) agentHTTPConfig(token string) mcpserver.HTTPConfig {
+	return mcpserver.HTTPConfig{
+		Addr:  "127.0.0.1:0",
+		Token: token,
+		Warn:  warnTransport(e.opts.Stderr, e.theme),
+	}
 }
 
 // agentMCPOptions is the authorization of the endpoint an agent task opens

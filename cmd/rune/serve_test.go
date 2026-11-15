@@ -244,3 +244,23 @@ func TestServeHelpMentionsStructuredFields(t *testing.T) {
 		}
 	}
 }
+
+// Spec 045 FR-014: the help says what a bind beyond loopback means, and its
+// HTTP example is not such a bind.
+func TestServeHelpMentionsCleartextWarning(t *testing.T) {
+	cmd := newServeCmd(&cli.Options{})
+	for _, want := range []string{"non-loopback", "cleartext", "no TLS"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+	if want := "rune serve --http --addr 127.0.0.1:7777"; !strings.Contains(cmd.Example, want) {
+		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
+	}
+	if strings.Contains(cmd.Example, "--addr :") {
+		t.Errorf("Example binds every interface:\n%s", cmd.Example)
+	}
+	if usage := cmd.Flags().Lookup("addr").Usage; !strings.Contains(usage, "127.0.0.1:7777") {
+		t.Errorf("--addr usage = %q, want it to name the default", usage)
+	}
+}

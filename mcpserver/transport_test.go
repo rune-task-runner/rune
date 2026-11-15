@@ -2,12 +2,18 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
+	"io"
+	"log"
+	"net"
 	"net/http"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -51,17 +57,30 @@ func TestHTTPRejectsMissingToken(t *testing.T) {
 	}
 }
 
+// The address a listener bound decides, whatever --addr spelled (spec 045
+// FR-007, FR-008).
 func TestIsLoopback(t *testing.T) {
-	cases := map[string]bool{
-		"127.0.0.1:7777": true,
-		"localhost:80":   true,
-		"[::1]:7777":     true,
-		"0.0.0.0:7777":   false,
-		"192.168.1.5:80": false,
+	tcp := func(ip string) net.Addr { return &net.TCPAddr{IP: net.ParseIP(ip), Port: 7777} }
+	cases := []struct {
+		name string
+		addr net.Addr
+		want bool
+	}{
+		{"127.0.0.1", tcp("127.0.0.1"), true},
+		{"127.0.0.2", tcp("127.0.0.2"), true},
+		{"::1", tcp("::1"), true},
+		{"::ffff:127.0.0.1", tcp("::ffff:127.0.0.1"), true},
+		{"0.0.0.0", tcp("0.0.0.0"), false},
+		{"::", tcp("::"), false},
+		{"192.168.1.5", tcp("192.168.1.5"), false},
+		{"2001:db8::1", tcp("2001:db8::1"), false},
+		{"no IP", &net.TCPAddr{Port: 7777}, false},
+		{"not TCP", &net.UnixAddr{Name: "/tmp/sock", Net: "unix"}, false},
+		{"nil", nil, false},
 	}
-	for addr, want := range cases {
-		if got := isLoopback(addr); got != want {
-			t.Errorf("isLoopback(%q) = %v, want %v", addr, got, want)
+	for _, c := range cases {
+		if got := isLoopback(c.addr); got != c.want {
+			t.Errorf("isLoopback(%s) = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -315,4 +334,233 @@ func TestHTTPResultIsCapped(t *testing.T) {
 	if !strings.Contains(text, "\n[truncated ") || !strings.HasSuffix(text, "[exit 0]") {
 		t.Errorf("result has no marker or exit line: %q", text)
 	}
+}
+
+// cleartextText is the warning of spec 045, pinned apart from the constant
+// the server uses.
+const cleartextText = "serving MCP on a non-loopback address without TLS; the bearer token is sent in cleartext"
+
+// warnLog records what HTTPConfig.Warn receives. ServeHTTP calls it from the
+// goroutine the test started.
+type warnLog struct {
+	mu  sync.Mutex
+	got []string
+}
+
+func (l *warnLog) add(message string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.got = append(l.got, message)
+}
+
+func (l *warnLog) all() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.got)
+}
+
+// loopbackOf is the loopback address of the port in addr, to reach a server
+// bound to every interface.
+func loopbackOf(t *testing.T, addr string) string {
+	t.Helper()
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return net.JoinHostPort("127.0.0.1", port)
+}
+
+// freeLoopbackAddr is a 127.0.0.1 address whose port was free a moment ago.
+func freeLoopbackAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	return ln.Addr().String()
+}
+
+// waitUnauthorized returns once the server at addr answers 401 to a request
+// with no token: the bind happened and the token is enforced.
+func waitUnauthorized(t *testing.T, addr string) {
+	t.Helper()
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		resp, err := client.Post("http://"+addr, "application/json", nil)
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("status without a token = %d, want 401", resp.StatusCode)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no answer from %s: %v", addr, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// Spec 045 FR-002, FR-012: a bind that is not loopback is reported once,
+// before StartHTTP returns.
+func TestStartHTTPWarnsOnNonLoopbackBind(t *testing.T) {
+	for _, bind := range []string{"0.0.0.0:0", ":0"} {
+		var warned warnLog
+		addr, stop, err := New(sampleEngine(), Options{}).StartHTTP(HTTPConfig{Addr: bind, Token: "secret", Warn: warned.add})
+		if err != nil {
+			t.Fatalf("%s: %v", bind, err)
+		}
+		if got := warned.all(); !slices.Equal(got, []string{cleartextText}) {
+			t.Errorf("%s: warnings = %q, want the cleartext warning once", bind, got)
+		}
+		// The warning does not change what the server accepts (FR-004).
+		waitUnauthorized(t, loopbackOf(t, addr))
+		stop()
+	}
+}
+
+func TestServeHTTPWarnsOnNonLoopbackBind(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := make(chan string, 4)
+	done := make(chan error, 1)
+	go func() {
+		done <- New(sampleEngine(), Options{}).ServeHTTP(ctx, HTTPConfig{
+			Addr: "0.0.0.0:0", Token: "secret", Warn: func(m string) { got <- m },
+		})
+	}()
+	select {
+	case m := <-got:
+		if m != cleartextText {
+			t.Errorf("warning = %q, want %q", m, cleartextText)
+		}
+	case err := <-done:
+		t.Fatalf("ServeHTTP returned %v before it warned", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("no warning for a bind to every interface")
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("ServeHTTP = %v, want http.ErrServerClosed", err)
+	}
+	if n := len(got); n != 0 {
+		t.Errorf("%d more warnings, want one in all", n)
+	}
+}
+
+// Spec 045 FR-003: the default address and an explicit loopback address are
+// not reported.
+func TestStartHTTPQuietOnLoopbackBind(t *testing.T) {
+	for _, bind := range []string{"", "127.0.0.1:0"} {
+		var warned warnLog
+		addr, stop, err := New(sampleEngine(), Options{}).StartHTTP(HTTPConfig{Addr: bind, Token: "secret", Warn: warned.add})
+		if err != nil {
+			t.Fatalf("%q: %v", bind, err)
+		}
+		stop()
+		if !strings.HasPrefix(addr, "127.0.0.1:") {
+			t.Errorf("%q bound %s, want a 127.0.0.1 address", bind, addr)
+		}
+		if got := warned.all(); len(got) != 0 {
+			t.Errorf("%q: warnings = %q, want none", bind, got)
+		}
+	}
+}
+
+func TestServeHTTPQuietOnLoopbackBind(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var warned warnLog
+	addr := freeLoopbackAddr(t)
+	done := make(chan error, 1)
+	go func() {
+		done <- New(sampleEngine(), Options{}).ServeHTTP(ctx, HTTPConfig{Addr: addr, Token: "secret", Warn: warned.add})
+	}()
+	// An answer proves the bind happened, so the absence below means
+	// something.
+	waitUnauthorized(t, addr)
+	cancel()
+	if err := <-done; !errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("ServeHTTP = %v, want http.ErrServerClosed", err)
+	}
+	if got := warned.all(); len(got) != 0 {
+		t.Errorf("warnings = %q, want none on loopback", got)
+	}
+}
+
+// With no address ServeHTTP binds loopback, like StartHTTP. The context is
+// done from the start, so the server stops as soon as it has bound.
+func TestServeHTTPDefaultAddrIsQuiet(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var warned warnLog
+	err := New(sampleEngine(), Options{}).ServeHTTP(ctx, HTTPConfig{Token: "secret", Warn: warned.add})
+	if !errors.Is(err, http.ErrServerClosed) {
+		t.Errorf("ServeHTTP = %v, want http.ErrServerClosed: the default address was bound", err)
+	}
+	if got := warned.all(); len(got) != 0 {
+		t.Errorf("warnings = %q, want none for the default address", got)
+	}
+}
+
+// Spec 045 FR-002: a start that fails serves nothing, so it reports nothing.
+func TestHTTPFailedStartDoesNotWarn(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  HTTPConfig
+	}{
+		{"port out of range", HTTPConfig{Addr: "0.0.0.0:99999", Token: "secret"}},
+		{"no token", HTTPConfig{Addr: "0.0.0.0:0"}},
+	}
+	for _, c := range cases {
+		var warned warnLog
+		c.cfg.Warn = warned.add
+		srv := New(sampleEngine(), Options{})
+		if _, stop, err := srv.StartHTTP(c.cfg); err == nil {
+			stop()
+			t.Errorf("%s: StartHTTP succeeded", c.name)
+		}
+		if err := srv.ServeHTTP(context.Background(), c.cfg); err == nil || errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("%s: ServeHTTP = %v, want a start error", c.name, err)
+		}
+		if got := warned.all(); len(got) != 0 {
+			t.Errorf("%s: warnings = %q, want none", c.name, got)
+		}
+	}
+}
+
+// Spec 045 FR-012: with no Warn the library says nothing anywhere, because an
+// embedder owns the process's output.
+func TestHTTPNilWarnIsSilent(t *testing.T) {
+	// Must not panic for a bind that would be reported.
+	HTTPConfig{}.warnCleartext(&net.TCPAddr{IP: net.IPv4zero})
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The standard logger keeps the stderr it was created with, so it is
+	// pointed at the pipe too.
+	stdout, stderr, logOut := os.Stdout, os.Stderr, log.Writer()
+	os.Stdout, os.Stderr = w, w
+	log.SetOutput(w)
+	addr, stop, err := New(sampleEngine(), Options{}).StartHTTP(HTTPConfig{Addr: "0.0.0.0:0", Token: "secret"})
+	os.Stdout, os.Stderr = stdout, stderr
+	log.SetOutput(logOut)
+	_ = w.Close()
+	out, readErr := io.ReadAll(r)
+	_ = r.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(out) != 0 {
+		t.Errorf("the library wrote %q to the process output", out)
+	}
+	waitUnauthorized(t, loopbackOf(t, addr))
 }

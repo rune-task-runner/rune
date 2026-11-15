@@ -32,6 +32,11 @@ By default the server speaks MCP over stdio. Use --http to serve over Streamable
 HTTP, which additionally requires --token-file for bearer-token authentication.
 The 'mcp' alias is shorthand for stdio serving.
 
+The HTTP transport has no TLS. It listens on 127.0.0.1:7777 unless --addr names
+another address. On a non-loopback address, such as 0.0.0.0:7777 or :7777, the
+bearer token is sent in cleartext, and the server prints a warning when it
+starts.
+
 Tasks marked [confirm] are refused unless you name each one with
 --allow-destructive; no option allows all of them.
 
@@ -62,7 +67,7 @@ start.`,
   rune mcp --deny deploy                              # expose everything except 'deploy'
   rune mcp --output-limit 256KiB                      # return up to 256KiB of each stream
   rune mcp --no-reload                                # ignore Runefile changes while running
-  rune serve --http --addr :7777 --token-file ./tok   # HTTP transport`,
+  rune serve --http --addr 127.0.0.1:7777 --token-file ./tok   # HTTP transport`,
 		// A task list is one comma-separated value. Without this, the names
 		// after a space would be dropped and the tasks left exposed.
 		Args: cobra.NoArgs,
@@ -78,7 +83,7 @@ start.`,
 
 	f := cmd.Flags()
 	f.BoolVar(&useHTTP, "http", false, "serve over Streamable HTTP instead of stdio")
-	f.StringVar(&addr, "addr", "", "HTTP listen address (with --http)")
+	f.StringVar(&addr, "addr", "", "HTTP listen address (with --http; default 127.0.0.1:7777)")
 	f.StringVar(&tokenFile, "token-file", "", "bearer-token file for HTTP auth (with --http)")
 	f.BoolVar(&mcpFlag, "mcp", false, "accepted for clarity; MCP is the only protocol")
 	f.BoolVar(&opts.MCPAllowIgnoreVersion, "ignore-version", false, "serve even if the Runefile's minimum_version is unmet (operator opt-in)")
