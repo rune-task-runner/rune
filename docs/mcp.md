@@ -111,6 +111,41 @@ not declare is refused the same way:
 `unknown argument "targte" for task "build" (did you mean "target"?)`. A `null` or object
 value for a parameter is rejected too, since a task has no way to receive one.
 
+### Structured results
+
+A client does not have to parse the text. Every tool declares an `outputSchema`, and the
+result of every task run carries the same information as `structuredContent`:
+
+```json
+{
+  "exitCode": 1,
+  "stdout": "running tests\n",
+  "stderr": "FAIL: fixtures out of date\ndiagnosing: hint\n",
+  "fixSuggestion": "re-run with -update"
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `exitCode` | integer | The *N* of the `[exit N]` line. |
+| `stdout` | string | What the run wrote to standard output. Always present; empty when it wrote nothing. |
+| `stderr` | string | What the run wrote to standard error, including Rune's own lines about the run. Always present. |
+| `fixSuggestion` | string | Output of the task's `||` [failure hooks](#fix-suggestions-on-failure). Present only when a failed run produced one. |
+
+- The text is unchanged, so a client that ignores structured content sees what it always
+  saw. The fields are the strings the text is made of: `stdout`, then `stderr`, then the
+  `[exit N]` line, then the fix-suggestion header and `fixSuggestion`. The text adds a line
+  break after a stream that does not end with one; the fields do not.
+- The fields are masked and limited exactly as the text is. Each of `stdout` and `stderr`
+  obeys the [output limit](#output-limit) and holds the same `[truncated N bytes]` line.
+- The exit code comes from the run, never from the output: a task that prints `[exit 0]`
+  and fails has `exitCode` set to its real status.
+- A call that runs no task has no structured content. That is a refused `[confirm]` task,
+  an undeclared argument, a missing required argument, an invalid value, or any other call
+  rejected before the task starts. Such a result is always marked as an error and carries
+  its explanation as text.
+- The schema is the same for every tool and allows no other field.
+
 ### Tool hints
 
 Each tool carries three MCP hints that tell a client what its task claims:
@@ -229,7 +264,8 @@ diagnose:
 The agent needs no extra round trip to learn what broke. The suggestion is the
 hooks' standard output only, passed through the same
 [secret masking](how-to/secret-masking.md) as every other agent-facing surface and
-capped at 8 KiB (a `[truncated]` marker closes an over-long suggestion). Hook
+capped at 8 KiB (a `[truncated]` marker closes an over-long suggestion). The same
+text is the `fixSuggestion` field of the [structured result](#structured-results). Hook
 outcomes never change the reported exit code, and a hook that fails or is
 OS-skipped degrades to a one-line warning in the response's stderr portion. An
 `agent`-executor task cannot be a failure hook — the analyzer rejects it
@@ -253,8 +289,14 @@ build finished
 
 - The limit counts the marker line too, so a stream never exceeds it. The beginning and the
   end each get about half of the rest.
-- The `[exit N]` line is always present and complete. A whole result is at most twice the
-  limit plus 32 bytes, before any fix suggestion.
+- The `[exit N]` line is always present and complete. The text of a result is at most twice
+  the limit plus 32 bytes, before any fix suggestion.
+- A result carries the output twice: as text and as
+  [structured fields](#structured-results). The two stream fields together are at most twice
+  the limit, so the output in a whole result is at most four times the limit plus 32 bytes,
+  plus the fix suggestion (at most 8 KiB) in each form. The field names, the fix-suggestion
+  header and the protocol's JSON encoding come on top of that. A client gives a model one of
+  the two forms.
 - The server keeps only what it will return while the task runs, so a task that prints
   gigabytes does not grow the server. The task itself is never stopped or slowed for
   printing.

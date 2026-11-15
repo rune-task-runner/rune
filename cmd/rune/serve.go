@@ -42,6 +42,9 @@ called, but the dependencies and hooks of an exposed task still run. A
 
 A tool result carries at most 64KiB of stdout and 64KiB of stderr. Longer
 output keeps its beginning and its end around a "[truncated N bytes]" line.
+A result holds the output twice, with the same limit on each: as text with
+an "[exit N]" line, and as the structured fields exitCode, stdout, stderr
+and fixSuggestion.
 Use --output-limit to change the size, written as bytes or with a KiB or MiB
 unit, from 1KiB to 1024MiB. A Runefile can set the same with
 'set mcp_output_limit := "256KiB"'; the flag wins.

@@ -233,3 +233,14 @@ func TestServeNoReloadFlag(t *testing.T) {
 		t.Errorf("help does not explain %s:\n%s\n%s", want, cmd.Long, cmd.Example)
 	}
 }
+
+// Spec 044: the help says a result holds the output as text and as fields,
+// so the size an operator expects from --output-limit is the real one.
+func TestServeHelpMentionsStructuredFields(t *testing.T) {
+	cmd := newServeCmd(&cli.Options{})
+	for _, want := range []string{"exitCode, stdout, stderr", "fixSuggestion", "twice"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+}
