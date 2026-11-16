@@ -1,0 +1,2 @@
+mcp__rune__clean RAN: clean-ok [exit 0]
+mcp__rune__fetch RAN: fetch-ok [exit 0]

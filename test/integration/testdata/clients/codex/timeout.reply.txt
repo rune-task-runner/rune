@@ -1,0 +1,6 @@
+```text
+tool call error: tool call failed for `rune/slow`
+
+Caused by:
+    timed out awaiting tools/call after 300s
+```

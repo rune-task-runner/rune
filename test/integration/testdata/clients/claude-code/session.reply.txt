@@ -1,0 +1,25 @@
+All five steps finished, and every rune tool call ran without being blocked.
+
+1. **CODENAME: heliotrope-41.** It appears in the MCP server instructions for `rune` ("Project codename: heliotrope-41."), which were in my context before I called any tool.
+
+2. Rune tools available at the start:
+   - `mcp__rune__build`
+   - `mcp__rune__clean`
+   - `mcp__rune__docs-check`
+   - `mcp__rune__fetch`
+   - `mcp__rune__grow`
+   - `mcp__rune__slow`
+   - `mcp__rune__status`
+   - `mcp__rune__tools__lint`
+
+3. Tool calls:
+   - `mcp__rune__status` — RAN: `status-ok`
+   - `mcp__rune__build` — RAN: `build-ok`
+   - `mcp__rune__clean` — RAN: `clean-ok`
+   - `mcp__rune__fetch` — RAN: `fetch-ok`
+   - `mcp__rune__docs-check` — RAN: `docs-check-ok`
+   - `mcp__rune__tools__lint` — RAN: `lint-ok`
+
+4. `mcp__rune__grow` ran with exit code 0 and no output. `mcp__rune__slow` with `seconds: 4` also ran with exit code 0 and no output; it did not time out.
+
+5. Rune tools available now: the eight above plus the new `mcp__rune__late`. I called `mcp__rune__late` and it returned `late-ok`.

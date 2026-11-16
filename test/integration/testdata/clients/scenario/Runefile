@@ -1,0 +1,41 @@
+# The Runefile every client session in this directory was recorded against.
+# Each task answers one question of the compatibility table in docs/mcp.md.
+
+mod tools "tools.rune"
+
+# Its output is the server instructions. A model that can name the codename
+# was given them.
+[context]
+health:
+    @echo "Project codename: heliotrope-41."
+
+# Show the project status. Declared read-only.
+[readonly]
+status:
+    @echo status-ok
+
+# Build the project. Makes no claim.
+build:
+    @echo build-ok
+
+# Delete the build output. Declared destructive.
+[confirm("Delete the build output?")]
+clean:
+    @echo clean-ok
+
+# Fetch the dependencies. Declared to use the network.
+[network]
+fetch:
+    @echo fetch-ok
+
+# Check the documentation. The name has a hyphen.
+docs-check:
+    @echo docs-check-ok
+
+# Add a task named late to this Runefile, which changes the tool list.
+grow:
+    @printf '\n# Added while the server was running.\nlate:\n    @echo late-ok\n' >> Runefile
+
+# Sleep for a number of seconds, to outlast a client's call timeout.
+slow seconds:number="300":
+    sleep {{seconds}}
