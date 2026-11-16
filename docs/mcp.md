@@ -18,6 +18,51 @@ rune mcp
 Most local agent tooling launches the server this way and talks to it over stdin/stdout.
 [Client compatibility](#client-compatibility) has the configuration file for each client.
 
+**Serving a Runefile from another directory:**
+
+```sh
+rune mcp -f /path/to/project/Runefile
+```
+
+`rune mcp` serves the Runefile of the directory it is started in, or of the nearest parent
+that has one. A client that starts the server somewhere else gets
+`no Runefile found in this directory or any parent`. `-f`, or `--file`, names the Runefile.
+Tasks then run in the Runefile's directory, and its imports, modules and `set dotenv` file
+are found from there, whatever directory the server was started in.
+`rune -f /path/to/project/Runefile mcp` is the same command.
+
+- **Give an absolute path.** A relative one is read from the directory the server was
+  started in, which is the directory you could not rely on.
+- **A wrong path stops the server.** A path that names no file, a directory, or an empty
+  value is a usage error with exit code 2. The server never falls back to another
+  Runefile.
+- **`--yes` is not a server flag**, before or after `-f`; see
+  [Security model](#security-model-secure-by-default).
+
+This is what a server registered for the user, and not for one project, needs. Such a
+server comes in two kinds:
+
+- **It follows the project you are in.** Registered as plain `rune mcp`, it works where
+  the client starts its servers inside the project you opened, and serves whichever
+  project that is. Where the client starts it elsewhere, it stops with `no Runefile found`.
+- **It is pinned to one project.** Registered with `-f`, it serves that project wherever
+  the client starts it. Register each project as its own server, under its own name. The
+  tools carry that name: `mcp__myproject__build` in Claude Code, for example.
+
+A pinned server in Claude Code:
+
+```sh
+claude mcp add --scope user myproject -- rune mcp -f /path/to/myproject/Runefile
+```
+
+And in Codex CLI, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.myproject]
+command = "rune"
+args = ["mcp", "-f", "/path/to/myproject/Runefile"]
+```
+
 **Letting agents run destructive tasks:**
 
 ```sh
@@ -541,7 +586,8 @@ Tested: version 2.1.325 on Linux, as `claude -p`.
 - **Configuration.** The block above is `.mcp.json` at the project root. `claude -p` loads
   it without asking (recorded). An interactive session asks you to approve the server
   first (docs). `claude mcp add --scope user rune -- rune mcp` adds the server for every
-  project, in `~/.claude.json` (docs).
+  project, in `~/.claude.json` (docs). Such a server finds a Runefile only when it is
+  started inside a project; [`-f`](#starting-the-server) pins it to one.
 - **Context.** The model named the `[context]` output as the server's instructions before
   it called a tool (recorded).
 - **Approval.** With no permission rule, `status`, `build` and `clean` were all refused
@@ -572,9 +618,12 @@ args = ["mcp"]
 ```
 
 - **Configuration.** The block above goes in `~/.codex/config.toml` (docs), or in
-  `.codex/config.toml` in a project. Codex loaded the project file in a project the user
-  configuration trusts (recorded). In a directory it does not trust, it ignored the file
-  in three runs and never started Rune, so those runs have no recording.
+  `.codex/config.toml` in a project. Codex starts a server in the directory the session
+  was started in (source), so from the user's file `rune mcp` serves the project you
+  started Codex in; [`-f`](#starting-the-server) pins it to one. Codex loaded the project
+  file in a project the user configuration trusts (recorded). In a directory it does not
+  trust, it ignored the file in three runs and never started Rune, so those runs have no
+  recording.
 - **Context.** The model named the `[context]` output as the description of the
   `mcp__rune` tool namespace (recorded).
 - **Approval.** `status` (`readOnlyHint`) and `build` (`destructiveHint` and

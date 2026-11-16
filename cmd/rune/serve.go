@@ -32,6 +32,12 @@ By default the server speaks MCP over stdio. Use --http to serve over Streamable
 HTTP, which additionally requires --token-file for bearer-token authentication.
 The 'mcp' alias is shorthand for stdio serving.
 
+The server serves the Runefile of the directory it is started in, or of the
+nearest parent that has one. A client that starts the server somewhere else
+names the Runefile with --file. Tasks then run in that Runefile's directory,
+whatever directory the server was started in. Give an absolute path: a
+relative one is read from the directory the server was started in.
+
 The HTTP transport has no TLS. It listens on 127.0.0.1:7777 unless --addr names
 another address. On a non-loopback address, such as 0.0.0.0:7777 or :7777, the
 bearer token is sent in cleartext, and the server prints a warning when it
@@ -62,6 +68,7 @@ flags above keep their values. Use --no-reload to keep the tasks read at
 start.`,
 		Example: `  rune mcp                                            # stdio (for local agents/IDEs)
   rune serve                                          # same as 'rune mcp'
+  rune mcp -f /path/to/project/Runefile               # serve that Runefile from any directory
   rune mcp --allow-destructive clean                  # let agents run the [confirm] task 'clean'
   rune mcp --allow build,test                         # expose only 'build' and 'test'
   rune mcp --deny deploy                              # expose everything except 'deploy'
@@ -72,6 +79,11 @@ start.`,
 		// after a space would be dropped and the tasks left exposed.
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Read as "no flag", an empty value would serve whatever Runefile
+			// is above the directory the client started the server in.
+			if cmd.Flags().Changed("file") && opts.File == "" {
+				return &cli.UsageError{Err: errors.New("--file needs a path")}
+			}
 			if err := validateServeFlags(useHTTP, addr, tokenFile); err != nil {
 				return err
 			}
@@ -82,6 +94,10 @@ start.`,
 	}
 
 	f := cmd.Flags()
+	// Declared here, not inherited from the root: a server that inherited
+	// the root's flags would accept --yes, which approves every [confirm]
+	// task at once (spec 048).
+	f.StringVarP(&opts.File, "file", "f", "", "serve this Runefile instead of the one found from the working directory")
 	f.BoolVar(&useHTTP, "http", false, "serve over Streamable HTTP instead of stdio")
 	f.StringVar(&addr, "addr", "", "HTTP listen address (with --http; default 127.0.0.1:7777)")
 	f.StringVar(&tokenFile, "token-file", "", "bearer-token file for HTTP auth (with --http)")

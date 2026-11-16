@@ -1,9 +1,13 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/rune-task-runner/rune/internal/cli"
 )
@@ -60,14 +64,27 @@ func TestServeAllowDestructiveFlag(t *testing.T) {
 // switch approves every destructive task; a bare --allow-destructive is a
 // usage error too.
 func TestServeRejectsYes(t *testing.T) {
-	for _, args := range [][]string{
-		{"mcp", "--yes"},
-		{"--yes", "mcp"},
-		{"serve", "--yes"},
-		{"mcp", "--allow-destructive"},
+	const unknownYes = "unknown flag: --yes"
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"mcp", "--yes"}, unknownYes},
+		{[]string{"--yes", "mcp"}, unknownYes},
+		{[]string{"serve", "--yes"}, unknownYes},
+		{[]string{"mcp", "-f", "x", "--yes"}, unknownYes},
+		{[]string{"-f", "x", "--yes", "mcp"}, unknownYes},
+		{[]string{"mcp", "--allow-destructive"}, "flag needs an argument: --allow-destructive"},
 	} {
-		if code := run(args); code != 2 {
-			t.Errorf("run(%q) = %d, want 2", args, code)
+		if code := run(c.args); code != 2 {
+			t.Errorf("run(%q) = %d, want 2", c.args, code)
+		}
+		// Exit code 2 alone would pass with --yes accepted: the missing file x
+		// is a usage error too.
+		root, _ := commandTree(t, &cli.Options{})
+		root.SetArgs(c.args)
+		if err := root.Execute(); err == nil || err.Error() != c.want {
+			t.Errorf("rune %q: error = %v, want %q", c.args, err, c.want)
 		}
 	}
 }
@@ -262,5 +279,124 @@ func TestServeHelpMentionsCleartextWarning(t *testing.T) {
 	}
 	if usage := cmd.Flags().Lookup("addr").Usage; !strings.Contains(usage, "127.0.0.1:7777") {
 		t.Errorf("--addr usage = %q, want it to name the default", usage)
+	}
+}
+
+// Spec 048: serve/mcp take -f/--file, bound to the field the root's flag of
+// the same name sets.
+func TestServeFileFlag(t *testing.T) {
+	f := newServeCmd(&cli.Options{}).Flags().Lookup("file")
+	if f == nil {
+		t.Fatal("serve has no --file flag")
+	}
+	if f.Shorthand != "f" || f.DefValue != "" || f.Value.Type() != "string" {
+		t.Errorf("--file: shorthand %q, default %q, type %q; want f, empty, string", f.Shorthand, f.DefValue, f.Value.Type())
+	}
+	if want := "serve this Runefile instead of the one found from the working directory"; f.Usage != want {
+		t.Errorf("usage = %q, want %q", f.Usage, want)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-f", "x"}, "x"},
+		{[]string{"--file=y"}, "y"},
+		{[]string{"--file", "z"}, "z"},
+		{[]string{"--file", "first", "-f", "last"}, "last"},
+		{nil, ""},
+	} {
+		var opts cli.Options
+		if err := newServeCmd(&opts).ParseFlags(c.args); err != nil {
+			t.Fatalf("%q: %v", c.args, err)
+		}
+		if opts.File != c.want {
+			t.Errorf("%q: File = %q, want %q", c.args, opts.File, c.want)
+		}
+	}
+}
+
+// Spec 048 FR-016: an empty value is a mistake to report. Read as "no flag",
+// it would serve whatever Runefile is above the directory the client started
+// the server in.
+func TestServeFileFlagEmptyValue(t *testing.T) {
+	// No Runefile here or above: a command that went on to look for one fails
+	// with another message, and starts no server.
+	t.Chdir(t.TempDir())
+	for _, args := range [][]string{{"--file", ""}, {"-f", ""}, {"--file="}, {"-f", "x", "--file", ""}} {
+		cmd := newServeCmd(&cli.Options{})
+		cmd.SetArgs(args)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		err := cmd.Execute()
+		var usage *cli.UsageError
+		if !errors.As(err, &usage) || err.Error() != "--file needs a path" {
+			t.Errorf("%q: error = %v, want the usage error --file needs a path", args, err)
+		}
+	}
+}
+
+// commandTree is the root command with the commands main registers.
+func commandTree(t *testing.T, opts *cli.Options) (root, serve *cobra.Command) {
+	t.Helper()
+	root = newRootCmd(opts, "", "", nil)
+	addCommands(root, opts)
+	serve, _, err := root.Find([]string{"serve"})
+	if err != nil || serve == root {
+		t.Fatalf("main registers no serve command: %v", err)
+	}
+	return root, serve
+}
+
+// Spec 048 FR-011: the server shares --file with the root command and gained
+// nothing else from it. A root flag made persistent, or a serve flag added
+// under a root flag's name, fails here before it reaches the agent surface.
+// --yes is the one that matters most: it approves every [confirm] task.
+func TestServeHasNoRootFlags(t *testing.T) {
+	root, serve := commandTree(t, &cli.Options{})
+	// ignore-version was on both before spec 048, each with its own meaning.
+	shared := map[string]bool{"file": true, "ignore-version": true}
+	// Named outright, so that one of them made persistent is caught: it would
+	// then be missing from the root's own flags walked below.
+	for _, name := range []string{"yes", "quiet", "set", "watch", "list", "dry-run"} {
+		if serve.Flag(name) != nil {
+			t.Errorf("serve accepts the root flag --%s", name)
+		}
+	}
+	walked := 0
+	root.LocalNonPersistentFlags().VisitAll(func(f *pflag.Flag) {
+		walked++
+		if serve.Flag(f.Name) != nil && !shared[f.Name] {
+			t.Errorf("serve accepts the root flag --%s", f.Name)
+		}
+	})
+	if walked == 0 {
+		t.Fatal("the root command has no flags of its own, so this test checks nothing")
+	}
+	for name := range shared {
+		if serve.Flags().Lookup(name) == nil {
+			t.Errorf("serve has no --%s flag of its own", name)
+		}
+	}
+}
+
+// Spec 048 FR-013: only the server gained the flag.
+func TestOnlyServeHasFileFlag(t *testing.T) {
+	root, serve := commandTree(t, &cli.Options{})
+	for _, cmd := range root.Commands() {
+		if cmd != serve && cmd.Flag("file") != nil {
+			t.Errorf("%s accepts --file", cmd.Name())
+		}
+	}
+}
+
+// Spec 048 FR-019.
+func TestServeHelpMentionsFile(t *testing.T) {
+	cmd := newServeCmd(&cli.Options{})
+	for _, want := range []string{"--file", "Runefile's directory", "absolute path"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+	if want := "rune mcp -f /path/to/project/Runefile"; !strings.Contains(cmd.Example, want) {
+		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
 	}
 }
