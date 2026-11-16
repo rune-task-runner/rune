@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.9.0] - 2026-11-16
+
+### Added
+- Breaking: rune mcp --allow and --deny choose which tasks are tools; mcpserver.Options.AllowList now hides tasks from the tool list instead of refusing their calls (#92)
+- Breaking: a tool result carries at most 64KiB of stdout and of stderr; raise it with rune mcp --output-limit or set mcp_output_limit (#93)
+- Rune mcp reloads its tools when the Runefile or a file it imports changes; --no-reload keeps the tasks read at start (#94)
+- A tool result carries exitCode, stdout, stderr and fixSuggestion as structured content, and every tool declares the output schema (#95)
+
+### Documentation
+- Client compatibility table for five agent clients, with recorded sessions for the two that could be run (#97)
+- Design note on Rune-only agent mode: which clients can remove their shell, the chosen approach, and where the restriction ends (#98)
+- A .env file is loaded only with set dotenv, and the settings-dotenv example prints what its README says (#100)
+
+### Fixed
+- Rune serve --http warns when it binds a non-loopback address, where the bearer token is sent without TLS; the unreachable --addr guard is removed (#96)
+- Rune mcp and rune serve accept -f/--file, so a client that starts the server outside the project can name the Runefile; --yes stays unknown to the server (#99)
+
 ## [0.9.0-rc.1] - 2026-11-16
 
 ### Added
