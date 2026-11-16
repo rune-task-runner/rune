@@ -262,8 +262,9 @@ cmd_verify() {
     --certificate-identity-regexp 'https://github.com/${repo}/.*' \\
     --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' checksums.txt
 
-  # 3. build provenance
-  gh attestation verify checksums.txt --repo ${repo}
+  # 3. build provenance: attested for each file checksums.txt lists, not for
+  #    checksums.txt itself, which has none of its own
+  for f in rune_${nov}_*.tar.gz rune_${nov}_*.zip; do gh attestation verify "\$f" --repo ${repo}; done
 
   # 4. image signature + provenance
   cosign verify ghcr.io/${repo}:${nov} \\

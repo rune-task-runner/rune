@@ -104,8 +104,9 @@ cosign verify-blob \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   checksums.txt
 
-# 3. Build provenance
-gh attestation verify checksums.txt --repo rune-task-runner/rune
+# 3. Build provenance of an archive. It is attested for each file that checksums.txt
+#    lists, not for checksums.txt itself, which has no attestation of its own.
+gh attestation verify rune_<version>_linux_amd64.tar.gz --repo rune-task-runner/rune
 
 # 4. Image signature + provenance
 cosign verify ghcr.io/rune-task-runner/rune:<version> \

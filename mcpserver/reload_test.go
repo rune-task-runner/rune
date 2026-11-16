@@ -25,7 +25,7 @@ func connectNotified(t *testing.T, srv *Server) (cs *mcp.ClientSession, changed 
 		t.Fatal(err)
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, &mcp.ClientOptions{
-		ToolListChangedHandler: func(context.Context, *mcp.ToolListChangedRequest) { changed <- struct{}{} },
+		ToolListChangedHandler: func(context.Context, *mcp.ToolListChangedRequest) { signal(changed) },
 	})
 	cs, err := client.Connect(ctx, ct, nil)
 	if err != nil {
@@ -33,6 +33,75 @@ func connectNotified(t *testing.T, srv *Server) (cs *mcp.ClientSession, changed 
 	}
 	t.Cleanup(func() { _ = cs.Close() })
 	return cs, changed
+}
+
+// signal tells a test that the tool list changed. It never blocks: it runs
+// in the client's message handler, where a blocked send stalls the session.
+func signal(changed chan<- struct{}) {
+	select {
+	case changed <- struct{}{}:
+	default:
+	}
+}
+
+// A test that reads no signal must not stall its own session. The handler
+// once blocked on a full channel, and TestReplaceConcurrentList, which
+// replaces the tools 50 times and reads nothing, hung until the test binary
+// timed out whenever more notifications arrived than the channel holds.
+func TestSignalDoesNotBlockWhenFull(t *testing.T) {
+	changed := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		signal(changed)
+		signal(changed)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("signal blocked on a full channel")
+	}
+	if len(changed) != 1 {
+		t.Errorf("%d signals kept, want the one the channel holds", len(changed))
+	}
+}
+
+// The scenario behind TestSignalDoesNotBlockWhenFull: a session whose test
+// reads no signal gets more notifications than the channel holds, keeps
+// answering, and closes.
+func TestUndrainedSignalsDoNotStallTheSession(t *testing.T) {
+	a := &fakeEngine{tasks: []TaskInfo{{Name: "a1", Doc: "A"}}}
+	b := &fakeEngine{tasks: []TaskInfo{{Name: "b1", Doc: "B"}}}
+	srv := New(a, Options{Reloadable: true})
+	cs, changed := connectNotified(t, srv)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 2*cap(changed) + 8 {
+			if i%2 == 0 {
+				srv.Replace(b, 0)
+			} else {
+				srv.Replace(a, 0)
+			}
+			// Each change is sent after a short delay, so a pause lets it
+			// arrive as its own notification.
+			time.Sleep(15 * time.Millisecond)
+			if _, err := cs.ListTools(context.Background(), nil); err != nil {
+				t.Errorf("list after change %d: %v", i, err)
+				return
+			}
+		}
+		_ = cs.Close()
+	}()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+		t.Fatal("the session stalled: its handler blocked on signals nobody read")
+	}
+	if len(changed) != cap(changed) {
+		t.Errorf("%d signals arrived, want the channel filled (%d), or the test proves nothing", len(changed), cap(changed))
+	}
 }
 
 func waitChanged(t *testing.T, changed <-chan struct{}) {

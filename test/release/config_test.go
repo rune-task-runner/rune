@@ -224,3 +224,33 @@ func TestReleaseNotesNotDiscarded(t *testing.T) {
 		t.Errorf("changelog.disable = %v: GoReleaser would discard the --release-notes file and publish an empty release body", d)
 	}
 }
+
+// The workflow attests the files that checksums.txt lists (subject-checksums),
+// not checksums.txt itself, so `gh attestation verify checksums.txt` finds
+// nothing and fails with a 404. The instructions said to run it until v0.9.0.
+func TestProvenanceInstructionsNameAnArchive(t *testing.T) {
+	workflow, err := os.ReadFile("../../.github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(workflow), "subject-checksums: dist/checksums.txt") {
+		t.Fatal("the release workflow no longer attests the files checksums.txt lists; this test and the instructions it guards need another look")
+	}
+	for _, path := range []string{
+		"../../docs/releasing.md",
+		"../../.claude/skills/release-guru/scripts/release-guru.sh",
+		"../../docs/release-guru/scripts/release-guru.sh",
+	} {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(b)
+		if strings.Contains(text, "attestation verify checksums.txt") {
+			t.Errorf("%s tells the reader to verify the provenance of checksums.txt, which has none", path)
+		}
+		if !regexp.MustCompile(`attestation verify "?[^\n]*(rune_|\$f)`).MatchString(text) {
+			t.Errorf("%s does not show how to verify the provenance of an archive", path)
+		}
+	}
+}
