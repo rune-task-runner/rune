@@ -1,6 +1,6 @@
 ## Findings from the Rune-only agent mode research (#46)
 
-The design note is `docs/design/rune-only-agent-mode.md`. The runs behind every "observed"
+Both files below are added by #98. The design note is `docs/design/rune-only-agent-mode.md`. The runs behind every "observed"
 are in `specs/047-rune-only-agent-mode/observations/README.md`. Researched on 2026-11-16
 with Claude Code 2.1.325 and Codex CLI 0.167.0. Cursor, VS Code and Zed were not run.
 

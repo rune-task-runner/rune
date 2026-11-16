@@ -325,7 +325,9 @@ with a reason.
   and filtering its tasks do not remove or restrict the client's shell, and
   MUST link to the note. Its part on agent task bodies MUST say that the
   agent such a task launches keeps the tools its own configuration gives
-  it, and MUST link to the note.
+  it, and MUST link to the note. The agent use-case page and the
+  agent-driven example MUST say that Rune refuses a call to a `[confirm]`
+  task, not that an agent cannot run it, and MUST link to the note.
 
 **The follow-up issue**
 
@@ -399,9 +401,10 @@ with a reason.
 - **SC-007**: A reader of the MCP guide's security model meets, without
   following a link, the statement that Rune's filters do not restrict the
   client's shell.
-- **SC-008**: The documentation checks and the full test suite pass, and no
-  file outside the documentation, the specification directory and the
-  documentation site's navigation changes.
+- **SC-008**: The documentation checks and the full test suite pass, the
+  tests of the two evidence helpers pass, and no file outside the
+  documentation, the specification directory and the documentation site's
+  navigation changes.
 
 ## Assumptions
 
@@ -422,8 +425,8 @@ with a reason.
   target is design review.
 - The second deliverable, "create a follow-up implementation issue", is met
   by issue #53, which the issue itself names as the concrete follow-up. The
-  text to add to #53 is kept in the repository and posted by the maintainer,
-  so that the pull request holds everything that is reviewed.
+  text to add to #53 is kept in the repository, so that the pull request
+  holds everything that is reviewed, and is posted on #53 as a comment.
 - Issue #46 names `claude|codex|cursor` and a command called
   `rune agent-config`. Issue #53 names `claude|codex|vscode` and a command
   called `rune agent init`. The note covers all four clients, and Zed for

@@ -10,8 +10,8 @@ description: "Task list for spec 047: Rune-only agent mode design note"
 **Prerequisites**: [plan.md](plan.md), [spec.md](spec.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts/](contracts/), [quickstart.md](quickstart.md)
 
-**Tests**: No new test. The feature adds no code, and the issue's verification target is
-design review. The existing documentation harness (`test/docs`) covers the note and the
+**Tests**: No new Go test. The feature adds no Go code, and the issue's verification target
+is design review. The two Python evidence helpers have unit tests beside them (T033). The existing documentation harness (`test/docs`) covers the note and the
 guide (FR-028), and the full suite runs once at the end (SC-008).
 
 **Organization**: Tasks are grouped by user story. Paths are from the repository root.
@@ -152,6 +152,10 @@ corrects.
 - [X] T030 Run `git status --short` and `git diff --stat main -- . ':!docs' ':!specs'` and confirm nothing outside `docs/` and `specs/047-rune-only-agent-mode/` changed; search the changed files for an em dash (SC-008)
 - [X] T031 Run the full suite, `docker compose run --rm -e GOFLAGS=-buildvcs=false test go test ./...`, and report the result (SC-008)
 - [X] T032 Delete the temporary observation directory under `/tmp` and the downloaded pages in the job's temporary directory
+- [X] T033 [P] Write `specs/047-rune-only-agent-mode/observations/codex/test_helpers.py` first, then give `capture.py` and `tools.py` functions it can call (`handler`, `serve`; `walk`, `request_tools`, `tool_names`, `report`, `read_capture`, `main`), keeping both command lines and the output of `tools.py` as they were
+- [X] T034 [P] In `docs/use-cases/mcp-agents.md`, `docs/examples/agent-driven/README.md` and `docs/examples/agent-driven/Runefile`, say that Rune refuses a call to a `[confirm]` task where they said an agent cannot run it, and link the two pages to the note (FR-020)
+- [X] T035 Run the helper tests, `test/docs` and the full suite again
+- [X] T036 Post `specs/047-rune-only-agent-mode/follow-up-issue-53.md` on issue #53 as a comment
 
 ---
 

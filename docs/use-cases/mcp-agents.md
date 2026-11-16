@@ -27,7 +27,7 @@ summarize (agent):
 list-tasks:
     @echo "rune --list"
 
-# A destructive task: gated, so an agent cannot run it unattended.
+# A destructive task: gated, so Rune refuses an agent's call to it unless allowed.
 [confirm("Really reset the local database?")]
 [doc("Reset the local database (destructive)")]
 reset-db:
@@ -51,10 +51,14 @@ repository). `list-tasks` is marked `[readonly]`, so it tells clients it changes
 
   > [!IMPORTANT]
   > Destructive tasks are **refused by default**. They are marked with `[confirm(...)]`
-  > (which maps to the MCP *destructive* hint), so an agent can't run `reset-db` unless the
+  > (which maps to the MCP *destructive* hint), so Rune refuses a call to `reset-db` unless the
   > server is started with `--allow-destructive reset-db`. **Secrets come from the environment only**, never
   > the Runefile, and are never shown in any task description exposed to an agent.
 
+- **This limits what Rune runs, not what the agent can do.** Registering Rune does not
+  remove the client's own shell, where an agent can still type the command a refused task
+  would have run. [Rune-only agent mode](../design/rune-only-agent-mode.md) says which
+  clients can take the shell away, and how.
 - **`[doc(...)]`** gives each tool a clear description an agent can reason about, without
   leaking anything sensitive.
 

@@ -33,8 +33,10 @@ Code 2.1.325 and Codex CLI 0.167.0, and a `rune` built from this checkout.
 **Testing**: `test/docs` inside Docker (`docker compose run --rm -e GOFLAGS=-buildvcs=false
 test go test ./test/docs/...`): links resolve, every page is in the navigation, generated
 site pages pass their checks, terminology and secret scans pass. The full suite runs once
-at the end to show nothing else moved. No new Go test: the feature adds no code, and the
-issue's verification target is design review.
+at the end to show nothing else moved. No new Go test: the feature adds no Go code, and the
+issue's verification target is design review. The two Python helpers have unit tests
+beside them (`test_helpers.py`, standard library `unittest`), run by hand: CI has no
+Python step.
 
 **Target Platform**: the documentation site and GitHub. Observations were made on Linux
 x86_64.
@@ -148,9 +150,11 @@ Details and alternatives are in [research.md](research.md).
    dry run. Hooks are rejected as the restriction. Launching the restricted agent is
    deferred, with the launch lines documented now.
 8. **The guide** gains one bullet at the top of the security model, one sentence in
-   "Agent task bodies", each linking to the note, and an entry in "See also".
-9. **The follow-up text** is a file here, not an edit of issue #53. The maintainer posts
-   it. The pull request links the two issues.
+   "Agent task bodies", each linking to the note, and an entry in "See also". The agent
+   use-case page and the agent-driven example say "Rune refuses a call" where they said
+   "an agent can't run", and link to the note.
+9. **The follow-up text** is a file here, not an edit of issue #53. It is posted on #53
+   as a comment. The pull request links the two issues.
 
 ## Complexity Tracking
 

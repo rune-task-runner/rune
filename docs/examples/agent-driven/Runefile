@@ -14,7 +14,7 @@ summarize (agent):
 list-tasks:
     @echo "rune --list"
 
-# A destructive task: gated, so an agent cannot run it unattended.
+# A destructive task: gated, so Rune refuses an agent's call to it unless allowed.
 [confirm("Really reset the local database?")]
 [doc("Reset the local database (destructive)")]
 reset-db:

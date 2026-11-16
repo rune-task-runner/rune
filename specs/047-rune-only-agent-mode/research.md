@@ -171,7 +171,8 @@ Rune-only for a project. The follow-up text says so and gives each its outcome.
 ## R8. The follow-up issue is #53, and its text is a file here
 
 **Decision**: `follow-up-issue-53.md` holds what to add to issue #53. The pull request does
-not edit the issue.
+not edit the issue. The text was posted on #53 as a comment on 2026-11-16, at the
+maintainer's request.
 
 **Rationale**: Issue #46 names #53 as "the concrete implementation follow-up", so creating
 another issue would split it. Keeping the text in the pull request puts it under the same

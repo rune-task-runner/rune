@@ -73,9 +73,12 @@ Open [follow-up-issue-53.md](follow-up-issue-53.md) beside
 Code each have supported, partial or not supported, with a scope and a reason; every
 correction names the statement of #53 it corrects (FR-021 to FR-024, SC-006).
 
-To post it once the pull request is approved:
+It was posted on issue #53 as a comment on 2026-11-16.
+
+## 7. The helper tests pass
 
 ```sh
-gh issue comment 53 --repo rune-task-runner/rune \
-  --body-file specs/047-rune-only-agent-mode/follow-up-issue-53.md
+python3 -B -m unittest discover -s specs/047-rune-only-agent-mode/observations/codex
 ```
+
+Expected: `OK`, 25 tests.

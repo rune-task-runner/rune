@@ -281,5 +281,11 @@ Nothing else was changed. Replies are word for word.
 4. For Claude Code, read the `tools` array of the first line of output and the `result` of
    the last. For a Codex capture, run `tools.py` on the capture file.
 
+The two helpers have tests beside them:
+
+```sh
+python3 -B -m unittest discover -s specs/047-rune-only-agent-mode/observations/codex
+```
+
 A run other than x1 to x7 uses a model through your own account. c12, x6, x7 and y5 need
 a directory inside a project that the client already trusts.
