@@ -196,6 +196,7 @@ bin := out / "app"          # `/` joins paths (forward slash on every OS)
 # Settings:
 set export                  # export Runefile variables into task environments
 set shell := ["bash", "-euo", "pipefail"]  # override the shell for (sh) bodies
+set dotenv := ".env"        # load this file's KEY=VALUE lines into task environments
 set secrets := ["DEPLOY_CFG"]   # mask these variables' values in all output
 set unmasked := ["OAUTH_METHOD"]  # exempt from built-in secret-name patterns
 set mcp_output_limit := "256KiB"  # bytes of stdout and of stderr an agent gets per call
@@ -451,8 +452,11 @@ mod tools "tools.rune"      # namespace: invoke as `rune tools::build`
 
 ## Dotenv
 
-A project `.env` file is loaded into task environments (parsed via the same pure-Go shell),
-so secrets and config come from the environment — never hard-coded in the Runefile.
+`set dotenv := ".env"` loads the `KEY=VALUE` lines of that file into task environments
+(parsed via the same pure-Go shell), so secrets and config come from the environment and are
+never hard-coded in the Runefile. A relative path starts at the Runefile's directory, and a
+file that does not exist is not an error. A `.env` file is read only when the Runefile names
+it: without the setting, none is loaded.
 
 ## Formatting
 

@@ -74,6 +74,25 @@ func TestGettingStartedExampleRuns(t *testing.T) {
 	}
 }
 
+// TestSettingsDotenvExampleOutput holds the settings-dotenv example to the
+// output its README documents. The example once printed "greeting=unset" while
+// its README promised the .env value, and exiting 0 was all that was checked.
+func TestSettingsDotenvExampleOutput(t *testing.T) {
+	dir := filepath.Join(repoRoot, "docs", "examples", "settings-dotenv")
+	readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "app=demo greeting=hello\n"
+	if !strings.Contains(string(readme), "```text\n"+want+"```") {
+		t.Fatalf("the README no longer documents the output %q", want)
+	}
+	got := runRune(t, dir, "show")
+	if got.code != 0 || got.stdout != want {
+		t.Errorf("`rune show` exit = %d, stdout = %q, want %q\nstderr:\n%s", got.code, got.stdout, want, got.stderr)
+	}
+}
+
 // examplePrereqs scans a README for the prerequisite tools it declares. An empty
 // result means "none" (runnable everywhere).
 func examplePrereqs(readme string) []string {

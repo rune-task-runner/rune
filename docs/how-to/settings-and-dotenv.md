@@ -6,9 +6,9 @@
 ## Concept
 
 **Variables** (`name := value`) are reusable values resolved statically and interpolated with
-`{{ }}`. **Settings** (`set ...`) configure the whole file. A project **`.env`** file is
-loaded into task environments, so configuration and secrets come from the environment — never
-hard-coded.
+`{{ }}`. **Settings** (`set ...`) configure the whole file. A **`.env`** file that the
+Runefile names with `set dotenv` is loaded into task environments, so configuration and
+secrets come from the environment and are never hard-coded.
 
 ## Syntax
 
@@ -19,6 +19,8 @@ bin := out / "app"
 
 # Export Runefile variables into task environments.
 set export
+# Load the KEY=VALUE lines of this file into task environments.
+set dotenv := ".env"
 # Override the shell for (sh) bodies (rarely needed).
 set shell := ["bash", "-euo", "pipefail"]
 
@@ -26,19 +28,24 @@ build:
     @echo "building {{bin}}"
 ```
 
-A `.env` beside the Runefile is loaded automatically:
+The file that `set dotenv` names holds `KEY=VALUE` lines:
 
 ```text
 GREETING=hello
 ```
 
+A relative path starts at the Runefile's directory. A file that does not exist is not an
+error: the tasks run without its values.
+
 ## Runnable example
 
-See **[examples/settings-dotenv](../examples/settings-dotenv/README.md)** — `set export` plus a
-`.env` value reaching the body.
+See **[examples/settings-dotenv](../examples/settings-dotenv/README.md)**: `set export` and
+`set dotenv`, with a `.env` value reaching the body.
 
 ## Pitfalls
 
+- **A `.env` file is not loaded by itself.** Without `set dotenv := ".env"` nothing reads
+  it, and a body sees only the environment `rune` was started with.
 - **Secrets live in the environment, not the Runefile.** Put them in `.env` (kept out of
   version control) or the real environment. They never belong in a committed Runefile, and are
   never exposed to agents (see [AI agents](../mcp.md)). As a safety net, values of
