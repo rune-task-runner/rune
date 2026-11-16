@@ -128,7 +128,7 @@ format of the contract and `TestClientRecordings` rejects it until it has a case
 - [X] T027 [P] Run golangci-lint v2.14 on `./...` and on `./test/integration/testdata/clients/recorder/`, and `golangci-lint fmt --diff`, and confirm 0 issues.
 - [X] T028 Run the "By hand" steps 1, 2 and 4 of [quickstart.md](quickstart.md): no empty cell in the table of `docs/mcp.md`, one recorded cell traced to its recording, and the search for machine and account data returns nothing.
 - [X] T029 Confirm `git diff --stat main -- . ':!docs' ':!specs' ':!test' ':!.specify'` and `git status --short` show no file outside `docs/`, `specs/`, `test/` and `.specify/feature.json` (FR-022, SC-007).
-- [ ] T030 After the pull request is open, watch its checks to the end and confirm they are green on Linux and Windows. Four recorder tests skip on Windows; nothing else may. If a check fails, find the cause, fix it and watch again.
+- [X] T030 After the pull request is open, watch its checks to the end and confirm they are green on Linux and Windows. Four recorder tests skip on Windows; nothing else may. If a check fails, find the cause, fix it and watch again.
 
 ---
 
