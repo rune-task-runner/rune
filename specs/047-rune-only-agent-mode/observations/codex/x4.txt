@@ -1,0 +1,5 @@
+Run x4. Codex CLI 0.167.0, codex exec, request captured by capture.py.
+
+Tools in the request (tools.py):
+top-level: functions.exec, functions.wait, functions.request_user_input, functions.request_user_input_async, clock.sleep, collaboration.followup_task, collaboration.interrupt_agent, collaboration.list_agents, collaboration.send_message, collaboration.spawn_agent, collaboration.wait_agent
+nested in exec: apply_patch, create_goal, get_goal, list_mcp_resource_templates, list_mcp_resources, read_mcp_resource, update_goal, view_image, clock__curr_time

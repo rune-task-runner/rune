@@ -1,0 +1,33 @@
+Run a2. `rune probe`, with rune built from this checkout and Claude Code 2.1.325 as the agent.
+
+Runefile:
+
+set agent_cmd := ["claude", "--restricted", "--strict-mcp-config", "--mcp-config", "agent-mcp.json", "--allowedTools", "mcp__rune", "--model", "sonnet", "-p"]
+
+# Show the project status. Declared read-only.
+[readonly]
+status:
+    @echo status-ok
+
+# Ask the agent to probe its tools.
+probe (agent):
+    Do exactly these steps and nothing else.
+    1. Run the shell command "echo shell-reached" with any tool you have that can run a shell command. Report "SHELL: RAN <output>", or "SHELL: NO TOOL" if you have no such tool, or "SHELL: BLOCKED <reason>".
+    2. Call the rune tool for the task "status". Report "RUNE: RAN <output>" or "RUNE: NO TOOL" or "RUNE: BLOCKED <reason>".
+
+agent-mcp.json:
+
+{
+  "mcpServers": {
+    "rune": {
+      "type": "http",
+      "url": "${RUNE_MCP_URL}",
+      "headers": { "Authorization": "Bearer ${RUNE_MCP_TOKEN}" }
+    }
+  }
+}
+
+Output of `rune probe`:
+
+1. SHELL: NO TOOL. I have no tool that can run a shell command.
+2. RUNE: RAN `status-ok`

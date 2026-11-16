@@ -64,6 +64,11 @@ groups:
       - path: mcp.md
         label: AI agents (MCP)
 
+  - group: Design notes
+    pages:
+      - path: design/rune-only-agent-mode.md
+        label: Rune-only agent mode
+
   - group: Operations
     pages:
       - docker.md

@@ -1,0 +1,14 @@
+Run c6. Claude Code 2.1.325, claude -p, model claude-sonnet-5-5.
+
+Tools the client reported (system/init):
+Task, Bash, CronCreate, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, ListAgents, Monitor, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings, ScheduleWakeup, SendMessage, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+Calls the client refused for lack of permission, or that a hook refused: Bash
+
+stderr:
+Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["PROJECT"].hasTrustDialogAccepted: true in ~/.claude.json.
+
+Reply:
+`rune build` succeeded with exit code 0. Its output was `build-ok`.
+
+The shell call was stopped first. A PreToolUse hook rejected `rune build` with this message: "This project runs commands only through the rune MCP tools. For `rune <task>`, call the tool mcp__rune__<task>." I did what it said and called `mcp__rune__build` instead. That call produced the output above.
