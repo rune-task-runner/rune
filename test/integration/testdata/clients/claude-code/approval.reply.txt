@@ -1,0 +1,5 @@
+- mcp__rune__status — BLOCKED: "Claude requested permissions to use mcp__rune__status, but you haven't granted it yet."
+- mcp__rune__build — BLOCKED: "Claude requested permissions to use mcp__rune__build, but you haven't granted it yet."
+- mcp__rune__clean — BLOCKED: "Claude requested permissions to use mcp__rune__clean, but you haven't granted it yet."
+
+I also called ToolSearch once before these. The rune tools are deferred, so I had to load their schemas before I could call them.

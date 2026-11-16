@@ -1,0 +1,42 @@
+1. CODENAME: heliotrope-41. Present before tool calls in the developer context's `mcp__rune` namespace description.
+
+2. Available tools:
+   ```text
+   mcp__rune__build
+   mcp__rune__clean
+   mcp__rune__docs_check
+   mcp__rune__fetch
+   mcp__rune__grow
+   mcp__rune__slow
+   mcp__rune__status
+   mcp__rune__tools__lint
+   ```
+
+3. Results, in requested order:
+   ```text
+   mcp__rune__status RAN: status-ok [exit 0]
+   mcp__rune__build RAN: build-ok [exit 0]
+   mcp__rune__clean BLOCKED: MCP tool call requires approval, but approval policy is never
+   mcp__rune__fetch BLOCKED: MCP tool call requires approval, but approval policy is never
+   mcp__rune__docs_check RAN: docs-check-ok [exit 0]
+   mcp__rune__tools__lint RAN: lint-ok [exit 0]
+   ```
+
+4. Results:
+   ```text
+   mcp__rune__grow RAN: [exit 0], no stdout or stderr
+   mcp__rune__slow(seconds=4) RAN: [exit 0], no stdout or stderr; elapsed 4.0 seconds
+   ```
+
+5. Available tools after grow and slow:
+   ```text
+   mcp__rune__build
+   mcp__rune__clean
+   mcp__rune__docs_check
+   mcp__rune__fetch
+   mcp__rune__grow
+   mcp__rune__slow
+   mcp__rune__status
+   mcp__rune__tools__lint
+   ```
+   LATE: NOT AVAILABLE

@@ -1,0 +1,7 @@
+The `slow` call on the rune server failed with a timeout. I called it once with `seconds` set to 30 and did not retry. It returned this error:
+
+```
+MCP server "rune" tool "slow" timed out after 5s
+```
+
+The client's tool-call timeout is 5 seconds, so it cut off the 30-second sleep before the tool could return.

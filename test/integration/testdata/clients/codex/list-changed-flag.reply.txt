@@ -1,0 +1,19 @@
+Available rune tools:
+
+- `mcp__rune__build`
+- `mcp__rune__clean`
+- `mcp__rune__docs_check`
+- `mcp__rune__fetch`
+- `mcp__rune__grow`
+- `mcp__rune__late`
+- `mcp__rune__slow`
+- `mcp__rune__status`
+- `mcp__rune__tools__lint`
+
+Called grow, then slow with `seconds: 4`. Both returned exit 0.
+
+Called late. Output:
+```text
+late-ok
+[exit 0]
+```

@@ -16,6 +16,7 @@ rune mcp
 ```
 
 Most local agent tooling launches the server this way and talks to it over stdin/stdout.
+[Client compatibility](#client-compatibility) has the configuration file for each client.
 
 **Letting agents run destructive tasks:**
 
@@ -443,6 +444,261 @@ summarize (agent):
 The endpoint an `agent` task opens for its own agent never lets that agent run a
 destructive task. Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
 `--deny` do not reach that endpoint either: they apply only to `rune serve` and `rune mcp`.
+
+## Client compatibility
+
+How five agent clients handle what Rune sends them, as of 2026-11-15. Clients change
+often, so check the version before you rely on a row.
+
+Every cell names its evidence:
+
+- **recorded**: seen in a session recorded against `rune mcp`: in the messages the client
+  and Rune sent, or, for what the model was given, in the client's reply to that session.
+  The recordings, the replies, and the commands and prompts that made them are in
+  [test/integration/testdata/clients](../test/integration/testdata/clients/README.md).
+- **source**: read in the client's source code, not run.
+- **docs**: stated in the vendor's documentation.
+- **staff**: stated by the vendor's staff on the vendor's forum.
+- **unknown**: no evidence found.
+
+Only Claude Code and Codex CLI were run. Cursor, VS Code and Zed were not tested: every
+cell in their columns comes from reading, and none of them has a recording.
+
+| | Claude Code | Codex CLI | Cursor | VS Code, Copilot agent mode | Zed |
+|---|---|---|---|---|---|
+| Version | 2.1.325 | 0.167.0 | several, named in [Cursor](#cursor) | 1.146 | 1.28.1 |
+| Project configuration | `.mcp.json` (recorded) | `.codex/config.toml`, in a trusted project (recorded) | `.cursor/mcp.json` (docs) | `.vscode/mcp.json` (docs) | `.zed/settings.json` (source) |
+| User configuration | `~/.claude.json` (docs) | `~/.codex/config.toml` (docs) | `~/.cursor/mcp.json` (docs) | `mcp.json` in the user profile (docs) | `~/.config/zed/settings.json` (docs) |
+| [Project context](#project-context-for-agents) reaches the model | Yes (recorded) | Yes (recorded) | Unknown | Yes (source) | No (source) |
+| [Tool hints](#tool-hints) change what the client asks approval for | No (recorded) | Yes (recorded) | Unknown | Yes (source) | No (source) |
+| Name the model sees for `tools::lint` | `mcp__rune__tools__lint` (recorded) | `mcp__rune__tools__lint` (recorded) | Unknown | `mcp_rune_tools__lint` (source) | `tools__lint` (source) |
+| Name the model sees for `docs-check` | `mcp__rune__docs-check` (recorded) | `mcp__rune__docs_check` (recorded) | Unknown. Hyphens are accepted (staff) | `mcp_rune_docs-check` (source) | `docs-check` (source) |
+| Lists the tools again after [`list_changed`](#reloading) | Yes (recorded) | No, unless a feature under development is enabled (recorded) | Not in 3.12.17, and no fix is announced (staff) | Yes (source) | Yes (docs, source) |
+| Default limit on one call | About 28 hours, or 30 minutes without a reply (docs) | 300 seconds (recorded) | 60 seconds in the CLI, longer in the editor (staff) | None found (source) | 60 seconds (source) |
+| Sends `notifications/cancelled` at the limit | Yes (recorded) | Yes (recorded) | Unknown | Has no limit | No (source) |
+| Sends `notifications/cancelled` when the user stops a call | Not tested | Not tested | Missing in 1.7.54 (staff). A user reported it fixed in 2.x | Yes (source) | No (source) |
+
+### What this means for a Runefile
+
+- **Do not rely on `[context]` alone.** Zed does not read the instructions, and Cursor is
+  unknown. Put what an agent must know in the doc comments of your tasks too. Claude Code
+  cuts instructions at 4,096 characters (docs), half of Rune's own 8 KiB limit.
+- **Codex asks before it calls a `[confirm]` or `[network]` task.** It asks for a tool
+  whose `destructiveHint` is true, and for a tool whose `openWorldHint` is true unless it
+  also has `readOnlyHint` (source). `codex exec`, which cannot ask, refuses the call.
+  `--allow-destructive` does not change that: it is Rune's permission, not the client's.
+  To let Codex call every tool of the server, set
+  `default_tools_approval_mode = "approve"` in its `[mcp_servers.rune]` table (recorded).
+- **`[readonly]` saves a confirmation in VS Code, and in Codex on a `[network]` task.** VS
+  Code runs a tool with `readOnlyHint` without asking (source). Codex does not ask for a
+  `[network]` tool that has `readOnlyHint` (source). Claude Code and Zed decide the same
+  way for every tool, whatever its hints.
+- **Module tasks work.** Claude Code and Codex both called `tools__lint` (recorded). No
+  client was found that splits a tool name at its double underscore.
+- **A hyphen is an underscore in Codex.** It shows `docs-check` as `docs_check` and calls
+  Rune with the real name (recorded). Use the name the client shows in that client's
+  permission rules.
+- **Keep task names short.** With the module prefix, stay under about 50 characters. VS
+  Code and Zed cut the name the model sees at 64 characters (source), and Cursor reports a
+  server name and tool name of more than 60 characters together as a naming issue (staff).
+- **Adding or removing a task needs a new session in Codex and a restart of Cursor.**
+  Neither lists the tools again. The same goes for a change to a task's parameters, doc
+  comment or attributes: until then the model sees the old tool. Editing only a task's
+  body needs nothing in any client: the next call runs the new body.
+- **A long task outlives some clients.** Zed stops waiting after 60 seconds, Cursor's CLI
+  after 60 seconds and Codex after 300 seconds. Claude Code drops a call after 30 minutes
+  without a reply or a progress notification (docs), and Rune sends none while a task
+  runs. Each section below names the setting that raises the limit, where there is one.
+  When Claude Code or Codex reached its call limit, it told Rune, and Rune stopped the
+  task and answered with `[exit 130]` (recorded). What Claude Code sends at the 30-minute
+  cut was not tested. Zed does not tell Rune (source), so the task runs to its end with
+  nobody waiting for the result.
+
+### Claude Code
+
+Tested: version 2.1.325 on Linux, as `claude -p`.
+
+```json
+{
+  "mcpServers": {
+    "rune": { "type": "stdio", "command": "rune", "args": ["mcp"] }
+  }
+}
+```
+
+- **Configuration.** The block above is `.mcp.json` at the project root. `claude -p` loads
+  it without asking (recorded). An interactive session asks you to approve the server
+  first (docs). `claude mcp add --scope user rune -- rune mcp` adds the server for every
+  project, in `~/.claude.json` (docs).
+- **Context.** The model named the `[context]` output as the server's instructions before
+  it called a tool (recorded).
+- **Approval.** With no permission rule, `status`, `build` and `clean` were all refused
+  the same way, although `status` has `readOnlyHint` (recorded). The documented use of
+  `readOnlyHint` is running read-only calls in parallel. Allow tools by name:
+  `mcp__rune` for every task, or `mcp__rune__build` for one (docs).
+- **Reload.** It listed the tools again 7 ms after the notification, and the model called
+  the new tool in the same session (recorded).
+- **Limits.** `MCP_TOOL_TIMEOUT` is the limit on one call in milliseconds, 100,000,000 by
+  default. A call to a stdio server is also dropped after 30 minutes without a reply or a
+  progress notification, and Rune sends no progress notifications;
+  `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` changes that (docs). With `MCP_TOOL_TIMEOUT=5000`,
+  it sent `notifications/cancelled` 5 seconds after the call (recorded).
+- **Not tested.** Stopping a call with Esc, and an interactive session.
+
+Sources: [MCP](https://code.claude.com/docs/en/mcp),
+[environment variables](https://code.claude.com/docs/en/env-vars),
+[permissions](https://code.claude.com/docs/en/permissions).
+
+### Codex CLI
+
+Tested: version 0.167.0 on Linux, as `codex exec`.
+
+```toml
+[mcp_servers.rune]
+command = "rune"
+args = ["mcp"]
+```
+
+- **Configuration.** The block above goes in `~/.codex/config.toml` (docs), or in
+  `.codex/config.toml` in a project. Codex loaded the project file in a project the user
+  configuration trusts (recorded). In a directory it does not trust, it ignored the file
+  in three runs and never started Rune, so those runs have no recording.
+- **Context.** The model named the `[context]` output as the description of the
+  `mcp__rune` tool namespace (recorded).
+- **Approval.** `status` (`readOnlyHint`) and `build` (`destructiveHint` and
+  `openWorldHint` both `false`) ran. `clean` (`destructiveHint`) and `fetch`
+  (`openWorldHint`) were refused with "MCP tool call requires approval, but approval
+  policy is never", and neither call reached Rune (recorded). The rule in 0.167.0: a tool needs approval when `destructiveHint` is true,
+  or when `openWorldHint` is true and it has no `readOnlyHint` (source).
+- **Names.** Every character of a tool name that is not a letter, a digit or `_` becomes
+  `_`. A name of more than 128 bytes with its prefix is cut and given a hash (source).
+- **Reload.** Codex ignored the notification, and the new tool never appeared. Started
+  with `--enable mcp_tool_list_changed`, it listed the tools again before the model's next
+  request and called the new tool (recorded). That feature is marked as under development
+  and is off by default (source).
+- **Limits.** It sent `notifications/cancelled` 300 seconds after the call (recorded). The
+  documentation gives the default as 60 seconds; 0.167.0 uses 300 (source). Set
+  `tool_timeout_sec` in the server's table to choose (docs).
+- **Not tested.** An interactive session, where Codex asks for approval and does not
+  refuse.
+
+Sources: [MCP](https://developers.openai.com/codex/mcp), and
+[`openai/codex`](https://github.com/openai/codex/tree/rust-v0.167.0/codex-rs) at tag
+`rust-v0.167.0`: `core/src/mcp_tool_call.rs`, `codex-mcp/src/tools.rs`,
+`codex-mcp/src/rmcp_client.rs`, `features/src/lib.rs`,
+`rmcp-client/src/logging_client_handler.rs`.
+
+### Cursor
+
+Not tested. Cursor is closed source, so every statement is from its documentation or from
+its staff on the Cursor forum, and each forum statement is about the version named.
+
+```json
+{
+  "mcpServers": {
+    "rune": { "type": "stdio", "command": "rune", "args": ["mcp"] }
+  }
+}
+```
+
+- **Configuration.** The block above is `.cursor/mcp.json` in a project, or
+  `~/.cursor/mcp.json` for every project (docs).
+- **Context.** Unknown. Nothing found says whether the server instructions reach the model.
+- **Approval.** Cursor asks before it uses an MCP tool, unless the run mode or an
+  allowlist lets the tool run (docs). Nothing found says that hints change this.
+- **Names.** Hyphens are accepted, 3.0.16
+  ([staff](https://forum.cursor.com/t/cursor-incorrectly-filters-out-mcp-tool-names-containing-dots-and-hyphens-despite-being-valid-per-mcp-spec/157635)).
+  A server name and tool name of more than 60 characters together are reported as a naming
+  issue, but the tool still works, 2.6.19
+  ([staff](https://forum.cursor.com/t/posthog-mcp-tool-names-too-long/155408)). The name
+  the model sees is unknown.
+- **Reload.** `notifications/tools/list_changed` stopped causing a new tool list in
+  3.12.17, and only quitting Cursor loads one. No fix was announced by 2026-08-25
+  ([staff](https://forum.cursor.com/t/mcp-server-regression-does-not-reload-tools-disconnect-does-nothing-ignores-mcp-json-changes-etc/166216)).
+- **Limits.** The CLI gives up on a call after 60 seconds, with no setting to change it,
+  and the editor waits longer, CLI 2026.06.19
+  ([staff](https://forum.cursor.com/t/agent-acp-mcp-tools-call-times-out-at-60s-with-no-way-to-configure-it/163925)).
+  Stopping a call did not send `notifications/cancelled` in 1.7.54
+  ([staff](https://forum.cursor.com/t/cursor-doesnt-send-mcp-cancellation-notifications-when-user-clicks-cancel-button/138669)).
+  The reporter wrote a week later that 2.x seemed to fix it.
+
+Source: [MCP](https://cursor.com/docs/context/mcp).
+
+### VS Code, Copilot agent mode
+
+Not tested. The statements are from the documentation as of VS Code 1.146 and from the
+source of [`microsoft/vscode`](https://github.com/microsoft/vscode) at commit `9893f28`.
+
+```json
+{
+  "servers": {
+    "rune": { "type": "stdio", "command": "rune", "args": ["mcp"] }
+  }
+}
+```
+
+- **Configuration.** The block above is `.vscode/mcp.json` in a workspace. The command
+  **MCP: Open User Configuration** opens the `mcp.json` of your user profile, which takes
+  the same content (docs).
+- **Two ways to run a server.** Everything below is about servers that VS Code itself
+  starts from those two files. The documentation calls this the Local harness, says it is
+  deprecated, and plans its removal for February 2027. Its replacement, the Copilot
+  harness, reads `~/.copilot/mcp-config.json` and a `.mcp.json` at the workspace root,
+  both with the `mcpServers` key. How that harness handles instructions, hints,
+  notifications and limits is unknown.
+- **Context.** The server instructions are put in the agent's prompt, marked as applying
+  to the tools whose names start with `mcp_rune` (source).
+- **Approval.** A tool with `readOnlyHint` gets no confirmation. Every other tool gets a
+  "Run" confirmation, which the user can choose to skip from then on. `openWorldHint` adds
+  a confirmation of the tool's result. `destructiveHint` is not read (source). The
+  documentation warns that `readOnlyHint` does not replace an approval policy, so a policy
+  can still ask.
+- **Names.** The model sees `mcp_`, the server name, `_` and the tool name. A character
+  outside letters, digits, `_` and `-` becomes `_`, and the whole name is cut at 64
+  characters (source).
+- **Reload.** It lists the tools again on the notification (source).
+- **Limits.** No limit on a call was found. Cancelling a call sends
+  `notifications/cancelled` (source).
+
+Sources: [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
+and in `src/vs/workbench/contrib/mcp/common/`: `mcpLanguageModelToolContribution.ts`,
+`mcpServer.ts`, `mcpServerRequestHandler.ts`, `mcpTypes.ts`. The prompt is built in
+`extensions/copilot/src/extension/prompts/node/agent/defaultAgentInstructions.tsx`.
+
+### Zed
+
+Not tested. The statements are from the documentation as of Zed 1.28.1 and from the
+source of [`zed-industries/zed`](https://github.com/zed-industries/zed) at commit `24d3772`, and
+they are about Zed's own agent, not an external agent that Zed runs.
+
+```json
+{
+  "context_servers": {
+    "rune": { "command": "rune", "args": ["mcp"] }
+  }
+}
+```
+
+- **Configuration.** The block above goes in `~/.config/zed/settings.json` (docs). The
+  code that starts servers also reads the settings of each open project, which are in
+  `.zed/settings.json` (source). The documentation does not mention the project file.
+- **Context.** Not delivered. Zed's type for the `initialize` result has no field for
+  the instructions, so they are dropped when the reply is read (source).
+- **Approval.** Zed reads the hints and uses none of them. Whether it asks is set by
+  `agent.tool_permissions`, where a Rune tool has the key `mcp:rune:<tool>`, for example
+  `mcp:rune:build` (docs, source).
+- **Names.** The model sees the tool name alone. Zed adds the server name only when two
+  tools have the same name. A character outside letters, digits, `_` and `-` becomes
+  `_`, and the name is cut at 64 characters (source).
+- **Reload.** It lists the tools again on the notification (docs, source).
+- **Limits.** 60 seconds for one call. `context_server_timeout`, or `timeout` in the
+  server's entry, sets another number of seconds, up to 600. At the limit, and when the
+  user stops a call, Zed stops waiting and sends Rune nothing (source).
+
+Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
+`context_server/src/types.rs`, `context_server/src/client.rs`,
+`agent/src/tools/context_server_registry.rs`, `agent/src/thread.rs`,
+`project/src/context_server_store.rs`, `settings_content/src/project.rs`.
 
 ## See also
 

@@ -1,0 +1,1 @@
+The rune `status` tool ran once and returned `status-ok` with exit code 0. Nothing was written to stderr.
