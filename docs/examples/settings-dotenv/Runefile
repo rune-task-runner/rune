@@ -1,8 +1,9 @@
-# Settings shape a Runefile; a project .env feeds task environments.
-# `set export` makes Runefile variables available to bodies as env vars; values
-# in .env (here GREETING) are loaded too. Secrets come from the environment,
-# never hard-coded here.
+# Settings shape a Runefile; a .env file feeds task environments.
+# `set export` makes Runefile variables available to bodies as env vars, and
+# `set dotenv` loads the values of the file it names (here GREETING). Secrets
+# come from the environment, never hard-coded here.
 set export
+set dotenv := ".env"
 
 app := "demo"
 
