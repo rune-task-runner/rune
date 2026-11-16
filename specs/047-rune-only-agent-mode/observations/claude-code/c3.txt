@@ -1,0 +1,17 @@
+Run c3. Claude Code 2.1.325, claude -p, model claude-sonnet-5-5.
+
+Tools the client reported (system/init):
+Task, CronCreate, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, Glob, Grep, ListAgents, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings, ScheduleWakeup, SendMessage, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+Calls the client refused for lack of permission, or that a hook refused: none
+
+stderr:
+Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["PROJECT"].hasTrustDialogAccepted: true in ~/.claude.json.
+
+Reply:
+1. SHELL: NO TOOL
+2. RUNE: RAN {"exitCode":0,"stdout":"status-ok\n","stderr":""}
+3. SUBAGENT: NO TOOL
+4. Tools available: Agent, Edit, Glob, Grep, ListAgents, Read, ReportFindings, ScheduleWakeup, Skill, ToolSearch, Workflow, Write, CronCreate, CronDelete, CronList, DesignSync, EnterWorktree, ExitWorktree, NotebookEdit, PushNotification, RemoteTrigger, SendMessage, TaskStop, WebFetch, WebSearch, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+The deferred tools (everything from CronCreate down) were only callable after I loaded their schemas. I loaded only `mcp__rune__status`.

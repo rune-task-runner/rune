@@ -39,6 +39,7 @@ New to Rune? Read **[What is Rune?](overview.md)**, then **[Getting started](get
 - **How-to guides** — [all capabilities](how-to/README.md)
 - **Use-case walkthroughs** — [Python](use-cases/python-project.md) · [Node](use-cases/node-project.md) · [AI agents](use-cases/mcp-agents.md)
 - **Reference** — [CLI](cli.md) · [Runefile language](runefile.md) · [Grammar](GRAMMAR.md) · [Diagnostics & codes](diagnostics.md) · [AI agents (MCP)](mcp.md)
+- **Design notes**: [Rune-only agent mode](design/rune-only-agent-mode.md)
 - **Editors** — [Editor setup (LSP)](../editors/README.md)
 - **Operations** — [Installation](installation.md) · [Docker](docker.md) · [Releasing](releasing.md) · [Troubleshooting](troubleshooting.md)
 

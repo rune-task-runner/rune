@@ -1,0 +1,20 @@
+Run c5. Claude Code 2.1.325, claude -p, model claude-sonnet-5-5.
+
+Tools the client reported (system/init):
+Task, Bash, CronCreate, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, ListAgents, Monitor, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings, ScheduleWakeup, SendMessage, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+Calls the client refused for lack of permission, or that a hook refused: Bash, mcp__rune__build
+
+stderr:
+Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["PROJECT"].hasTrustDialogAccepted: true in ~/.claude.json.
+
+Reply:
+I couldn't run the build. Two things stopped me:
+
+1. **The shell call was blocked.** Running `rune build` in Bash was rejected by a hook with this message, word for word: "This project runs commands only through the rune MCP tools. For `rune <task>`, call the tool mcp__rune__<task>."
+
+2. **The MCP tool call was denied.** I loaded `mcp__rune__build` and called it. It failed with this message, word for word: "Claude requested permissions to use mcp__rune__build, but you haven't granted it yet."
+
+There's no build output, because the build never ran. I haven't tried to get around the permission check, for example by running the binary some other way.
+
+To go ahead, grant permission for `mcp__rune__build` and I'll run it again. You could also tell me to try a different route.

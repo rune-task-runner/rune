@@ -1,0 +1,17 @@
+Run c11. Claude Code 2.1.325, claude -p, model claude-sonnet-5-5.
+
+Tools the client reported (system/init):
+Task, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, Glob, Grep, ListAgents, NotebookEdit, PushNotification, Read, ReportFindings, ScheduleWakeup, SendMessage, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Write, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+Calls the client refused for lack of permission, or that a hook refused: none
+
+stderr:
+Ignoring 1 permissions.allow entry from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["PROJECT"].hasTrustDialogAccepted: true in ~/.claude.json.
+
+Reply:
+1. SHELL: NO TOOL. I have no tool that can run a shell command.
+2. RUNE: RAN `status-ok` (exit code 0).
+3. SUBAGENT: NO TOOL. The subagent had no shell tool either.
+4. Tools available to me:
+   - Loaded: Agent, Edit, Glob, Grep, ListAgents, Read, ReportFindings, ScheduleWakeup, Skill, ToolSearch, Write.
+   - Deferred (loaded through ToolSearch): CronDelete, CronList, DesignSync, EnterWorktree, ExitWorktree, NotebookEdit, PushNotification, SendMessage, TaskStop, WebFetch, WebSearch, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint.

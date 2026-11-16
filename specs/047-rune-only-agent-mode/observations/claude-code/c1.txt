@@ -1,0 +1,16 @@
+Run c1. Claude Code 2.1.325, claude -p, model claude-sonnet-5-5.
+
+Tools the client reported (system/init):
+Task, Bash, CronCreate, CronDelete, CronList, DesignSync, Edit, EnterWorktree, ExitWorktree, ListAgents, Monitor, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings, ScheduleWakeup, SendMessage, Skill, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__status, mcp__rune__tools__lint
+
+Calls the client refused for lack of permission, or that a hook refused: none
+
+stderr:
+(empty)
+
+Reply:
+1. SHELL: RAN shell-reached
+2. RUNE: RAN status-ok
+3. Tools available: Agent, Bash, Edit, ListAgents, Read, ReportFindings, ScheduleWakeup, Skill, ToolSearch, Workflow, Write, mcp__rune__status
+
+Deferred tools not loaded (listed by name only): CronCreate, CronDelete, CronList, DesignSync, EnterWorktree, ExitWorktree, Monitor, NotebookEdit, PushNotification, RemoteTrigger, SendMessage, TaskStop, WebFetch, WebSearch, mcp__rune__build, mcp__rune__clean, mcp__rune__docs-check, mcp__rune__fetch, mcp__rune__grow, mcp__rune__slow, mcp__rune__tools__lint

@@ -382,6 +382,13 @@ limits which names are tools. To keep exactly the tasks read at start, run
 
 Exposing tasks to an agent grants execution capability, so Rune is conservative by default:
 
+- **Rune decides what Rune runs, and nothing else.** Registering `rune mcp` adds tools to a
+  client. It does not remove the client's own shell, and `--allow`, `--deny` and
+  `--allow-destructive` do not restrict it: an agent that is refused a task can still type
+  the command into the client's shell. A session is limited to the Runefile only when the
+  client is also told to give the agent no shell.
+  [Rune-only agent mode](design/rune-only-agent-mode.md) says which clients can do that
+  and how, and where the limit ends.
 - **Destructive tasks are refused by default.** A task marked `[confirm("…")]` is still
   listed, annotated with the MCP `DestructiveHint`, but a call to it is refused and nothing
   runs. A call that can run an ungranted `[confirm]` task through a dependency or hook is
@@ -444,6 +451,11 @@ summarize (agent):
 The endpoint an `agent` task opens for its own agent never lets that agent run a
 destructive task. Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
 `--deny` do not reach that endpoint either: they apply only to `rune serve` and `rune mcp`.
+
+The agent a task launches keeps the tools its own configuration gives it, a shell among
+them. Rune does not restrict them.
+[Rune-only agent mode](design/rune-only-agent-mode.md#the-agent-executor) shows an
+`agent_cmd` that does.
 
 ## Client compatibility
 
@@ -705,4 +717,6 @@ Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
 - [agent-driven example](examples/agent-driven/README.md) — a runnable agent task + gating
 - [CLI reference](cli.md) — `rune mcp` / `rune serve` flags
 - [Runefile language guide](runefile.md) — `[private]`, `[confirm]`, `[network]`, executors
+- [Rune-only agent mode](design/rune-only-agent-mode.md): a design note on removing a
+  client's shell, and what that does not prevent
 - [Guides](how-to/README.md) — the rest of the capability deep dives
