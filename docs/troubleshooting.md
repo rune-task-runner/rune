@@ -107,6 +107,11 @@ rune: no Runefile found in this directory or any parent
 
 **Fix:** run from inside your project, or point at a file with `rune --file path/to/Runefile`.
 
+**In an agent client's log:** the client started `rune mcp` outside your project. Name the
+Runefile in the client's configuration, with an absolute path:
+`rune mcp -f /path/to/project/Runefile`. See
+[Starting the server](mcp.md#starting-the-server).
+
 ### A task body failed
 
 A command in the body exited non-zero. Rune stops at the first failure, names the task, the

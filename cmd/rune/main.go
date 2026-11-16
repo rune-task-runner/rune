@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/rune-task-runner/rune/internal/cli"
 )
 
@@ -44,9 +46,7 @@ func run(args []string) int {
 	root := newRootCmd(&opts, installed, commit, func(ctx context.Context, o *cli.Options) error {
 		return runSelfUpgrade(ctx, o, installed, stamped)
 	})
-	// Built-in subcommands. Registering any subcommand also makes Cobra add its
-	// `help` command automatically; `completion` is our own (newCompletionCmd).
-	root.AddCommand(newServeCmd(&opts), newVersionCmd(&opts), newCompletionCmd(), newAnalyzeCmd(&opts), newLSPCmd(&opts))
+	addCommands(root, &opts)
 	applyHelp(root)
 
 	// Rune's own messages go to stderr so stdout stays clean for piping.
@@ -68,4 +68,11 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, cli.BannerLine(tolerantTheme(root, os.Stderr), msg))
 	}
 	return cli.CodeFor(err)
+}
+
+// addCommands registers the built-in subcommands. Registering any subcommand
+// also makes Cobra add its `help` command automatically; `completion` is our
+// own (newCompletionCmd).
+func addCommands(root *cobra.Command, opts *cli.Options) {
+	root.AddCommand(newServeCmd(opts), newVersionCmd(opts), newCompletionCmd(), newAnalyzeCmd(opts), newLSPCmd(opts))
 }

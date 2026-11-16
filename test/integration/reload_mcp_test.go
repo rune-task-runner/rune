@@ -90,7 +90,15 @@ func startMCP(t *testing.T, dir string, flags ...string) *mcpProc {
 // startMCPVersion is startMCP with the protocol version the client asks for.
 func startMCPVersion(t *testing.T, dir, version string, flags ...string) *mcpProc {
 	t.Helper()
-	cmd := exec.Command(runeBin, append([]string{"mcp"}, flags...)...)
+	return startMCPArgs(t, dir, version, append([]string{"mcp"}, flags...)...)
+}
+
+// startMCPArgs starts `rune args...` in dir, where args name the server
+// command themselves, and completes the handshake. It is for a command line
+// that startMCP cannot write, such as a flag before the command name.
+func startMCPArgs(t *testing.T, dir, version string, args ...string) *mcpProc {
+	t.Helper()
+	cmd := exec.Command(runeBin, args...)
 	cmd.Dir = dir
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -437,6 +445,29 @@ func (b reloadBearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
+// connectHTTP opens an MCP session with the server at addr, whose token is
+// bindWarningToken, retrying until it answers. The caller closes the session.
+func connectHTTP(t *testing.T, ctx context.Context, addr string, stderr *syncBuffer) *mcp.ClientSession {
+	t.Helper()
+	client := mcp.NewClient(&mcp.Implementation{Name: "it", Version: "v1"}, nil)
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:   "http://" + addr,
+		HTTPClient: &http.Client{Transport: reloadBearer{bindWarningToken}},
+	}
+	var cs *mcp.ClientSession
+	var err error
+	// The startup line is printed just before the listener is bound.
+	for deadline := time.Now().Add(reloadTimeout); ; time.Sleep(50 * time.Millisecond) {
+		if cs, err = client.Connect(ctx, transport, nil); err == nil || time.Now().After(deadline) {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatalf("connecting: %v\nstderr:\n%s", err, stderr.String())
+	}
+	return cs
+}
+
 // On HTTP, a session that starts after a reload gets the [context] output of
 // the reloaded Runefile (spec 043 FR-026).
 func TestReloadMCP_HTTPInstructions(t *testing.T) {
@@ -472,22 +503,7 @@ func TestReloadMCP_HTTPInstructions(t *testing.T) {
 
 	instructions := func() string {
 		t.Helper()
-		client := mcp.NewClient(&mcp.Implementation{Name: "it", Version: "v1"}, nil)
-		transport := &mcp.StreamableClientTransport{
-			Endpoint:   "http://" + addr,
-			HTTPClient: &http.Client{Transport: reloadBearer{"it-token"}},
-		}
-		var cs *mcp.ClientSession
-		var err error
-		// The startup line is printed just before the listener is bound.
-		for deadline := time.Now().Add(reloadTimeout); ; time.Sleep(50 * time.Millisecond) {
-			if cs, err = client.Connect(ctx, transport, nil); err == nil || time.Now().After(deadline) {
-				break
-			}
-		}
-		if err != nil {
-			t.Fatalf("connecting: %v\nstderr:\n%s", err, stderr.String())
-		}
+		cs := connectHTTP(t, ctx, addr, stderr)
 		defer func() { _ = cs.Close() }()
 		return cs.InitializeResult().Instructions
 	}
