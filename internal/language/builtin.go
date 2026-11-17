@@ -103,6 +103,7 @@ var builtinAttributes = []Builtin{
 	{Name: "param-doc", Kind: BuiltinAttribute, Signature: "[param-doc(\"name\", \"description\")]", Documentation: "Describe one parameter; surfaced to agents in the tool schema (spec 023)."},
 	{Name: "returns", Kind: BuiltinAttribute, Signature: "[returns(\"expected output\")]", Documentation: "Describe the task's successful output; surfaced to agents and listings (spec 023)."},
 	{Name: "readonly", Kind: BuiltinAttribute, Signature: "[readonly]", Documentation: "Claim the task changes nothing (sets the MCP readOnlyHint). Rune does not check the body."},
+	{Name: "agent-allow", Kind: BuiltinAttribute, Signature: "[agent-allow(param=\"value\")]", Documentation: "Limit the values an agent may run the task with: each named string or enum parameter must have exactly this value. People on the command line are not limited."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

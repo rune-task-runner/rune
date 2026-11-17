@@ -177,3 +177,45 @@ func TestInterpolateUnterminated(t *testing.T) {
 		t.Fatal("expected unterminated interpolation error")
 	}
 }
+
+// A fork reads what its parent reads and keeps what it reads to itself, so a
+// check made before a run cannot fix a variable's value for the run (spec
+// 050 FR-018a).
+func TestScopeFork(t *testing.T) {
+	assigns := map[string]*ast.Assignment{
+		"early": {Name: "early", Expr: &ast.StringLit{Value: "e"}},
+		"late":  {Name: "late", Expr: &ast.StringLit{Value: "l"}},
+		"later": {Name: "later", Expr: &ast.StringLit{Value: "r"}},
+	}
+	parent := NewScope(assigns, map[string]string{"over": "ridden"})
+	parent.GOOS = "plan9"
+	parent.Params = map[string]string{"p": "param"}
+	if got, err := evalFragment(t, `early`, parent); err != nil || got != "e" {
+		t.Fatalf("early = %q, %v", got, err)
+	}
+
+	fork := parent.Fork()
+	for expr, want := range map[string]string{`early`: "e", `late`: "l", `over`: "ridden", `p`: "param", `os()`: "plan9"} {
+		if got, err := evalFragment(t, expr, fork); err != nil || got != want {
+			t.Errorf("fork: %s = %q, %v, want %q", expr, got, err, want)
+		}
+	}
+	if _, cached := fork.cache["early"]; !cached {
+		t.Error("the fork did not start with the parent's cache")
+	}
+	if _, cached := parent.cache["late"]; cached {
+		t.Error("a variable read through the fork is in the parent's cache")
+	}
+
+	if got, err := evalFragment(t, `later`, parent); err != nil || got != "r" {
+		t.Fatalf("later = %q, %v", got, err)
+	}
+	if _, cached := fork.cache["later"]; cached {
+		t.Error("a variable read through the parent after the fork is in the fork's cache")
+	}
+
+	// A scope that has read nothing yet forks too.
+	if got, err := evalFragment(t, `early`, (&Scope{Assigns: assigns}).Fork()); err != nil || got != "e" {
+		t.Errorf("fork of a fresh scope: %q, %v", got, err)
+	}
+}

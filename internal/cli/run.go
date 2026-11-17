@@ -137,6 +137,15 @@ func execute(opts Options, runefile string, args []string) error {
 	mopts, flushMask := maskOptions(opts, set)
 	defer flushMask()
 
+	// A body of an agent run started this rune: its tasks are still the
+	// agent's, so their policies apply (spec 050). The mark goes back on
+	// last, as it does for a tool call: a dotenv file or an exported variable
+	// of its name must not take it from the bodies this run starts.
+	agentRun := os.Getenv(agentRunVar) == "1"
+	if agentRun {
+		env = agentRunEnv(env)
+	}
+
 	eng := &engine{
 		file:      file,
 		tasks:     tasks,
@@ -155,11 +164,23 @@ func execute(opts Options, runefile string, args []string) error {
 		src:       srcProvider,
 		goos:      runtime.GOOS,
 		stdinTTY:  isTerminal(mopts.Stdin),
+		agent:     agentRun,
+		mask:      maskerFor(set),
 	}
 
 	invs, err := eng.resolveRoots(rawInvs)
 	if err != nil {
 		return err
+	}
+
+	// Every task on the command line is checked before the first one runs.
+	// Plan modes run no body, so they have nothing to refuse.
+	if eng.agent && plan == planRun {
+		for _, inv := range invs {
+			if d := eng.preflightPolicy(inv.Task, inv.Params); d != nil {
+				return &TaskFailure{Err: errors.New(d.text(eng.mask))}
+			}
+		}
 	}
 
 	if err := scheduler.Run(eng, invs); err != nil {
@@ -216,6 +237,17 @@ type engine struct {
 	// as a grant does, but only on the engine built for that call: nothing
 	// else reads it, and it ends with the call.
 	approved map[string]bool
+
+	// agent marks a run that started from an agent's tool call: every task
+	// it reaches is held to its [agent-allow] policy (spec 050). The MCP
+	// adapter sets it on the engine of each call, and the command line sets
+	// it when a body of such a run started this rune (agentRunVar). False for
+	// a person's run.
+	agent bool
+
+	// mask hides secret values in the text of a policy refusal. Nil masks
+	// nothing.
+	mask func(string) string
 
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
@@ -280,6 +312,13 @@ func (e *engine) Available(task *ast.Task) bool { return task.AvailableOn(e.goos
 // OS-mismatched targets are returned unevaluated (empty Args): the scheduler
 // skips them, so their args and defaults must not run on this host.
 func (e *engine) ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) (*ast.Task, eval.Args, error) {
+	return e.resolveDepIn(e.scope, curTask, cur, dep)
+}
+
+// resolveDepIn is ResolveDep against a given scope. The policy check before
+// an agent run resolves on a fork of the run's scope, so what it reads is
+// not cached for the run (spec 050).
+func (e *engine) resolveDepIn(scope *eval.Scope, curTask *ast.Task, cur eval.Args, dep *ast.DepCall) (*ast.Task, eval.Args, error) {
 	target, ok := e.tasks[dep.Name]
 	if !ok {
 		return nil, eval.Args{}, &ValidationError{Err: errorf("unknown dependency %q of task %q", dep.Name, curTask.Name)}
@@ -291,7 +330,7 @@ func (e *engine) ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) 
 	if !e.Available(target) {
 		return target, eval.Args{}, nil
 	}
-	ev := eval.New(e.scope.WithArgs(cur))
+	ev := eval.New(scope.WithArgs(cur))
 	vals := make([]string, 0, len(dep.Args))
 	for _, a := range dep.Args {
 		val, evErr := ev.Eval(a)
@@ -302,7 +341,7 @@ func (e *engine) ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) 
 	}
 	v := variadicIndex(target)
 	if v < 0 || len(vals) <= v {
-		params, err := bindParams(target, vals, e.scope)
+		params, err := bindParams(target, vals, scope)
 		if err != nil {
 			return nil, eval.Args{}, err
 		}
@@ -320,12 +359,12 @@ func (e *engine) ResolveDep(curTask *ast.Task, cur eval.Args, dep *ast.DepCall) 
 		}
 		elems = append(elems, vals[v+i])
 	}
-	params, err := bindParams(target, append(vals[:v:v], elems...), e.scope)
+	params, err := bindParams(target, append(vals[:v:v], elems...), scope)
 	if err != nil {
 		// Forwarding has no opt-in, so a call v0.6.0 bound from the written
 		// arguments' text must still run, e.g. an empty list into a + parameter.
 		var oldErr error
-		if params, oldErr = bindParams(target, vals, e.scope); oldErr != nil {
+		if params, oldErr = bindParams(target, vals, scope); oldErr != nil {
 			return nil, eval.Args{}, err
 		}
 	}
@@ -350,6 +389,15 @@ func (e *engine) Execute(task *ast.Task, params eval.Args) error {
 	if e.plan == planSummary {
 		fmt.Fprintln(e.opts.Stdout, task.Name)
 		return nil
+	}
+
+	if e.plan == planRun {
+		if f := e.policyGate(task, params); f != nil {
+			// Printed here because a silent failure has no banner, and marked
+			// as body-not-run so || failure hooks do not fire for it.
+			printErrorBanner(e.opts, e.theme, f.Error())
+			return &TaskFailure{Err: &bodyNotRunError{err: f.Err}, Silent: true}
+		}
 	}
 
 	if c := task.Attr(ast.AttrConfirm); c != nil && e.plan == planRun {
@@ -413,6 +461,10 @@ func (e *engine) ExecuteFailHook(task *ast.Task, params eval.Args, f scheduler.F
 	// 130 / killed) — the run context is the reliable signal.
 	if e.ctx.Err() != nil {
 		return e.ctx.Err()
+	}
+	// Not printed here: the scheduler reports a hook's failure itself.
+	if f := e.policyGate(task, params); f != nil {
+		return f
 	}
 	if c := task.Attr(ast.AttrConfirm); c != nil {
 		if f := e.confirmFailure(task, c.Str); f != nil {

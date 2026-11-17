@@ -73,6 +73,10 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 		p.parseCacheArgs(a)
 		return a
 
+	case ast.AttrAgentAllow:
+		p.parseAgentAllowArgs(a)
+		return a
+
 	default:
 		// Unknown attribute: parse and discard any parenthesized payload so the
 		// analyzer can report it without a parse cascade.
@@ -124,6 +128,71 @@ func (p *parser) parseCacheArgs(a *ast.Attribute) {
 	}
 	rp, _ := p.expect(token.RPAREN, "to close cache(...)")
 	a.Sp = a.Sp.To(rp.Span)
+}
+
+// parseAgentAllowArgs parses agent-allow(name="value", ...): at least one
+// predicate, each a parameter name, "=", and a string literal (spec 050). It
+// stops at the first piece that is missing and skips to the closing
+// parenthesis, so one mistake gives one error.
+func (p *parser) parseAgentAllowArgs(a *ast.Attribute) {
+	if _, ok := p.expect(token.LPAREN, "to open agent-allow(...)"); !ok {
+		return
+	}
+	if p.parseAllowPredicates(a) {
+		if rp, ok := p.expect(token.RPAREN, "to close agent-allow(...)"); ok {
+			a.Sp = a.Sp.To(rp.Span)
+			return
+		}
+	}
+	p.skipToCloseParen()
+	if rp, ok := p.accept(token.RPAREN); ok {
+		a.Sp = a.Sp.To(rp.Span)
+	}
+}
+
+// skipToCloseParen advances to the parenthesis that closes the group the
+// parser is inside, for error recovery. It stops at the end of the attribute
+// list or of the line when the group is not closed.
+func (p *parser) skipToCloseParen() {
+	depth := 0
+	for {
+		switch p.curKind() {
+		case token.LPAREN:
+			depth++
+		case token.RPAREN:
+			if depth == 0 {
+				return
+			}
+			depth--
+		case token.RBRACK, token.NEWLINE, token.EOF:
+			return
+		}
+		p.advance()
+	}
+}
+
+// parseAllowPredicates parses the predicates up to the closing parenthesis.
+// It returns false once it has reported a piece that is missing.
+func (p *parser) parseAllowPredicates(a *ast.Attribute) bool {
+	for {
+		name, ok := p.expect(token.IDENT, "as a parameter name in agent-allow(...)")
+		if !ok {
+			return false
+		}
+		if _, ok := p.expect(token.EQUALS, "after the parameter name in agent-allow(...)"); !ok {
+			return false
+		}
+		value, ok := p.expect(token.STRING, "as the value agents may pass")
+		if !ok {
+			return false
+		}
+		a.Allow = append(a.Allow, &ast.AllowPredicate{
+			Name: name.Lit, Value: value.Lit, NameSp: name.Span, ValueSp: value.Span,
+		})
+		if _, ok := p.accept(token.COMMA); !ok {
+			return true
+		}
+	}
 }
 
 // skipBalancedParens consumes a balanced (...) group for error recovery.

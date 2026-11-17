@@ -168,6 +168,8 @@ func formatAttr(a *ast.Attribute) string {
 		return b.String()
 	case ast.AttrEnv, ast.AttrParamDoc:
 		return fmt.Sprintf("[%s(%s, %s)]", a.Kind, strconv.Quote(a.Str), strconv.Quote(a.Str2))
+	case ast.AttrAgentAllow:
+		return fmt.Sprintf("[%s(%s)]", a.Kind, ast.FormatAllow(a.Allow))
 	default:
 		if a.Str != "" {
 			return fmt.Sprintf("[%s(%s)]", a.Kind, strconv.Quote(a.Str))

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"time"
 
@@ -82,6 +83,18 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 			if c := p.Constraint; c != nil {
 				pi.Kind = c.KindName
 				pi.Enum = c.Values
+			}
+			// The one value an agent may pass (spec 050). A Runefile literal,
+			// like an enum value. A literal default the policy refuses makes
+			// the parameter one an agent has to send.
+			for _, allowed := range t.AgentPolicy() {
+				if allowed.Name != p.Name || pi.Variadic {
+					continue
+				}
+				pi.AgentValues = []string{allowed.Value}
+				if lit, ok := p.Default.(*ast.StringLit); ok && lit.Value != allowed.Value {
+					pi.Required = true
+				}
 			}
 			info.Params = append(info.Params, pi)
 		}
@@ -195,13 +208,7 @@ type pendingApproval struct {
 // of each task named. Values and messages are masked here, where the secret
 // set is. The server only escapes and bounds them.
 func (a *mcpAdapter) approvalRequest(t *ast.Task, params eval.Args, tasks []string) mcpserver.ApprovalRequest {
-	masked := func(s string) string {
-		// MaskString needs a set; an adapter built without one masks nothing.
-		if a.maskSet.Empty() {
-			return s
-		}
-		return a.maskSet.MaskString(s)
-	}
+	masked := a.maskText
 	var req mcpserver.ApprovalRequest
 	for _, p := range t.Params {
 		arg := mcpserver.ApprovalArg{Name: p.Name}
@@ -228,9 +235,17 @@ func (a *mcpAdapter) approvalRequest(t *ast.Task, params eval.Args, tasks []stri
 	return req
 }
 
+// maskText masks the adapter's secrets in s. An adapter built without a mask
+// set masks nothing.
+func (a *mcpAdapter) maskText(s string) string {
+	return maskerFor(a.maskSet)(s)
+}
+
 // call runs a task with each of stdout and stderr captured in at most limit
-// bytes. With an approval pending, it asks after the arguments are bound and
-// before anything runs.
+// bytes. Once the arguments are bound it checks the [agent-allow] policy of
+// the task and of everything the call can reach, and returns the refusal
+// before anything runs (spec 050). With an approval pending, it asks after
+// that, so nobody is asked about a call a policy refuses.
 func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]string, lists map[string][]string, limit int, pending *pendingApproval) (mcpserver.Result, error) {
 	t, ok := a.tasks[name]
 	if !ok {
@@ -284,7 +299,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		settings:    a.settings,
 		workDir:     a.workDir,
 		root:        a.root,
-		env:         a.baseEnv,
+		env:         agentRunEnv(a.baseEnv),
 		opts:        mopts,
 		plan:        planRun,
 		now:         a.now,
@@ -292,11 +307,21 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		goos:        a.goos,
 		failHookOut: &syncWriter{w: fixSink},
 		grants:      a.grants,
+		// Every call through the adapter starts from an agent, the [context]
+		// hook included: it runs because an agent connected.
+		agent: true,
+		mask:  a.maskText,
 	}
 
 	params, err := bindNamedParams(t, args, lists, scope)
 	if err != nil {
 		return mcpserver.Result{}, err
+	}
+
+	// A grant or an approval answers whether a destructive task may run, not
+	// which values an agent may run it with, so the policy comes first.
+	if d := eng.preflightPolicy(t, params); d != nil {
+		return mcpserver.Result{}, errors.New(d.text(a.maskText))
 	}
 
 	if pending != nil {

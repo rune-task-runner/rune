@@ -48,6 +48,12 @@ type ParamInfo struct {
 	Enum []string
 	// Description is the author's [param-doc] text for this parameter.
 	Description string
+	// AgentValues, when not empty, lists the only values an agent may pass for
+	// this parameter. The tool's schema enumerates them in place of Enum, and
+	// the tool's description states them. The server does not refuse a call by
+	// them: the Engine must, because only it knows the value a default gives.
+	// Not for a variadic parameter.
+	AgentValues []string
 }
 
 // TaskInfo is the agent-facing view of a task. Private tasks are never included.
@@ -348,6 +354,12 @@ func toolFor(t TaskInfo) *mcp.Tool {
 		}
 		desc += "Returns: " + t.Returns
 	}
+	if policy := agentPolicy(t.Params); policy != "" {
+		if desc != "" {
+			desc += "\n\n"
+		}
+		desc += policy
+	}
 	return &mcp.Tool{
 		Name:        toolName(t.Name),
 		Description: desc,
@@ -363,12 +375,41 @@ func toolFor(t TaskInfo) *mcp.Tool {
 	}
 }
 
+// restricted reports whether an agent may pass only AgentValues for p.
+func (p ParamInfo) restricted() bool {
+	return len(p.AgentValues) > 0 && !p.Variadic
+}
+
+// agentPolicy states, for a tool's description, the values an agent may pass
+// for the restricted parameters, or "" when there is none (spec 050). The
+// schema shows the same, and an agent that reads only the description still
+// learns why a call would be refused.
+func agentPolicy(params []ParamInfo) string {
+	var predicates []string
+	for _, p := range params {
+		if !p.restricted() {
+			continue
+		}
+		quoted := make([]string, len(p.AgentValues))
+		for i, v := range p.AgentValues {
+			quoted[i] = strconv.Quote(v)
+		}
+		predicates = append(predicates, p.Name+"="+strings.Join(quoted, " or "))
+	}
+	if len(predicates) == 0 {
+		return ""
+	}
+	return "Agent policy: agents may run this task only with " + strings.Join(predicates, " and ") + "."
+}
+
 // inputSchema derives a JSON Schema (2020-12) object from task parameters:
 // required→required, defaulted→optional, variadic→array. Declared constraint
 // kinds map per specs/023-mcp-typed-schemas/contracts/mcp-schema.md: enum
 // value lists are enumerated, numbers/booleans typed, paths format-tagged —
 // so a conforming client can construct only valid calls (SC-001). Every schema
-// disallows other names, so a client can catch a misspelled one (spec 032).
+// disallows other names, so a client can catch a misspelled one (spec 032). A
+// parameter an agent may pass only some values for lists those alone (spec
+// 050).
 func inputSchema(params []ParamInfo) map[string]any {
 	properties := map[string]any{}
 	var required []string
@@ -379,6 +420,9 @@ func inputSchema(params []ParamInfo) map[string]any {
 			prop["format"] = "path"
 		case "enum":
 			prop["enum"] = p.Enum
+		}
+		if p.restricted() {
+			prop["enum"] = p.AgentValues
 		}
 		if p.Variadic {
 			prop = map[string]any{"type": "array", "items": prop}

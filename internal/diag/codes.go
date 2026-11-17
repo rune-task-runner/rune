@@ -38,6 +38,10 @@ const (
 	CodeKindShadowsTask     = "RUNE2016" // warning: annotated kind name is also a task name (possible legacy re-parse)
 	CodeUnquotedParam       = "RUNE2017" // warning: string or path parameter interpolated unquoted into a shell body (spec 030)
 	CodeInvalidReadonly     = "RUNE2018" // [readonly] with [confirm], or running a task without [readonly] (spec 033)
+	// Invalid [agent-allow]: an unknown, repeated, variadic or non-string
+	// parameter, a value its enum lacks or that is not printable, or a second
+	// attribute on the task (spec 050).
+	CodeInvalidAgentAllow = "RUNE2019"
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"
