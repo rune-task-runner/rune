@@ -211,6 +211,12 @@ type engine struct {
 	// MCP server path; nil on the CLI path and on an agent task's endpoint.
 	grants map[string]bool
 
+	// approved holds the [confirm] tasks a person approved for this one MCP
+	// call, through the client (spec 049). Each stands in for its own answer,
+	// as a grant does, but only on the engine built for that call: nothing
+	// else reads it, and it ends with the call.
+	approved map[string]bool
+
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
 	// fix-suggestion section (spec 022). Nil on the CLI path: hook output

@@ -20,23 +20,14 @@ import (
 // into the flag they name. They say to add the names, because restarting with
 // only the refused names would drop the existing grants.
 func (s *Server) refusal(t TaskInfo) string {
-	// One list, the called task first, so a single restart permits the call.
-	var named []string
-	own := t.Destructive && !s.granted[t.Name]
-	if own {
-		named = append(named, t.Name)
-	}
-	// An embedder's list may repeat a name or include t itself, and each task
-	// is still named once (FR-005).
-	var reached []string
-	for _, name := range t.DestructiveReach {
-		if name != t.Name && !s.granted[name] && !slices.Contains(reached, name) {
-			reached = append(reached, name)
-		}
-	}
-	named = append(named, reached...)
+	named := s.ungranted(t)
 	if len(named) == 0 {
 		return ""
+	}
+	own := named[0] == t.Name
+	reached := named
+	if own {
+		reached = named[1:]
 	}
 	var subject string
 	switch {
@@ -59,6 +50,25 @@ func (s *Server) refusal(t TaskInfo) string {
 	}
 	return fmt.Sprintf("%s; to permit %s, add %s to %s and restart the server",
 		subject, pronoun, strings.Join(named, ","), s.opts.AllowDestructiveFlag)
+}
+
+// ungranted lists the destructive tasks a call to t can run that the operator
+// has not granted: t itself first, so a single restart permits the call, then
+// what it reaches, in the descriptor's order. An embedder's list may repeat a
+// name or include t itself, and each task is still named once (spec 034
+// FR-005). A refusal names these tasks, and an approval covers exactly them
+// (spec 049).
+func (s *Server) ungranted(t TaskInfo) []string {
+	var named []string
+	if t.Destructive && !s.granted[t.Name] {
+		named = append(named, t.Name)
+	}
+	for _, name := range t.DestructiveReach {
+		if name != t.Name && !s.granted[name] && !slices.Contains(named, name) {
+			named = append(named, name)
+		}
+	}
+	return named
 }
 
 // destructiveTasks names reached tasks for a refusal's subject:

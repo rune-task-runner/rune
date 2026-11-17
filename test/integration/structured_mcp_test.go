@@ -151,7 +151,7 @@ func TestStructuredMCP_RefusalHasNone(t *testing.T) {
 	p := startMCP(t, writeRunefile(t, structuredRunefile))
 
 	refused := p.callRaw("clean", `{}`)
-	const refusal = `task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server`
+	refusal := `task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("clean")
 	if refused.Content[0].Text != refusal || !refused.IsError || refused.StructuredContent != nil {
 		t.Errorf("clean: text = %q, isError = %v, structured = %s", refused.Content[0].Text, refused.IsError, refused.StructuredContent)
 	}

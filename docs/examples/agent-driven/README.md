@@ -24,7 +24,8 @@ nothing.
 - `summarize (agent)` runs its body as an instruction via an installed agent CLI.
 - Exposed over MCP, `list-tasks` is marked `[readonly]`, so it tells clients it changes
   nothing; `reset-db` is gated with `[confirm]`,
-  so Rune refuses a call to it unless the server is started with `--allow-destructive reset-db`.
+  so Rune refuses a call to it unless the server is started with `--allow-destructive reset-db`
+  or you [approve that call in your client](../../mcp.md#approving-a-destructive-call-in-the-client).
 - That is a limit on what Rune runs. It does not remove the agent's own shell, where the
   same command can still be typed. See
   [Rune-only agent mode](../../design/rune-only-agent-mode.md).

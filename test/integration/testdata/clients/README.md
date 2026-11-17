@@ -51,7 +51,9 @@ that reply. The tables below link each reply and say in short what it reports.
 | `slow` | When does the client give up on a call, and does it send `notifications/cancelled`? |
 
 The server ran as `rune mcp --allow-destructive clean`, so Rune itself refused nothing. A
-call that did not run was stopped by the client.
+call that did not run was stopped by the client. The two `elicitation.jsonl` recordings
+are the exception: there the server ran as `rune mcp`, with no grant, so that a call to
+`clean` made Rune ask the client for approval.
 
 ## The recordings
 
@@ -67,6 +69,13 @@ This is a compatibility test of an MCP server named rune. Follow these steps in 
 Report the results as a numbered list, one item per step.
 ```
 
+The elicitation prompt, given to both clients unchanged, for the two `elicitation.jsonl`
+recordings:
+
+```text
+This is a compatibility test of an MCP server named rune. Use no tools other than the rune tools, plus a tool-loading or tool-search tool if you need one to reach them. Call the rune tool clean exactly once. Then report: the full tool name; RAN or BLOCKED; and, word for word, the complete text the tool call returned. Do not call it a second time.
+```
+
 ### Claude Code 2.1.325
 
 Every session ran in a copy of `scenario/` as
@@ -79,6 +88,7 @@ flags in the table added. `mcp.json` is the file shown under
 | `session.jsonl`, [reply](claude-code/session.reply.txt) | `--allowedTools mcp__rune`, the main prompt | "CODENAME: heliotrope-41. It appears in the MCP server instructions for `rune`". The tools were `mcp__rune__build`, `mcp__rune__clean`, `mcp__rune__docs-check`, `mcp__rune__fetch`, `mcp__rune__grow`, `mcp__rune__slow`, `mcp__rune__status` and `mcp__rune__tools__lint`. All six calls of step 3 ran. After `grow`, `mcp__rune__late` was listed and returned `late-ok`. |
 | `approval.jsonl`, [reply](claude-code/approval.reply.txt) | No added flag, so no tool was approved. The prompt asked for `status`, `build` and `clean`. | All three were blocked with the same reason: "Claude requested permissions to use mcp__rune__status, but you haven't granted it yet." No call reached Rune. |
 | `timeout.jsonl`, [reply](claude-code/timeout.reply.txt) | `--allowedTools mcp__rune`, with `MCP_TOOL_TIMEOUT=5000` in the environment. The prompt asked for `slow` with `seconds` set to 30. | `MCP server "rune" tool "slow" timed out after 5s` |
+| `elicitation.jsonl`, [reply](claude-code/elicitation.reply.txt) | Recorded on 2026-11-17 with Claude Code 2.1.326, against the branch of spec 049. `--allowedTools mcp__rune`, and the server run as `rune mcp` with no grant. The elicitation prompt below. | "BLOCKED", with the text `task "clean" was not approved: the request was dismissed. Nothing ran.` and the sentence naming `--allow-destructive` and `rune clean`. The recording shows Rune sent `elicitation/create` 1 ms after the call and Claude Code answered `{"action":"cancel"}` 9 ms later. |
 | `project-config.jsonl`, [reply](claude-code/project-config.reply.txt) | `--setting-sources project --allowedTools mcp__rune`, without `--strict-mcp-config` and `--mcp-config`. The same server entry was in `.mcp.json` in the working directory. The prompt asked for `status`. | `status` returned `status-ok`. The recording shows the server was started and called with nothing asking to approve it. The client's start-up event, which is not kept, listed the server `rune` as connected with the source `project`. |
 
 Also in these recordings:
@@ -92,6 +102,8 @@ Also in these recordings:
   call with `[exit 130]` 2 ms later.
 - It ends a session by sending the server an interrupt signal, without closing stdin
   first. Rune exits with code 2 and `rune: context canceled`.
+- It states `"elicitation":{"form":{},"url":{}}` in `initialize`. Run as `claude -p`, it
+  answers a form request with `cancel` by itself (`elicitation.jsonl`).
 
 ### Codex CLI 0.167.0
 
@@ -105,6 +117,7 @@ so a call that needs approval is refused. The model was `gpt-6.1-sol`.
 |---|---|---|
 | `session.jsonl`, [reply](codex/session.reply.txt) | The main prompt | "CODENAME: heliotrope-41. Present before tool calls in the developer context's `mcp__rune` namespace description." The tools were `mcp__rune__build`, `mcp__rune__clean`, `mcp__rune__docs_check`, `mcp__rune__fetch`, `mcp__rune__grow`, `mcp__rune__slow`, `mcp__rune__status` and `mcp__rune__tools__lint`. `status`, `build`, `docs_check` and `tools__lint` ran. `clean` and `fetch` were blocked: "MCP tool call requires approval, but approval policy is never". After `grow` the list was unchanged: "LATE: NOT AVAILABLE". |
 | `approval-mode.jsonl`, [reply](codex/approval-mode.reply.txt) | `-c 'mcp_servers.rune.default_tools_approval_mode="approve"'`. The prompt asked for `clean` and `fetch`. | Both ran: `clean-ok` and `fetch-ok`. |
+| `elicitation.jsonl`, [reply](codex/elicitation.reply.txt) | Recorded on 2026-11-17, against the branch of spec 049. `-c 'mcp_servers.rune.default_tools_approval_mode="approve"'`, so that the call reached Rune, and the server run as `rune mcp` with no grant. The elicitation prompt below. | "BLOCKED", with the text `task "clean" was not approved: the request was declined. Nothing ran.` and the sentence naming `--allow-destructive` and `rune clean`. The recording shows Rune sent `elicitation/create` 1 ms after the call and Codex answered `{"action":"decline"}` 1 ms later. |
 | `list-changed-flag.jsonl`, [reply](codex/list-changed-flag.reply.txt) | `--enable mcp_tool_list_changed`. The prompt asked for `grow`, then `slow` with `seconds` set to 4, then `late` if it existed. | `mcp__rune__late` was listed and returned `late-ok`. |
 | `timeout.jsonl`, [reply](codex/timeout.reply.txt) | The prompt asked for `slow` with `seconds` set to 400. | "tool call failed for `rune/slow`. Caused by: timed out awaiting tools/call after 300s" |
 | `project-config.jsonl`, [reply](codex/project-config.reply.txt) | Without `--ignore-user-config` and the `-c` server keys. The server was a `[mcp_servers.rune]` table in `.codex/config.toml` in the working directory, inside a project the user configuration trusts. The prompt asked for `status`. | `status-ok` |
@@ -120,6 +133,10 @@ Also in these recordings and runs:
   `MCP request cancelled by caller`, 300.0 s after the call. Rune answers the call with
   `[exit 130]` 2 ms later.
 - It ends a session by closing stdin and sending a terminate signal within 1 ms.
+- It states `"elicitation":{"form":{},"url":{}}` in `initialize`, on revision 2025-06-18.
+  Run as `codex exec`, it answers a form request with `decline` by itself
+  (`elicitation.jsonl`). Rune sends `"mode":"form"` in the request, a field that revision
+  does not have, and Codex took the request all the same.
 - Every call carries `_meta` with the session, the model and the sandbox mode. In a Git
   repository it also carries the workspace path, the remote URL and the commit.
 - The same `.codex/config.toml` in a directory that is not a trusted project was ignored

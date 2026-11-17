@@ -96,7 +96,7 @@ func TestUnknownArgsMCP_Refused(t *testing.T) {
 				`unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)`,
 		},
 		{"H", "deploy", `{"env":"nope","replicaz":"5"}`, `unknown argument "replicaz" for task "deploy" (did you mean "replicas"?)`},
-		{"I", "wipe", `{"forcee":true}`, `task "wipe" is destructive; to permit it, add wipe to --allow-destructive and restart the server`},
+		{"I", "wipe", `{"forcee":true}`, `task "wipe" is destructive; to permit it, add wipe to --allow-destructive and restart the server` + cannotAskSuffix("wipe")},
 		{"J", "build", `{"Target":"release"}`, `unknown argument "Target" for task "build" (did you mean "target"?)`},
 		{"K", "build", `{"targte":"s3cret"}`, `unknown argument "targte" for task "build" (did you mean "target"?)`},
 		{"L", "each", `{"namez":["a","b"]}`, `unknown argument "namez" for task "each" (did you mean "names"?)`},

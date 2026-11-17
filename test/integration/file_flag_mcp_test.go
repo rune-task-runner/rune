@@ -323,8 +323,14 @@ func TestFileFlagMCP_ConfirmStillNeedsOptIn(t *testing.T) {
 	project, path, elsewhere := fileFlagDirs(t, runefile)
 
 	text, isError, _ := toolCall(t, elsewhere, []string{"-f", path}, "wipe")
-	if !isError || text != refusedText("wipe") {
-		t.Errorf("wipe without a grant: isError=%v text=%q, want %q", isError, text, refusedText("wipe"))
+	// The command names the Runefile: a bare `rune wipe` where the server was
+	// started would find none.
+	want := refusedText("wipe") + cannotAskWith("rune -f "+path+" wipe")
+	// The server quotes a path a shell would split, which a temporary
+	// directory under a user name with a space is.
+	quoted := refusedText("wipe") + cannotAskWith("rune -f '"+path+"' wipe")
+	if !isError || (text != want && text != quoted) {
+		t.Errorf("wipe without a grant: isError=%v text=%q, want %q", isError, text, want)
 	}
 	if exists(t, project, "wiped") {
 		t.Fatal("an ungranted [confirm] task ran")

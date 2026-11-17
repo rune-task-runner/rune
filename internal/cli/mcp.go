@@ -146,7 +146,10 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 	return destructive, network
 }
 
-var _ mcpserver.ListEngine = (*mcpAdapter)(nil)
+var (
+	_ mcpserver.ListEngine     = (*mcpAdapter)(nil)
+	_ mcpserver.ApprovalEngine = (*mcpAdapter)(nil)
+)
 
 // limit is the output limit in force for this adapter's calls: the
 // operator's flag, else the Runefile's setting, else the default.
@@ -169,12 +172,66 @@ func (a *mcpAdapter) Call(ctx context.Context, name string, args map[string]stri
 // CallLists is Call with a variadic's elements as the agent sent them, so
 // quote_each keeps their boundaries (spec 030).
 func (a *mcpAdapter) CallLists(ctx context.Context, name string, args map[string]string, lists map[string][]string) (mcpserver.Result, error) {
-	return a.call(ctx, name, args, lists, a.limit())
+	return a.call(ctx, name, args, lists, a.limit(), nil)
+}
+
+// CallApproved is CallLists for a call that needs a person's approval: it
+// binds the arguments, puts the call to approve, and runs it only when
+// approve returns nil, with the [confirm] gate of the tasks named passed for
+// this run alone (spec 049).
+func (a *mcpAdapter) CallApproved(ctx context.Context, name string, args map[string]string, lists map[string][]string, tasks []string, approve func(context.Context, mcpserver.ApprovalRequest) error) (mcpserver.Result, error) {
+	return a.call(ctx, name, args, lists, a.limit(), &pendingApproval{tasks: tasks, ask: approve})
+}
+
+// pendingApproval is the approval one call waits for: the [confirm] tasks it
+// would cover and the function that asks the person.
+type pendingApproval struct {
+	tasks []string
+	ask   func(context.Context, mcpserver.ApprovalRequest) error
+}
+
+// approvalRequest describes a bound call for the person asked to approve it:
+// every parameter with what the task will receive, and the [confirm] message
+// of each task named. Values and messages are masked here, where the secret
+// set is. The server only escapes and bounds them.
+func (a *mcpAdapter) approvalRequest(t *ast.Task, params eval.Args, tasks []string) mcpserver.ApprovalRequest {
+	masked := func(s string) string {
+		// MaskString needs a set; an adapter built without one masks nothing.
+		if a.maskSet.Empty() {
+			return s
+		}
+		return a.maskSet.MaskString(s)
+	}
+	var req mcpserver.ApprovalRequest
+	for _, p := range t.Params {
+		arg := mcpserver.ApprovalArg{Name: p.Name}
+		if p.Kind == ast.ParamVariadicPlus || p.Kind == ast.ParamVariadicStar {
+			// The elements, not the joined value: a quote_each body gets
+			// them one by one, so "a b" and "a", "b" are different calls.
+			for _, element := range params.Lists[p.Name] {
+				arg.Values = append(arg.Values, masked(element))
+			}
+		} else {
+			arg.Values = []string{masked(params.Values[p.Name])}
+		}
+		req.Args = append(req.Args, arg)
+	}
+	for _, name := range tasks {
+		task, ok := a.tasks[name]
+		if !ok {
+			continue
+		}
+		if c := task.Attr(ast.AttrConfirm); c != nil {
+			req.Confirmations = append(req.Confirmations, mcpserver.Confirmation{Task: name, Message: masked(c.Str)})
+		}
+	}
+	return req
 }
 
 // call runs a task with each of stdout and stderr captured in at most limit
-// bytes.
-func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]string, lists map[string][]string, limit int) (mcpserver.Result, error) {
+// bytes. With an approval pending, it asks after the arguments are bound and
+// before anything runs.
+func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]string, lists map[string][]string, limit int, pending *pendingApproval) (mcpserver.Result, error) {
 	t, ok := a.tasks[name]
 	if !ok {
 		return mcpserver.Result{}, errorf("unknown task: %s", name)
@@ -240,6 +297,18 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	params, err := bindNamedParams(t, args, lists, scope)
 	if err != nil {
 		return mcpserver.Result{}, err
+	}
+
+	if pending != nil {
+		// Binding ran no command, so nothing has happened yet. The person
+		// is shown the values bound above, which are the ones the run uses.
+		if err := pending.ask(ctx, a.approvalRequest(t, params, pending.tasks)); err != nil {
+			return mcpserver.Result{}, err
+		}
+		eng.approved = make(map[string]bool, len(pending.tasks))
+		for _, task := range pending.tasks {
+			eng.approved[task] = true
+		}
 	}
 
 	runErr := scheduler.Run(eng, []scheduler.Invocation{{Task: t, Params: params}})

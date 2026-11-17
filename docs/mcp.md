@@ -70,8 +70,11 @@ rune mcp --allow-destructive clean
 ```
 
 This lets agents run the `[confirm]` task `clean`. Name each task you allow, separated by
-commas (`--allow-destructive clean,reset`) or with the flag repeated. Every other
-`[confirm]` task stays refused; see [Security model](#security-model-secure-by-default).
+commas (`--allow-destructive clean,reset`) or with the flag repeated. A call that can run
+any other `[confirm]` task is refused, or, with a client that can ask, put to you for
+approval one call at a time; see
+[Approving a destructive call in the client](#approving-a-destructive-call-in-the-client)
+and [Security model](#security-model-secure-by-default).
 
 **Choosing which tasks agents see:**
 
@@ -205,8 +208,8 @@ result of every task run carries the same information as `structuredContent`:
 - The exit code comes from the run, never from the output: a task that prints `[exit 0]`
   and fails has `exitCode` set to its real status.
 - A call that runs no task has no structured content. That is a refused `[confirm]` task,
-  an undeclared argument, a missing required argument, an invalid value, or any other call
-  rejected before the task starts. Such a result is always marked as an error and carries
+  a `[confirm]` call that was not approved, an undeclared argument, a missing required
+  argument, an invalid value, or any other call rejected before the task starts. Such a result is always marked as an error and carries
   its explanation as text.
 - The schema is the same for every tool and allows no other field.
 
@@ -232,9 +235,10 @@ count on this host, because a run skips it.
 - A `false` hint means only that nothing was declared.
 - `RUNE2018` rejects a false `[readonly]` claim: a `[readonly]` task cannot use `[confirm]`,
   and every task it runs must be `[readonly]` too.
-- A tool whose `destructiveHint` comes from a task it can run is refused unless every
-  `[confirm]` task it can run is granted. The refusal names those tasks, and they are the
-  names `--allow-destructive` takes, not the task that reaches them.
+- A tool whose `destructiveHint` comes from a task it can run is refused, or put to the
+  person for approval, unless every `[confirm]` task it can run is granted. The refusal
+  and the approval request name those tasks, and they are the names `--allow-destructive`
+  takes, not the task that reaches them.
 - `[readonly]` on an `agent` task covers what the task runs, not the tools its agent picks at
   run time.
 
@@ -419,7 +423,8 @@ reloaded Runefile: 1 tool added, 0 removed, 0 changed
   `.env` files again, but a change to one does not start a reload.
 
 With reloading, whoever can write the Runefile can change what a tool runs while the server
-is up. `[confirm]` tasks still need `--allow-destructive` by name, and `--allow` still
+is up. `[confirm]` tasks still need `--allow-destructive` by name or your approval of the
+call, an approval given before a reload is not used after it, and `--allow` still
 limits which names are tools. To keep exactly the tasks read at start, run
 `rune mcp --no-reload`: the server then watches no file.
 
@@ -435,15 +440,23 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   [Rune-only agent mode](design/rune-only-agent-mode.md) says which clients can do that
   and how, and where the limit ends.
 - **Destructive tasks are refused by default.** A task marked `[confirm("…")]` is still
-  listed, annotated with the MCP `DestructiveHint`, but a call to it is refused and nothing
-  runs. A call that can run an ungranted `[confirm]` task through a dependency or hook is
-  refused too, before anything runs. The refusal names every task to add and the flag that
-  permits them, for example:
-  `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`.
+  listed, annotated with the MCP `DestructiveHint`, but a call to it runs only if the
+  operator granted the task or the person at the client approves that call. With neither,
+  it is refused and nothing runs. The same holds for a call that can run an ungranted
+  `[confirm]` task through a dependency or hook: nothing runs before the grant or the
+  approval. The refusal names every task to add and the flag that permits them, for
+  example, from a client that cannot be asked:
+  `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server. Or the operator can run "rune release" themselves. Rune could not ask for approval here: the client does not support MCP form elicitation.`
+- **The person can approve one call.** A client that can show a form request is asked,
+  and the call runs once on an explicit yes; see
+  [Approving a destructive call in the client](#approving-a-destructive-call-in-the-client).
+  Rune trusts the client to show the request and to report your answer. A client set up to
+  answer by itself approves for you, so connect only clients whose answer you trust.
 - **The operator allows destructive tasks one by one.** Start the server with
   `--allow-destructive clean,reset` (or the flag repeated) to let agents run those tasks.
-  A granted task also runs when another task reaches it as a dependency or hook. A grant
-  never covers any other task, including a destructive dependency of the granted task.
+  A granted task also runs when another task reaches it as a dependency or hook, and is
+  never asked about. A grant never covers any other task, including a destructive
+  dependency of the granted task.
 - **There is no blanket switch.** No option allows all destructive tasks, and
   `rune serve` and `rune mcp` do not accept `--yes`.
 - **The operator chooses which tasks are tools.** `--allow` and `--deny` narrow the tool
@@ -452,8 +465,11 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
 - **`--allow` and `--deny` cover direct calls only.** The dependencies and hooks of an
   exposed task still run, whether or not they are exposed. With `release: deploy`,
   `--deny deploy` stops an agent calling `deploy` but not `release`. To stop a task running
-  at all, hide the tasks that depend on it too, or mark it `[confirm]`: a `[confirm]` task
-  the operator has not named in `--allow-destructive` is refused wherever a run reaches it.
+  at all, hide the tasks that depend on it too. Marking it `[confirm]` is not enough by
+  itself: a `[confirm]` task the operator has not named in `--allow-destructive` runs when
+  the person approves a call that reaches it, and the approval request names it. A later
+  edit to the Runefile can add a new path to a task, so check `--deny` when dependencies
+  change.
 - **`--allow` grants nothing destructive.** A `[confirm]` task needs `--allow-destructive`
   whichever of the two filters is set, and a grant does not make a hidden task a tool.
 - **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint` on the task and on
@@ -475,11 +491,102 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
 status:
     @git status --short
 
-# Destructive: refused over MCP unless allowed with --allow-destructive clean.
+# Destructive: over MCP it runs only when allowed with --allow-destructive clean,
+# or when the person approves that call in the client.
 [confirm("Delete all build output?")]
 clean:
     rm -rf dist
 ```
+
+## Approving a destructive call in the client
+
+When a call can run a `[confirm]` task you did not name in `--allow-destructive`, `rune mcp`
+and `rune serve` ask you, in your client, to approve that one call. This uses MCP
+[elicitation](https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation):
+Rune sends a form request while the call waits, and the client shows it.
+
+```text
+Approve this Rune task call?
+
+Task: release
+Arguments:
+- version: "1.2.3"
+Destructive tasks it can run:
+- clean: Delete all build output?
+
+Approving runs this call once.
+```
+
+The form has one checkbox, `approved`, which starts unticked. The client decides how the
+request looks.
+
+- **When Rune asks.** After it has checked that the tool exists and the arguments are
+  valid, and before any task, dependency or hook of the call runs. A call with a
+  misspelled argument gets the argument error and no request.
+- **What the request shows.** The called task, each argument with the value the task will
+  receive (defaults included, each element of a variadic on its own), and every `[confirm]`
+  task the call can run that is not granted, with the message its author wrote. A task
+  whose `[confirm]` has no message shows `Run "NAME"?`, as the command line does.
+- **What counts as yes.** Accepting the form with `approved` ticked. Nothing the agent
+  sends counts: an argument named `approved` is an unknown argument like any other.
+- **What an approval covers.** The tasks the request named, for that call, once. The next
+  call is asked about again, with the same or other arguments. Two calls at once get two
+  requests. A `[confirm]` task the request did not name is still declined if a run reaches
+  it. If the server [reloads](#reloading) the Runefile while you are deciding, the approval
+  is not used and the agent is told to call again.
+- **Granted tasks are not asked about.** `--allow-destructive clean` is your standing
+  decision for `clean`, and a request never lists it.
+- **Rune waits five minutes.** After that the request is withdrawn and nothing runs. A
+  client with a shorter limit on a call ends it first.
+- **Secrets and long values.** Values and messages are masked like task output. A line
+  break or other unprintable character in a value is shown as an escape, so a value cannot
+  pass for a line of the request. An argument value is never shortened, because the task
+  would run with all of it. A call whose request would be over 8 KiB is refused, not asked
+  about.
+
+Anything but that yes runs nothing. The result is an error with text only:
+
+| What happened | The result says |
+|---|---|
+| You declined | `task "release" was not approved: the request was declined. Nothing ran.` |
+| You closed the request without choosing | `... the request was dismissed. Nothing ran.` |
+| You accepted with `approved` unticked | `... approval was not given. Nothing ran.` |
+| No answer in five minutes | `... no answer arrived within 5m0s. Nothing ran.` |
+| The client sent something else, or an error, or went away | `... the client returned no valid answer. Nothing ran.` |
+| The Runefile was reloaded meanwhile | `... the Runefile changed while the request was pending; call again. Nothing ran.` |
+| The client cancelled the call | `... the call was cancelled. Nothing ran.` |
+
+The first five end with what the operator can do, because a "no" is not always yours: a
+client run with nobody at it answers by itself.
+
+```text
+task "release" was not approved: the request was declined. Nothing ran. To run it without a request, the operator can add clean to --allow-destructive and restart the server, or run "rune release" themselves.
+```
+
+The command names the task only: add the arguments the task needs. A server started with
+[`-f`](#starting-the-server) names its Runefile in that command, as
+`rune -f /path/to/project/Runefile release`: a bare `rune release` in another directory
+would not find it.
+
+**A client that cannot ask.** Rune asks only a client that stated, when it connected, that
+it can show a form. A client that stated no elicitation, or only the kind that opens a web
+page, is refused as before, and the text adds the command and the reason:
+
+```text
+task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server. Or the operator can run "rune release" themselves. Rune could not ask for approval here: the client does not support MCP form elicitation.
+```
+
+**Rune trusts the client for the answer.** It cannot see who answered. A client that
+answers such requests by itself approves for you: Claude Code can be configured to do that
+with an [`Elicitation` hook](https://code.claude.com/docs/en/hooks#elicitation). Nothing
+limits how often an agent can make the client ask, either. To keep a task from ever running
+in an agent session, see [Security model](#security-model-secure-by-default).
+[Client compatibility](#client-compatibility) says what each client does with the request.
+
+**Protocol revisions.** The request is the `elicitation/create` a server sends during a
+tool call, as MCP revisions 2025-06-18 and 2025-11-25 define it. Revision 2026-07-28
+carries elicitation as a repeated tool call. Rune does not negotiate that revision, and
+never accepts an approval from a repeated call: a call sent again is a new call.
 
 ## Agent task bodies
 
@@ -494,7 +601,8 @@ summarize (agent):
 ```
 
 The endpoint an `agent` task opens for its own agent never lets that agent run a
-destructive task. Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
+destructive task, and never asks for approval, whatever that agent's client states.
+Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
 `--deny` do not reach that endpoint either: they apply only to `rune serve` and `rune mcp`.
 
 The agent a task launches keeps the tools its own configuration gives it, a shell among
@@ -504,7 +612,7 @@ them. Rune does not restrict them.
 
 ## Client compatibility
 
-How five agent clients handle what Rune sends them, as of 2026-11-15. Clients change
+How five agent clients handle what Rune sends them, as of 2026-11-17. Clients change
 often, so check the version before you rely on a row.
 
 Every cell names its evidence:
@@ -534,6 +642,9 @@ cell in their columns comes from reading, and none of them has a recording.
 | Default limit on one call | About 28 hours, or 30 minutes without a reply (docs) | 300 seconds (recorded) | 60 seconds in the CLI, longer in the editor (staff) | None found (source) | 60 seconds (source) |
 | Sends `notifications/cancelled` at the limit | Yes (recorded) | Yes (recorded) | Unknown | Has no limit | No (source) |
 | Sends `notifications/cancelled` when the user stops a call | Not tested | Not tested | Missing in 1.7.54 (staff). A user reported it fixed in 2.x | Yes (source) | No (source) |
+| Elicitation modes stated when it connects | Form and URL (recorded) | Form and URL (recorded) | Unknown. Elicitation is supported (staff) | Unknown. Form and URL are supported (docs) | Unknown. Elicitation is not supported (docs) |
+| A [`[confirm]` call with no grant](#approving-a-destructive-call-in-the-client) | Without a terminal: asked, and the client dismisses the request by itself (recorded, 2.1.326). In a terminal: a dialog (docs), not tested | Without a terminal: asked, and the client declines by itself (recorded). In a terminal: not tested | Not tested. The request is shown (staff), but not when several windows are open, 3.6.31 (staff) | Not tested. The request is shown during an active turn (docs) | Not tested. Without elicitation, Rune refuses and does not ask |
+| When nobody answers the request | Answers `cancel` in 9 ms (recorded, 2.1.326) | Answers `decline` in 1 ms (recorded) | A request that is not shown waits until the call times out, 3.6.31 (staff) | Cancelled in Autopilot, declined when there is no active turn (docs) | Does not apply |
 
 ### What this means for a Runefile
 
@@ -550,6 +661,14 @@ cell in their columns comes from reading, and none of them has a recording.
   Code runs a tool with `readOnlyHint` without asking (source). Codex does not ask for a
   `[network]` tool that has `readOnlyHint` (source). Claude Code and Zed decide the same
   way for every tool, whatever its hints.
+- **A `[confirm]` task needs a grant in a session with nobody at it.** Claude Code and
+  Codex both tell Rune they can show a form, also when they run without a terminal. Rune
+  then asks, and the client answers by itself: `claude -p` dismisses the request and
+  `codex exec` declines it (recorded). Nothing runs, and the result says what the operator
+  can do. For such a session, name the task in `--allow-destructive`. Where a person is at
+  the client, they can [approve the call](#approving-a-destructive-call-in-the-client)
+  there: documented for Claude Code and VS Code, stated by Cursor's staff, and not tested
+  in any client.
 - **Module tasks work.** Claude Code and Codex both called `tools__lint` (recorded). No
   client was found that splits a tool name at its double underscore.
 - **A hyphen is an underscore in Codex.** It shows `docs-check` as `docs_check` and calls
@@ -573,7 +692,7 @@ cell in their columns comes from reading, and none of them has a recording.
 
 ### Claude Code
 
-Tested: version 2.1.325 on Linux, as `claude -p`.
+Tested: version 2.1.325 on Linux, as `claude -p`, and 2.1.326 for the approval request.
 
 ```json
 {
@@ -601,11 +720,21 @@ Tested: version 2.1.325 on Linux, as `claude -p`.
   progress notification, and Rune sends no progress notifications;
   `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` changes that (docs). With `MCP_TOOL_TIMEOUT=5000`,
   it sent `notifications/cancelled` 5 seconds after the call (recorded).
-- **Not tested.** Stopping a call with Esc, and an interactive session.
+- **Approval in the client.** It states the form and the URL mode (recorded), which needs
+  2.1.287 or later (docs). Run as `claude -p` in 2.1.326, it answered Rune's request with
+  `cancel` after 9 ms, and the model was given
+  `task "clean" was not approved: the request was dismissed. Nothing ran.` with the two
+  ways out (recorded). In a terminal session it shows a dialog with the form's fields
+  (docs). An [`Elicitation` hook](https://code.claude.com/docs/en/hooks#elicitation)
+  answers requests with no dialog (docs): with one that accepts, Claude Code approves for
+  you.
+- **Not tested.** Stopping a call with Esc, and an interactive session, the approval
+  dialog included.
 
 Sources: [MCP](https://code.claude.com/docs/en/mcp),
 [environment variables](https://code.claude.com/docs/en/env-vars),
-[permissions](https://code.claude.com/docs/en/permissions).
+[permissions](https://code.claude.com/docs/en/permissions),
+[hooks](https://code.claude.com/docs/en/hooks).
 
 ### Codex CLI
 
@@ -640,8 +769,14 @@ args = ["mcp"]
 - **Limits.** It sent `notifications/cancelled` 300 seconds after the call (recorded). The
   documentation gives the default as 60 seconds; 0.167.0 uses 300 (source). Set
   `tool_timeout_sec` in the server's table to choose (docs).
+- **Approval in the client.** It states the form and the URL mode, on revision 2025-06-18
+  (recorded). With `default_tools_approval_mode = "approve"`, so that the call reached
+  Rune, `codex exec` answered Rune's request with `decline` after 1 ms, and the model was
+  given `task "clean" was not approved: the request was declined. Nothing ran.` with the
+  two ways out (recorded). So under `codex exec` a `[confirm]` task runs only when it is
+  named in `--allow-destructive`. The documentation says nothing about elicitation.
 - **Not tested.** An interactive session, where Codex asks for approval and does not
-  refuse.
+  refuse, and what it shows for Rune's request there.
 
 Sources: [MCP](https://developers.openai.com/codex/mcp), and
 [`openai/codex`](https://github.com/openai/codex/tree/rust-v0.167.0/codex-rs) at tag
@@ -682,6 +817,12 @@ its staff on the Cursor forum, and each forum statement is about the version nam
   Stopping a call did not send `notifications/cancelled` in 1.7.54
   ([staff](https://forum.cursor.com/t/cursor-doesnt-send-mcp-cancellation-notifications-when-user-clicks-cancel-button/138669)).
   The reporter wrote a week later that 2.x seemed to fix it.
+- **Approval in the client.** Cursor supports elicitation "in both the Editor Window and
+  the Agents Window", but with several windows open the request can go to the wrong one
+  and is not shown, 3.6.31; the call then waits until it times out. No fix was announced
+  by 2026-07-09
+  ([staff](https://forum.cursor.com/t/mcp-elicitation-does-not-render-in-the-cursor-agents-window-on-macos/162243)).
+  Which modes it states, and what the form looks like, are unknown.
 
 Source: [MCP](https://cursor.com/docs/context/mcp).
 
@@ -720,8 +861,13 @@ source of [`microsoft/vscode`](https://github.com/microsoft/vscode) at commit `9
 - **Reload.** It lists the tools again on the notification (source).
 - **Limits.** No limit on a call was found. Cancelling a call sends
   `notifications/cancelled` (source).
+- **Approval in the client.** "Copilot supports form and URL elicitation during an active
+  turn", and VS Code draws the input. A request is cancelled in Autopilot and declined
+  when there is no active turn (docs). Either way Rune runs nothing. What it states when
+  it connects was not read.
 
 Sources: [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration),
+[MCP developer guide](https://code.visualstudio.com/api/extension-guides/ai/mcp#elicitation),
 and in `src/vs/workbench/contrib/mcp/common/`: `mcpLanguageModelToolContribution.ts`,
 `mcpServer.ts`, `mcpServerRequestHandler.ts`, `mcpTypes.ts`. The prompt is built in
 `extensions/copilot/src/extension/prompts/node/agent/defaultAgentInstructions.tsx`.
@@ -755,6 +901,10 @@ they are about Zed's own agent, not an external agent that Zed runs.
 - **Limits.** 60 seconds for one call. `context_server_timeout`, or `timeout` in the
   server's entry, sets another number of seconds, up to 600. At the limit, and when the
   user stops a call, Zed stops waiting and sends Rune nothing (source).
+- **Approval in the client.** Zed "currently supports MCP's Tools and Prompts features",
+  and lists elicitation among the features it does not have (docs). A client without it
+  is not asked: Rune refuses the call and names `--allow-destructive`. What Zed states
+  when it connects was not read.
 
 Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
 `context_server/src/types.rs`, `context_server/src/client.rs`,

@@ -58,7 +58,7 @@ func (a *mcpAdapter) gatherContext(ctx context.Context, stderr io.Writer) string
 	// contextMaxBytes is used. So the capture has its own size: a small
 	// output limit cannot cut the text before capAgentText sees the overflow,
 	// and a large one does not hold a noisy hook's output (spec 042 FR-011).
-	res, err := a.call(cctx, t.Name, map[string]string{}, nil, contextCaptureBytes)
+	res, err := a.call(cctx, t.Name, map[string]string{}, nil, contextCaptureBytes, nil)
 	if err != nil || res.ExitCode != ExitSuccess {
 		// One message, two surfaces: the stderr warning and the in-context
 		// notice must stay identical so users can grep for either.

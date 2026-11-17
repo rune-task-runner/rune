@@ -214,16 +214,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// Run the [context] hook once at server start; its masked output becomes
 	// the instructions of every session's initialize result (spec 021 FR-002).
 	instructions := adapter.gatherContext(ctx, opts.Stderr)
-	srv := mcpserver.New(adapter, mcpserver.Options{
-		AllowDestructive:     granted,
-		AllowDestructiveFlag: "--allow-destructive",
-		AllowList:            allow,
-		DenyList:             deny,
-		OutputLimit:          adapter.limit(),
-		Version:              opts.Version,
-		Instructions:         instructions,
-		Reloadable:           !opts.MCPNoReload,
-	})
+	srv := mcpserver.New(adapter, serveMCPOptions(opts.Version, runCommand(opts.File, runefile), granted, allow, deny, adapter.limit(), instructions, !opts.MCPNoReload))
 	// The counts are reported only when a filter was given, so the startup
 	// line of an unfiltered server does not change (spec 041 FR-016).
 	var exp *exposure
@@ -251,6 +242,57 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		})
 	}
 	return srv.ServeStdio(ctx)
+}
+
+// serveMCPOptions is how `rune mcp` and `rune serve` configure the server.
+// It asks the person at the client to approve a destructive call the operator
+// did not grant, where the client can ask (spec 049). The endpoint of an
+// agent task is configured by agentMCPOptions and never asks.
+func serveMCPOptions(version, runCommand string, granted, allow, deny []string, outputLimit int, instructions string, reloadable bool) mcpserver.Options {
+	return mcpserver.Options{
+		AllowDestructive:     granted,
+		AllowDestructiveFlag: "--allow-destructive",
+		AskApproval:          true,
+		RunCommand:           runCommand,
+		AllowList:            allow,
+		DenyList:             deny,
+		OutputLimit:          outputLimit,
+		Version:              version,
+		Instructions:         instructions,
+		Reloadable:           reloadable,
+	}
+}
+
+// runCommand is the command a person runs a task of the served Runefile
+// with. A server started with --file does not serve the Runefile of the
+// directory the person is in, so a bare `rune clean` there could find none,
+// or run another project's clean: the command then names the Runefile.
+func runCommand(fileFlag, runefile string) string {
+	if fileFlag == "" {
+		return "rune"
+	}
+	return "rune -f " + shellWord(runefile, runtime.GOOS)
+}
+
+// shellSpecial are the characters that end or change a word in a POSIX shell
+// or in PowerShell. A backslash is not one of them: it separates the parts of
+// a Windows path, which must stay as it is.
+const shellSpecial = " \t'\"&;|<>()$`*?[]{}!#,"
+
+// shellWord writes path so that a shell reads it as one word: a person
+// pastes the command, and `/srv/R&D/Runefile` unquoted would run something
+// else. Single quotes hold every character in a POSIX shell and in
+// PowerShell. Only a single quote inside needs care, and the two shells
+// write it differently.
+func shellWord(path, goos string) string {
+	if !strings.ContainsAny(path, shellSpecial) {
+		return path
+	}
+	inner := `'\''`
+	if goos == "windows" {
+		inner = "''"
+	}
+	return "'" + strings.ReplaceAll(path, "'", inner) + "'"
 }
 
 // parseOutputLimitFlag reads --output-limit. Nil, the flag not given, is 0:

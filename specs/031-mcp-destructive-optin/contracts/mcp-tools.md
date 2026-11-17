@@ -33,6 +33,27 @@ The text names the task, not the tool, so it can be pasted into the flag.
 | `release: _wipe` (`_wipe` private) | `_wipe` | `_wipe` runs as a dependency; it is still not a tool |
 | `clean: wipe`, both `[confirm]` | `clean` | `isError: true`, `[exit 1]`; neither body runs |
 
+## Interactive approval (spec 049)
+
+Spec 049 adds a second way for a destructive call to run on `rune mcp` and `rune serve`:
+the person at the client approves that one call. It changes the rows above whose result is
+a refusal or a bare `[exit 1]` for want of a grant. Spec 034 had already replaced the bare
+`[exit 1]` rows with an up-front refusal.
+
+| Client | No grant, call `clean` | No grant, call `release` (`release: clean`) |
+|---|---|---|
+| States MCP form elicitation | Rune sends one approval request naming `clean` and its `[confirm]` message. Approved: `clean` runs once. Anything else: `isError: true`, `task "clean" was not approved: REASON. Nothing ran.`, and nothing runs | One request names `clean`, before anything runs. Approved: `clean`, then `release`, run once |
+| States no elicitation, or the URL mode only | `isError: true`, the refusal text above followed by `. Or the operator can run "rune clean" themselves. Rune could not ask for approval here: the client does not support MCP form elicitation.` Nothing runs | The up-front refusal of spec 034 with the same two sentences, naming `rune release` |
+
+- A granted task is never asked about, and a call whose destructive tasks are all granted
+  runs with no request, as in the tables above.
+- An approval covers the tasks its request named, for that call, once. It is not a grant:
+  the next call is asked about again, and no session or later call can use it.
+- The agent-executor endpoint never asks. Its texts are unchanged.
+
+The request, every outcome text and the library contract are in
+[specs/049-mcp-confirm-elicitation/contracts](../../049-mcp-confirm-elicitation/contracts/mcp-tools.md).
+
 ## Transports and sessions
 
 The grant applies to every session on stdio and Streamable HTTP alike, for the

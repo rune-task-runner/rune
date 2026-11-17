@@ -1,0 +1,6 @@
+mcp__rune__clean
+BLOCKED
+
+```text
+task "clean" was not approved: the request was declined. Nothing ran. To run it without a request, the operator can add clean to --allow-destructive and restart the server, or run "rune clean" themselves.
+```

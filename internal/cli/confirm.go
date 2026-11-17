@@ -30,6 +30,11 @@ func (e *engine) confirmFailure(task *ast.Task, prompt string) *TaskFailure {
 	if e.grants[task.Name] {
 		return nil
 	}
+	// Likewise by name: an approval covers the tasks its request showed the
+	// person, and no other (spec 049 FR-014).
+	if e.approved[task.Name] {
+		return nil
+	}
 	switch e.confirm(task, prompt) {
 	case confirmApproved:
 		return nil

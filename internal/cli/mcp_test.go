@@ -313,12 +313,19 @@ func TestAgentAdapterGrantsNothing(t *testing.T) {
 // serverSession connects a client to srv over an in-memory transport.
 func serverSession(t *testing.T, srv *mcpserver.Server) *mcp.ClientSession {
 	t.Helper()
+	return clientSession(t, srv, nil)
+}
+
+// clientSession is serverSession with client options, so a test can state
+// capabilities and answer approval requests.
+func clientSession(t *testing.T, srv *mcpserver.Server, opts *mcp.ClientOptions) *mcp.ClientSession {
+	t.Helper()
 	ct, st := mcp.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := srv.MCP().Connect(ctx, st, nil); err != nil {
 		t.Fatal(err)
 	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil).Connect(ctx, ct, nil)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, opts).Connect(ctx, ct, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,5 +716,38 @@ func TestAgentEndpointBindsLoopback(t *testing.T) {
 	cfg.Warn("message")
 	if got := stderr.String(); got != "warning: message\n" {
 		t.Errorf("Warn printed %q, want %q", got, "warning: message\n")
+	}
+}
+
+// Spec 049 FR-022 (quickstart X): the endpoint an agent task opens never asks
+// for approval, whatever the agent's client states, and refuses as before.
+func TestAgentEndpointNeverAsks(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.ToSlash(filepath.Join(dir, "clean.done"))
+	eng, _, _ := confirmEngine(t, "[confirm]\nclean:\n    @echo cleaned > '"+marker+"'\n", nil, false, false)
+	adapter := eng.newAgentAdapter()
+	opts := eng.agentMCPOptions(adapter.limit())
+	if opts.AskApproval || opts.RunCommand != "" {
+		t.Errorf("agentMCPOptions asks for approval: %+v", opts)
+	}
+	asked := 0
+	client := &mcp.ClientOptions{ElicitationHandler: func(context.Context, *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+		asked++
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"approved": true}}, nil
+	}}
+	cs := clientSession(t, mcpserver.New(adapter, opts), client)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "clean"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `task "clean" is destructive and is not allowed in this session`
+	if !res.IsError || resultText(res) != want {
+		t.Errorf("isError=%v text=%q, want %q", res.IsError, resultText(res), want)
+	}
+	if asked != 0 {
+		t.Errorf("the agent's client was asked %d times", asked)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("clean ran on the agent endpoint")
 	}
 }

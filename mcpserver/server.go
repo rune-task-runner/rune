@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -57,12 +58,14 @@ type TaskInfo struct {
 	Doc    string
 	Params []ParamInfo
 	// Destructive marks the task itself destructive. A call is refused unless
-	// the task is granted, and the tool advertises DestructiveHint.
+	// the task is granted or, with Options.AskApproval, the person at the
+	// client approves the call. The tool advertises DestructiveHint.
 	Destructive bool
 	// DestructiveReach names the destructive tasks a run of this task can
 	// reach through its dependencies and hooks: each once, not the task
 	// itself, in the order a run first reaches them. A call is refused unless
-	// every one is granted, and a non-empty list sets DestructiveHint. Nil
+	// every one is granted or, with Options.AskApproval, named in an approval
+	// the person gives for the call. A non-empty list sets DestructiveHint. Nil
 	// leaves the engine alone to decline such a task when a run reaches it.
 	DestructiveReach []string
 	// Network says the task, or anything a run of it can reach, uses the
@@ -142,12 +145,55 @@ type ListEngine interface {
 	CallLists(ctx context.Context, name string, args map[string]string, lists map[string][]string) (Result, error)
 }
 
+// ApprovalEngine is an optional Engine extension. An engine that implements
+// it can run a call a person approved through the client (spec 049).
+type ApprovalEngine interface {
+	// CallApproved prepares the call as CallLists would, without running
+	// anything, and calls approve with what the person must see. When
+	// approve returns an error, CallApproved runs nothing and returns that
+	// error unchanged. When it returns nil, CallApproved runs the call once,
+	// with the [confirm] gate of exactly the tasks named in tasks passed for
+	// this run only. It must not approve any other task, and must not keep
+	// the approval after it returns.
+	CallApproved(ctx context.Context, name string, args map[string]string,
+		lists map[string][]string, tasks []string,
+		approve func(context.Context, ApprovalRequest) error) (Result, error)
+}
+
+// ApprovalRequest is what an engine reports about a call that needs
+// approval. Every string must already be masked: this package escapes and
+// cuts them but knows no secret.
+type ApprovalRequest struct {
+	// Args are the called task's parameters with the values it will run
+	// with, defaults included, in declaration order.
+	Args []ApprovalArg
+	// Confirmations give the confirmation message of each task named in
+	// CallApproved's tasks. A task with no entry is shown with a default
+	// question.
+	Confirmations []Confirmation
+}
+
+// ApprovalArg is one parameter and what it is bound to: one value, or a
+// variadic's elements, which may be none.
+type ApprovalArg struct {
+	Name   string
+	Values []string
+}
+
+// Confirmation is one destructive task and the message its author wrote.
+type Confirmation struct{ Task, Message string }
+
+// DefaultApprovalTimeout is how long an approval request waits when
+// Options.ApprovalTimeout is not set.
+const DefaultApprovalTimeout = 5 * time.Minute
+
 // Options configures authorization for the server.
 type Options struct {
 	// AllowDestructive names the destructive ([confirm]) tasks that may be
 	// called or run. A call is refused before the engine runs when the task
 	// itself, or any task in its DestructiveReach, is destructive and not named
-	// here. There is no value that permits all of them. The Engine must still
+	// here, unless AskApproval puts the call to the person at the client.
+	// There is no value that permits all of them. The Engine must still
 	// approve the confirmation of exactly these tasks, wherever a run reaches
 	// them; the rune CLI adapter does.
 	AllowDestructive []string
@@ -157,6 +203,20 @@ type Options struct {
 	// such as the endpoint of a rune agent task: the refusal then offers no
 	// remedy.
 	AllowDestructiveFlag string
+	// AskApproval asks the person at the client to approve a call that can run
+	// a destructive task AllowDestructive does not name, when the client stated
+	// MCP form elicitation and the Engine is an ApprovalEngine. The call runs
+	// once only on an explicit yes. Without both, and when this is false, such
+	// a call is refused.
+	AskApproval bool
+	// ApprovalTimeout is how long an approval request waits for an answer.
+	// Zero or less means DefaultApprovalTimeout.
+	ApprovalTimeout time.Duration
+	// RunCommand is the command a person runs a task of this server with,
+	// such as "rune" or "rune -f /repo/Runefile". When set, the refusal given
+	// to a client that cannot be asked, and the result of a request that was
+	// not approved, say to run it with the called task's name.
+	RunCommand string
 	// AllowList, when non-empty, exposes only these tasks as tools. A task
 	// outside it is not listed and cannot be called. It never adds a task the
 	// Engine does not offer.

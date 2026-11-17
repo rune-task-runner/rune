@@ -234,3 +234,20 @@ func TestConfirmGrantIsPerTask(t *testing.T) {
 		})
 	}
 }
+
+// Spec 049 FR-014: a person's approval of one call stands in for the answer
+// of the tasks it named, and of no other task.
+func TestConfirmFailureApproved(t *testing.T) {
+	src := "[confirm]\nclean:\n    @echo clean\n\n[confirm]\nwipe:\n    @echo wipe\n"
+	eng, _, stderr := confirmEngine(t, src, nil, false, false)
+	eng.approved = map[string]bool{"clean": true}
+	if f := eng.confirmFailure(eng.tasks["clean"], ""); f != nil {
+		t.Errorf("approved task declined: %v", f.Err)
+	}
+	if f := eng.confirmFailure(eng.tasks["wipe"], ""); f == nil {
+		t.Error("a task the approval did not name passed the gate")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("the gate wrote to stderr: %q", stderr.String())
+	}
+}

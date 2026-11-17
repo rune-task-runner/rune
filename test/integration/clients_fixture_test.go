@@ -202,6 +202,17 @@ func TestClientRecordings(t *testing.T) {
 			cancelAfter: noCancel,
 		},
 		{
+			// Recorded for spec 049, one patch release later than the rest.
+			file: "claude-code/elicitation.jsonl", client: "claude-code", version: "2.1.326",
+			called:      []string{"clean"},
+			cancelAfter: noCancel,
+		},
+		{
+			file: "codex/elicitation.jsonl", client: "codex-mcp-client", version: "0.167.0",
+			called:      []string{"clean"},
+			cancelAfter: noCancel,
+		},
+		{
 			file: "codex/session.jsonl", client: "codex-mcp-client", version: "0.167.0",
 			called:      []string{"status", "build", "docs-check", "tools__lint", "grow", "slow"},
 			relists:     false,
@@ -317,6 +328,167 @@ func TestClientRecordings(t *testing.T) {
 		}
 		if !seen[filepath.ToSlash(rel)] {
 			t.Errorf("recording %s has no case in this test", filepath.ToSlash(rel))
+		}
+	}
+}
+
+// statedElicitation returns the elicitation modes a client stated in its
+// initialize request: whether it stated the capability at all, and whether
+// it named the form and the URL mode.
+func statedElicitation(steps []recStep) (stated, form, url bool) {
+	init := find(steps, 0, "client", "initialize")
+	if init < 0 {
+		return false, false, false
+	}
+	var msg struct {
+		Params struct {
+			Capabilities struct {
+				Elicitation *struct {
+					Form *struct{} `json:"form"`
+					URL  *struct{} `json:"url"`
+				} `json:"elicitation"`
+			} `json:"capabilities"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(steps[init].Msg, &msg); err != nil || msg.Params.Capabilities.Elicitation == nil {
+		return false, false, false
+	}
+	e := msg.Params.Capabilities.Elicitation
+	return true, e.Form != nil, e.URL != nil
+}
+
+// approvalExchange is what a recording shows of one approval request: the
+// mode Rune asked in, the action the client answered with, how long the
+// client took, and the text Rune then gave for the tool call. asked is false
+// when Rune sent no request.
+type approvalExchange struct {
+	asked    bool
+	mode     string
+	action   string
+	answerMS int64
+	result   string
+}
+
+// approvalIn reads the first elicitation/create of a recording, the client's
+// answer to it, and the result of the first tools/call.
+func approvalIn(steps []recStep) approvalExchange {
+	var x approvalExchange
+	request := find(steps, 0, "server", "elicitation/create")
+	if request < 0 {
+		return x
+	}
+	x.asked = true
+	var sent struct {
+		Params struct {
+			Mode string `json:"mode"`
+		} `json:"params"`
+	}
+	_ = json.Unmarshal(steps[request].Msg, &sent)
+	x.mode = sent.Params.Mode
+	for _, s := range steps[request+1:] {
+		if s.From != "client" || !bytes.Equal(s.msg.ID, steps[request].msg.ID) || s.msg.Method != "" {
+			continue
+		}
+		var answer struct {
+			Result struct {
+				Action string `json:"action"`
+			} `json:"result"`
+		}
+		_ = json.Unmarshal(s.Msg, &answer)
+		x.action, x.answerMS = answer.Result.Action, s.MS-steps[request].MS
+		break
+	}
+	if call := find(steps, 0, "client", "tools/call"); call >= 0 {
+		for _, s := range steps[call+1:] {
+			if s.From == "server" && bytes.Equal(s.msg.ID, steps[call].msg.ID) && s.msg.Result != nil && len(s.msg.Result.Content) == 1 {
+				x.result = s.msg.Result.Content[0].Text
+			}
+		}
+	}
+	return x
+}
+
+func TestApprovalIn(t *testing.T) {
+	recording := `{"ms":1,"from":"client","msg":{"id":0,"method":"initialize","params":{"capabilities":{"elicitation":{"form":{}}}}}}
+{"ms":5,"from":"client","msg":{"id":2,"method":"tools/call","params":{"name":"clean"}}}
+{"ms":6,"from":"server","msg":{"id":1,"method":"elicitation/create","params":{"mode":"form","message":"Approve?"}}}
+{"ms":30,"from":"client","msg":{"id":1,"result":{"action":"decline"}}}
+{"ms":31,"from":"server","msg":{"id":2,"result":{"isError":true,"content":[{"type":"text","text":"not approved"}]}}}
+{"ms":40,"event":"server exited with code 0"}`
+	steps := parseRecording(t, []byte(recording))
+	if stated, form, url := statedElicitation(steps); !stated || !form || url {
+		t.Errorf("statedElicitation = %v, %v, %v, want form only", stated, form, url)
+	}
+	want := approvalExchange{asked: true, mode: "form", action: "decline", answerMS: 24, result: "not approved"}
+	if got := approvalIn(steps); got != want {
+		t.Errorf("approvalIn = %+v, want %+v", got, want)
+	}
+
+	plain := parseRecording(t, []byte(`{"ms":1,"from":"client","msg":{"id":0,"method":"initialize","params":{"capabilities":{}}}}
+{"ms":2,"event":"server exited with code 0"}`))
+	if stated, _, _ := statedElicitation(plain); stated {
+		t.Error("a client that stated no elicitation is read as stating it")
+	}
+	if got := approvalIn(plain); got != (approvalExchange{}) {
+		t.Errorf("approvalIn with no request = %+v, want none", got)
+	}
+	if stated, _, _ := statedElicitation(nil); stated {
+		t.Error("an empty recording states elicitation")
+	}
+}
+
+// Spec 049 (issue #47): what the two recorded clients state about
+// elicitation, and what each does when Rune asks it to approve a [confirm]
+// call with nobody there to answer. docs/mcp.md reports these as recorded.
+func TestClientRecordingsElicitation(t *testing.T) {
+	read := func(file string) []recStep {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("testdata", "clients", filepath.FromSlash(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parseRecording(t, data)
+	}
+	// Both clients state the form and the URL mode, in every session.
+	for _, file := range []string{"claude-code/session.jsonl", "claude-code/elicitation.jsonl", "codex/session.jsonl", "codex/elicitation.jsonl"} {
+		if stated, form, url := statedElicitation(read(file)); !stated || !form || !url {
+			t.Errorf("%s: elicitation stated=%v form=%v url=%v, want all three", file, stated, form, url)
+		}
+	}
+
+	remedy := ` To run it without a request, the operator can add clean to --allow-destructive and restart the server, or run "rune clean" themselves.`
+	cases := []struct {
+		file   string
+		action string
+		// answerMS is the delay docs/mcp.md gives for the client's answer.
+		answerMS int64
+		result   string
+	}{
+		// Run as `claude -p`, Claude Code dismisses the request by itself.
+		{"claude-code/elicitation.jsonl", "cancel", 9, `task "clean" was not approved: the request was dismissed. Nothing ran.` + remedy},
+		// Run as `codex exec`, Codex declines it by itself.
+		{"codex/elicitation.jsonl", "decline", 1, `task "clean" was not approved: the request was declined. Nothing ran.` + remedy},
+	}
+	for _, tc := range cases {
+		steps := read(tc.file)
+		got := approvalIn(steps)
+		if !got.asked || got.mode != "form" {
+			t.Errorf("%s: asked=%v mode=%q, want a form request", tc.file, got.asked, got.mode)
+		}
+		if got.action != tc.action {
+			t.Errorf("%s: the client answered %q, want %q", tc.file, got.action, tc.action)
+		}
+		// Nobody was there: the answer came at once, not after a person read it.
+		if got.answerMS != tc.answerMS {
+			t.Errorf("%s: the client answered after %dms, want the %dms the guide reports", tc.file, got.answerMS, tc.answerMS)
+		}
+		if got.result != tc.result {
+			t.Errorf("%s: the call's result:\n got %q\nwant %q", tc.file, got.result, tc.result)
+		}
+		for _, s := range steps {
+			if s.From == "server" && s.msg.Result != nil && len(s.msg.Result.Content) == 1 && strings.Contains(s.msg.Result.Content[0].Text, "clean-ok") {
+				t.Errorf("%s: clean ran", tc.file)
+			}
 		}
 	}
 }
