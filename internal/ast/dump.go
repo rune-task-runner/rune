@@ -104,6 +104,8 @@ func dumpAttr(b *strings.Builder, a *Attribute) {
 		b.WriteString(")\n")
 	case AttrEnv, AttrParamDoc:
 		fmt.Fprintf(b, "    Attr %s(%s, %s)\n", a.Kind, strconv.Quote(a.Str), strconv.Quote(a.Str2))
+	case AttrAgentAllow:
+		fmt.Fprintf(b, "    Attr %s(%s)\n", a.Kind, FormatAllow(a.Allow))
 	default:
 		if a.Str != "" {
 			fmt.Fprintf(b, "    Attr %s(%s)\n", a.Kind, strconv.Quote(a.Str))
@@ -193,4 +195,46 @@ func cmpName(k token.Kind) string {
 	default:
 		return "?"
 	}
+}
+
+// FormatAllow renders [agent-allow] predicates in canonical source form,
+// `env="staging", region="eu-west-1"`: the one renderer shared by the dumper
+// and the formatter.
+func FormatAllow(preds []*AllowPredicate) string {
+	parts := make([]string, len(preds))
+	for i, p := range preds {
+		parts[i] = p.Name + "=" + quoteLiteral(p.Value)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// quoteLiteral writes s as a double-quoted string the lexer reads back as s.
+// strconv.Quote does not: it writes a character that is not printable as
+// \u00a0 or \xff, which the lexer reads as those letters. The formatter runs
+// without the analyzer, so it would turn a value RUNE2019 rejects into
+// another value that passes. For a printable value the two give the same
+// text.
+func quoteLiteral(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('"')
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\\', '"':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\r':
+			b.WriteString(`\r`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }

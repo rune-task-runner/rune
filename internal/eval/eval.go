@@ -6,6 +6,7 @@
 package eval
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/rune-task-runner/rune/internal/ast"
@@ -58,6 +59,18 @@ func (s *Scope) WithArgs(a Args) *Scope {
 	cp := *s
 	cp.Params = a.Values
 	cp.Lists = a.Lists
+	return &cp
+}
+
+// Fork returns a scope with the same bindings and host hooks and its own
+// assignment cache, which starts as a copy of s's. A variable first read
+// through the fork is not cached in s, so a check made before a run cannot
+// fix the value the run would read later (spec 050).
+func (s *Scope) Fork() *Scope {
+	cp := *s
+	cp.cache = make(map[string]string, len(s.cache))
+	maps.Copy(cp.cache, s.cache)
+	cp.evaluating = map[string]bool{}
 	return &cp
 }
 

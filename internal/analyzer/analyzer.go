@@ -7,11 +7,14 @@ package analyzer
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/diag"
 	"github.com/rune-task-runner/rune/internal/eval"
+	"github.com/rune-task-runner/rune/internal/suggest"
 	"github.com/rune-task-runner/rune/internal/token"
 )
 
@@ -24,6 +27,7 @@ func Analyze(f *ast.File) diag.List {
 	}
 	a.collect()
 	a.checkConstraints()
+	a.checkAgentAllow()
 	a.checkContext()
 	a.checkReadonly()
 	a.checkExpressions()
@@ -196,6 +200,84 @@ func (a *analyzer) checkAnnotationAttrs(t *ast.Task) {
 				continue
 			}
 			returnsSeen = attr
+		}
+	}
+}
+
+// checkAgentAllow validates [agent-allow] (spec 050, RUNE2019). A policy Rune
+// cannot apply as written is an error, never dropped or reinterpreted: a
+// Runefile that reads as closed to agents must be closed. Each predicate is
+// checked on its own, so one attribute can report several faults.
+func (a *analyzer) checkAgentAllow() {
+	for _, t := range a.file.Tasks {
+		var first *ast.Attribute
+		for _, attr := range t.Attributes {
+			if attr.Kind != ast.AttrAgentAllow {
+				continue
+			}
+			if first != nil {
+				// The engine reads the first attribute only, so the second
+				// one's predicates would be silently unused.
+				a.diags.Add(diag.New(attr.Sp, fmt.Sprintf("duplicate [agent-allow] on task %q: put every predicate in one attribute", t.Name)).
+					WithCode(diag.CodeInvalidAgentAllow).
+					WithRelated(diag.RelatedLocation{Span: first.Sp, Message: "first [agent-allow] declared here"}))
+				continue
+			}
+			first = attr
+			a.checkAllowPredicates(t, attr)
+		}
+	}
+}
+
+func (a *analyzer) checkAllowPredicates(t *ast.Task, attr *ast.Attribute) {
+	params := make(map[string]*ast.Param, len(t.Params))
+	names := make([]string, 0, len(t.Params))
+	for _, p := range t.Params {
+		params[p.Name] = p
+		names = append(names, p.Name)
+	}
+	seen := map[string]bool{}
+	for _, pred := range attr.Allow {
+		p, ok := params[pred.Name]
+		if !ok {
+			msg := fmt.Sprintf("agent-allow names unknown parameter %q of task %q", pred.Name, t.Name)
+			if near, found := suggest.Nearest(pred.Name, names); found {
+				msg += fmt.Sprintf(" (did you mean %q?)", near)
+			}
+			a.diags.Codef(diag.CodeInvalidAgentAllow, pred.NameSp, "%s", msg)
+			continue
+		}
+		if seen[pred.Name] {
+			a.diags.Codef(diag.CodeInvalidAgentAllow, pred.NameSp, "duplicate agent-allow predicate for parameter %q", pred.Name)
+			continue
+		}
+		seen[pred.Name] = true
+
+		const supported = "only string and enum parameters are supported"
+		if p.Kind == ast.ParamVariadicPlus || p.Kind == ast.ParamVariadicStar {
+			a.diags.Codef(diag.CodeInvalidAgentAllow, pred.NameSp, "agent-allow cannot restrict variadic parameter %q: %s", pred.Name, supported)
+			continue
+		}
+		if c := p.Constraint; c != nil {
+			kind, known := ast.ConstraintKindFromName(c.KindName)
+			if !known {
+				continue // RUNE2012 already names the fix
+			}
+			if kind != ast.KindString && kind != ast.KindEnum {
+				a.diags.Codef(diag.CodeInvalidAgentAllow, pred.NameSp, "agent-allow cannot restrict parameter %q of type %s: %s", pred.Name, c.KindName, supported)
+				continue
+			}
+			if kind == ast.KindEnum {
+				if err := c.Check(pred.Value); err != nil {
+					a.diags.Codef(diag.CodeInvalidAgentAllow, pred.ValueSp, "agent-allow value %q is not an allowed value of parameter %q (%s)", pred.Value, pred.Name, err)
+					continue
+				}
+			}
+		}
+		// Such a character, and a byte that is not UTF-8, cannot be read in
+		// the source, so the policy would not be the one the file shows.
+		if !utf8.ValidString(pred.Value) || strings.ContainsFunc(pred.Value, func(r rune) bool { return !strconv.IsPrint(r) }) {
+			a.diags.Codef(diag.CodeInvalidAgentAllow, pred.ValueSp, "agent-allow value for parameter %q holds a character that is not printable", pred.Name)
 		}
 	}
 }

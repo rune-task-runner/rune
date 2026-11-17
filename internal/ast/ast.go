@@ -306,6 +306,16 @@ func (t *Task) Attr(kind string) *Attribute {
 	return nil
 }
 
+// AgentPolicy returns the predicates an agent run of the task must meet, or
+// nil when the task has no [agent-allow]. Only the first attribute counts: a
+// second one is a static error (RUNE2019), and must never widen the first.
+func (t *Task) AgentPolicy() []*AllowPredicate {
+	if a := t.Attr(AttrAgentAllow); a != nil {
+		return a.Allow
+	}
+	return nil
+}
+
 // Returns reports the task's [returns("...")] outcome description, or ""
 // (spec 023 FR-009). Advisory only: Rune never compares task output to it.
 func (t *Task) Returns() string {
@@ -357,6 +367,7 @@ const (
 	AttrParamDoc         = "param-doc"       // per-parameter description surfaced in agent tool schemas (spec 023)
 	AttrReturns          = "returns"         // task outcome description surfaced to agents and listings (spec 023)
 	AttrReadonly         = "readonly"        // claims read-only: sets MCP readOnlyHint
+	AttrAgentAllow       = "agent-allow"     // limits the values an agent may run the task with (spec 050)
 )
 
 // KnownAttributes is the canonical accepted attribute set, in documentation
@@ -368,12 +379,12 @@ var KnownAttributes = []string{
 	AttrLinux, AttrMacos, AttrWindows, AttrUnix,
 	AttrNoCD, AttrWorkingDirectory, AttrEnv, AttrDoc, AttrScript,
 	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
-	AttrParamDoc, AttrReturns, AttrReadonly,
+	AttrParamDoc, AttrReturns, AttrReadonly, AttrAgentAllow,
 }
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a
 // single string argument (Str); env carries two (Str, Str2); cache carries
-// input/output glob lists.
+// input/output glob lists; agent-allow carries its predicates.
 type Attribute struct {
 	Kind       string
 	Str        string // confirm prompt, group name, doc, script cmd, working-directory, env name
@@ -381,10 +392,21 @@ type Attribute struct {
 	Inputs     []Expr // cache(inputs=[...])
 	Outputs    []Expr // cache(outputs=[...])
 	HasOutputs bool
+	Allow      []*AllowPredicate // agent-allow(name="value", ...), in source order
 	Sp         token.Span
 }
 
 func (a *Attribute) Span() token.Span { return a.Sp }
+
+// AllowPredicate is one name="value" of an [agent-allow] attribute: a
+// parameter and the one value an agent run of the task may have for it (spec
+// 050). The two spans let a diagnostic point at the part that is wrong.
+type AllowPredicate struct {
+	Name    string
+	Value   string
+	NameSp  token.Span
+	ValueSp token.Span
+}
 
 // BodyLine is one line of a task body, with leading-sigil flags stripped. Raw
 // retains {{ ... }} interpolation placeholders for the evaluator.

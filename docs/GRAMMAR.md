@@ -65,7 +65,9 @@ AttrItem    = "private"
             | "script" "(" StringLit ")"
             | "returns" "(" StringLit ")"    (* task outcome description, surfaced to agents *)
             | "param-doc" "(" StringLit "," StringLit ")"  (* parameter description for tool schemas *)
+            | "agent-allow" "(" AllowPred { "," AllowPred } ")"  (* values an agent may pass *)
             | "cache" "(" "inputs" "=" List [ "," "outputs" "=" List ] ")" ;
+AllowPred   = Name "=" StringLit ;               (* a parameter and the one value an agent may run with *)
 
 (* ---- Expression sublanguage (Pratt-parsed; total, non-Turing-complete) ---- *)
 Expr        = Conditional | Concat ;

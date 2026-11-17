@@ -366,6 +366,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [doc("Custom one-line doc")]    # override the doc string
 [returns("JSON array of IDs")]  # outcome description: shown to agents and in --list
 [param-doc("env", "Target environment")]  # describe one parameter for the tool schema
+[agent-allow(env="staging")]    # the only value an agent may run the task with
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
 [cache(inputs = ["go.mod", "src/**/*.go"], outputs = ["dist/app"])]  # content-hash caching
 ```
@@ -386,6 +387,17 @@ body. It changes nothing on the command line: the task runs and lists as it woul
 it. Over MCP it sets the tool's `readOnlyHint`, and a task without it makes no read-only
 claim. A `[readonly]` task cannot use `[confirm]`, and every task it runs as a dependency
 or hook must be `[readonly]` too (`RUNE2018`). See [tool hints](mcp.md#tool-hints).
+
+`[agent-allow(name="value", ...)]` limits the values an AI agent may run a task with. Each
+predicate names a parameter of the task and the one value an agent run may have for it, and
+all of them must hold: `[agent-allow(env="staging", region="eu-west-1")]`. The parameter's
+type still says what the task accepts from anyone. On the command line the attribute changes
+nothing, so a person can run `rune deploy prod`. A predicate can name an unannotated,
+`string` or `enum` parameter, and not a variadic one. A name the task does not have, a name
+used twice, a value the parameter's `enum` does not have, a value with a character that is
+not printable, a parameter of another type, and a second `[agent-allow]` on one task are
+each a static error (`RUNE2019`). Rune never drops a policy it cannot apply. See
+[Restricting the values an agent may pass](mcp.md#restricting-the-values-an-agent-may-pass).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it
 when an agent session starts and injects its output into the agent's context — see

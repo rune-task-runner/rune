@@ -1,0 +1,19 @@
+File
+  Task deploy
+    doc: "The agent-allow attribute (spec 050): the values an agent may run a task with."
+    Attr agent-allow(env="staging")
+    Param env required :enum("staging","prod")
+    Body
+      @"echo {{env}}"
+  Task rollout
+    Attr agent-allow(env="staging", region="eu-west-1")
+    Param env required :enum("staging","prod")
+    Param region defaulted = "eu-west-1"
+    Body
+      @"echo {{env}} {{quote(region)}}"
+  Task tag
+    Attr confirm
+    Attr agent-allow(channel="beta")
+    Param channel required
+    Body
+      @"echo {{quote(channel)}}"

@@ -275,6 +275,10 @@ so the agent can verify a task's output against the expected shape. Both
 annotations are static Runefile string literals — no environment value can ever
 reach a schema.
 
+A parameter that `[agent-allow]` names is advertised with its one allowed value in
+place of the full list; see
+[Restricting the values an agent may pass](#restricting-the-values-an-agent-may-pass).
+
 ## Project context for agents
 
 Mark one task with `[context]` to hand agents the project's current state — branch,
@@ -459,6 +463,10 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   dependency of the granted task.
 - **There is no blanket switch.** No option allows all destructive tasks, and
   `rune serve` and `rune mcp` do not accept `--yes`.
+- **A task can limit the values an agent may run it with.** `[agent-allow(env="staging")]`
+  refuses any other value before anything runs, for the called task and for every task the
+  call can reach. Neither a grant nor an approval lifts it; see
+  [Restricting the values an agent may pass](#restricting-the-values-an-agent-may-pass).
 - **The operator chooses which tasks are tools.** `--allow` and `--deny` narrow the tool
   list. They never add to it: a private task, the `[context]` hook, and a task restricted
   to another OS stay unexposed even when `--allow` names them.
@@ -587,6 +595,130 @@ in an agent session, see [Security model](#security-model-secure-by-default).
 tool call, as MCP revisions 2025-06-18 and 2025-11-25 define it. Revision 2026-07-28
 carries elicitation as a repeated tool call. Rune does not negotiate that revision, and
 never accepts an approval from a repeated call: a call sent again is a new call.
+
+## Restricting the values an agent may pass
+
+Allowing a task for agents allows every value the task accepts. `[agent-allow(...)]`
+narrows that: it names parameters of the task and, for each, the one value an agent may run
+the task with. The parameter's type still says what the task accepts from anyone, so a
+person at a terminal is not limited.
+
+```rune
+# Deploy the service.
+[agent-allow(env="staging")]
+deploy env:enum("staging","prod"):
+    @./scripts/deploy.sh {{quote(env)}}
+
+# Roll out to one region.
+[agent-allow(env="staging", region="eu-west-1")]
+rollout env:enum("staging","prod") region="eu-west-1":
+    @./scripts/rollout.sh {{quote(env)}} {{quote(region)}}
+
+# Deploy to production by default.
+[agent-allow(env="staging")]
+publish env:enum("staging","prod")="prod":
+    @./scripts/deploy.sh {{quote(env)}}
+
+# Run the tests.
+test:
+    @./scripts/test.sh
+
+# Preview on staging.
+preview: test (deploy "staging")
+    @echo previewed
+
+# Ship to production.
+ship: test (deploy "prod")
+    @echo shipped
+```
+
+| Call | Result |
+|---|---|
+| An agent calls `deploy` with `env=staging` | Runs |
+| An agent calls `deploy` with `env=prod` | Refused. Nothing runs |
+| An agent calls `rollout` with `env=staging`, `region=us-east-1` | Refused: every predicate must hold |
+| An agent calls `rollout` with `env=staging` and no `region` | Runs: the default is the allowed value |
+| An agent calls `publish` with no `env` | Refused: the default is `prod` |
+| An agent calls `preview` | Runs |
+| An agent calls `ship` | Refused before `test` runs |
+| A person runs `rune deploy prod` or `rune ship` | Runs, as it always did |
+
+A refused call returns an error result with no exit code, and nothing ran:
+
+```text
+task "deploy" is not allowed for agents with env="prod"; agent policy requires env="staging"
+```
+
+It shows each refused value and then the whole policy. A value is masked like task output,
+kept on one line, and cut at 64 characters. When the refused run is of a task the call
+reaches, the text names both: `task "ship" runs "deploy", which is not allowed for agents
+with env="prod"; agent policy requires env="staging"`.
+
+**Defaults are checked, never replaced.** The value compared is the one the task would run
+with: the argument the agent sent, or the task's default when it sent none. Rune does not
+run the task with the allowed value in place of a refused one. An argument name the task
+does not declare is still the unknown-argument error, so a misspelled name cannot fall back
+to a default.
+
+**Everything the call can reach is checked first.** Before a call starts, Rune works out
+what it would run through dependencies, `&&` hooks and `||` hooks, with the arguments the
+Runefile passes along each, and checks every task that has a policy against the arguments
+it would get. That includes tasks in modules, private tasks, tasks hidden with `--deny`,
+and a `||` hook whether or not its task would fail. A task that is unavailable on this
+host is skipped, as the run would skip it. The same check runs again where a restricted
+task's body would start.
+
+**A value Rune cannot know before the run is refused.** A dependency's arguments are
+evaluated again when the run reaches it. If the argument for a restricted parameter is
+built from `uuid()`, `datetime()`, `path_exists()`, `read()`, `sha256_file()`, `which()`,
+`require()` or `absolute_path()`, or from a variable assigned from one of them, its value
+can differ by then, so the call is refused:
+
+```text
+task "nightly" runs "deploy" with a value of env that is not known before the run; agent policy requires env="staging"
+```
+
+If an argument on the way to a restricted task cannot be evaluated before the run, for
+example because it reads a file an earlier task of the same run creates, the call is
+refused too, whichever parameter the argument is for. Move that read into the task's body.
+
+**A task body that runs `rune` is covered.** Rune sets `RUNE_AGENT_RUN=1` in the
+environment of every body of an agent run. A `rune` started with it checks the tasks on its
+command line the same way before it runs anything, and exits with status 1 and the refusal
+when a policy is broken. So `ship:` with the body `rune deploy prod` does not deploy
+production for an agent. The outer task has started by then: Rune does not read bodies.
+
+**`agent` tasks and the `[context]` hook.** The endpoint an [`agent` task](#agent-task-bodies)
+opens for its own agent applies the policy to that agent's calls. The `[context]` hook
+runs because an agent connected, so a restricted task it reaches is checked too.
+
+**The policy is separate from the destructive check.** A grant with `--allow-destructive`
+and an approval in the client decide whether a `[confirm]` task may run. Neither allows a
+refused value, and the person is not asked about a call the policy refuses. A value the
+policy allows still needs the grant or the approval. The order for one call:
+
+1. A call that can run an ungranted `[confirm]` task, from a client that cannot be asked,
+   is refused as destructive, before its arguments are read.
+2. Unknown argument names, then value types, missing arguments and defaults.
+3. The value policy.
+4. The approval request, when the call needs one.
+5. The run.
+
+**The tool names the allowed value.** For a parameter the policy names, the tool's schema
+lists the one value, `{"type":"string","enum":["staging"]}`, and the description ends with
+`Agent policy: agents may run this task only with env="staging".` A parameter whose default
+is a literal the policy refuses is listed as required. The check does not depend on any of
+this: a client that ignores the schema and sends `prod` is refused. After a
+[reload](#reloading), the tools and the checks follow the new Runefile.
+
+**What it does not cover.** The policy governs runs that start from an agent through Rune.
+An agent with its own shell can run `rune deploy prod` there, and an agent that can edit the
+Runefile can remove the attribute; [Rune-only agent mode](design/rune-only-agent-mode.md)
+is about closing that. A task body that clears `RUNE_AGENT_RUN`, or that deploys with
+another tool, is the author's own. The first version compares one exact value per
+parameter: there are no patterns and no lists, and a policy cannot name a `number`,
+`boolean`, `path`, `raw` or variadic parameter. A wrong declaration is the static error
+[`RUNE2019`](diagnostics.md).
 
 ## Agent task bodies
 

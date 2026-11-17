@@ -1,0 +1,8 @@
+# The agent-allow attribute (spec 050): the values an agent may run a task with.
+[agent-allow( env = "staging" ,region="eu-west-1" )]
+rollout env:enum("staging","prod") region="eu-west-1":
+    @echo {{env}}
+
+[confirm, agent-allow(env="staging")]
+deploy env:
+    @echo {{quote(env)}}

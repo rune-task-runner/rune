@@ -23,6 +23,8 @@ func FuzzParser(f *testing.F) {
 		"test +packages:path:\n    echo {{packages}}\n",
 		"lint *paths:string:\n    echo {{paths}}\n",
 		"deploy env: build\n    echo hi\n",
+		// The agent-allow attribute (spec 050): named string predicates.
+		"[agent-allow(env=\"staging\", region=\"eu\")]\ndeploy env region:\n    echo {{env}}\n",
 		"deploy env:build\n    echo hi\n",
 		"deploy env:enum():\n    echo hi\n",
 		"deploy env:enum(x):\n    echo hi\n",

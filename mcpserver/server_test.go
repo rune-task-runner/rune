@@ -664,3 +664,118 @@ func TestFilteredCapabilitiesMatchInferred(t *testing.T) {
 		t.Error("an unfiltered server states capabilities instead of letting the SDK infer them")
 	}
 }
+
+// Spec 050 FR-027: a parameter an agent may pass one value for is advertised
+// with that value alone. Nothing else about the schema changes.
+func TestInputSchemaAgentValues(t *testing.T) {
+	restricted := []ParamInfo{
+		{Name: "env", Required: true, Kind: "enum", Enum: []string{"staging", "prod"}, AgentValues: []string{"staging"}},
+		{Name: "channel", AgentValues: []string{"beta"}},
+		{Name: "empty", AgentValues: []string{}},
+		{Name: "rest", Variadic: true, AgentValues: []string{"x"}},
+	}
+	plain := []ParamInfo{
+		{Name: "env", Required: true, Kind: "enum", Enum: []string{"staging", "prod"}},
+		{Name: "channel"},
+		{Name: "empty"},
+		{Name: "rest", Variadic: true},
+	}
+	schema, before := inputSchema(restricted), inputSchema(plain)
+	props := schema["properties"].(map[string]any)
+
+	if got := props["env"]; !reflect.DeepEqual(got, map[string]any{"type": "string", "enum": []string{"staging"}}) {
+		t.Errorf("env = %v, want the one allowed value", got)
+	}
+	if got := props["channel"]; !reflect.DeepEqual(got, map[string]any{"type": "string", "enum": []string{"beta"}}) {
+		t.Errorf("channel = %v, want a string with the one allowed value", got)
+	}
+	// An empty list is no restriction: an enum with no value is not a valid
+	// schema, and a description would have nothing to name.
+	if got := props["empty"]; !reflect.DeepEqual(got, map[string]any{"type": "string"}) {
+		t.Errorf("empty = %v, want an unrestricted string", got)
+	}
+	if got, want := props["rest"], before["properties"].(map[string]any)["rest"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("a variadic parameter changed: %v, want %v", got, want)
+	}
+	if !reflect.DeepEqual(schema["required"], before["required"]) {
+		t.Errorf("required = %v, want %v", schema["required"], before["required"])
+	}
+
+	// A descriptor that does not set the field gives the schema it gave.
+	want := map[string]any{"type": "string", "enum": []string{"staging", "prod"}}
+	if got := before["properties"].(map[string]any)["env"]; !reflect.DeepEqual(got, want) {
+		t.Errorf("unrestricted env = %v, want %v", got, want)
+	}
+}
+
+// Spec 050 FR-028: the description states the policy, as its last paragraph.
+func TestToolForAgentPolicy(t *testing.T) {
+	env := ParamInfo{Name: "env", Kind: "enum", Enum: []string{"staging", "prod"}, AgentValues: []string{"staging"}}
+	region := ParamInfo{Name: "region", AgentValues: []string{"eu-west-1"}}
+	cases := []struct {
+		name string
+		task TaskInfo
+		want string
+	}{
+		{
+			"one predicate",
+			TaskInfo{Name: "deploy", Doc: "Deploy the service.", Params: []ParamInfo{env}},
+			"Deploy the service.\n\nAgent policy: agents may run this task only with env=\"staging\".",
+		},
+		{
+			"two predicates",
+			TaskInfo{Name: "rollout", Doc: "Roll out.", Params: []ParamInfo{env, {Name: "tag"}, region}},
+			"Roll out.\n\nAgent policy: agents may run this task only with env=\"staging\" and region=\"eu-west-1\".",
+		},
+		{
+			"after the returns trailer",
+			TaskInfo{Name: "deploy", Doc: "Deploy.", Returns: "the URL", Params: []ParamInfo{env}},
+			"Deploy.\n\nReturns: the URL\n\nAgent policy: agents may run this task only with env=\"staging\".",
+		},
+		{
+			"no doc",
+			TaskInfo{Name: "deploy", Params: []ParamInfo{env}},
+			"Agent policy: agents may run this task only with env=\"staging\".",
+		},
+		{
+			"several values",
+			TaskInfo{Name: "deploy", Params: []ParamInfo{{Name: "env", AgentValues: []string{"a", "b"}}}},
+			"Agent policy: agents may run this task only with env=\"a\" or \"b\".",
+		},
+		{
+			"an empty list is not a restriction",
+			TaskInfo{Name: "deploy", Doc: "Deploy.", Params: []ParamInfo{{Name: "env", AgentValues: []string{}}}},
+			"Deploy.",
+		},
+		{
+			"a variadic parameter is not restricted",
+			TaskInfo{Name: "lint", Doc: "Lint.", Params: []ParamInfo{{Name: "paths", Variadic: true, AgentValues: []string{"x"}}}},
+			"Lint.",
+		},
+		{
+			"no policy",
+			TaskInfo{Name: "test", Doc: "Run the tests.", Params: []ParamInfo{{Name: "pkg"}}},
+			"Run the tests.",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := toolFor(c.task).Description; got != c.want {
+				t.Errorf("description = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// The server validates a supplied value against the declared type only, so
+// a value the policy refuses reaches the engine and gets the policy's own
+// refusal (spec 050 research R10).
+func TestParamCheckIgnoresAgentValues(t *testing.T) {
+	p := ParamInfo{Name: "env", Kind: "enum", Enum: []string{"staging", "prod"}, AgentValues: []string{"staging"}}
+	if err := p.check("prod"); err != nil {
+		t.Errorf("check(prod) = %v, want nil", err)
+	}
+	if err := p.check("qa"); err == nil {
+		t.Error("check(qa) = nil, want the enum error")
+	}
+}
