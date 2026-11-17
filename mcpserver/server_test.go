@@ -81,18 +81,7 @@ func TestToolAnnotations(t *testing.T) {
 // connect wires a client to the server over an in-memory transport.
 func connect(t *testing.T, srv *Server) *mcp.ClientSession {
 	t.Helper()
-	ct, st := mcp.NewInMemoryTransports()
-	ctx := context.Background()
-	if _, err := srv.MCP().Connect(ctx, st, nil); err != nil {
-		t.Fatal(err)
-	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
-	cs, err := client.Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-	return cs
+	return connectClient(t, srv, nil)
 }
 
 func TestListToolsMapping(t *testing.T) {

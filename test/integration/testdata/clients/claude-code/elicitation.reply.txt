@@ -1,0 +1,9 @@
+The `clean` call was blocked: the approval request was dismissed, so nothing ran. I called it once and did not retry.
+
+- **Full tool name:** `mcp__rune__clean`
+- **Result:** BLOCKED
+- **Text returned, word for word:**
+
+```
+task "clean" was not approved: the request was dismissed. Nothing ran. To run it without a request, the operator can add clean to --allow-destructive and restart the server, or run "rune clean" themselves.
+```

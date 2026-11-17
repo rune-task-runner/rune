@@ -400,3 +400,19 @@ func TestServeHelpMentionsFile(t *testing.T) {
 		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
 	}
 }
+
+// Spec 049 FR-025: `rune serve --help` says a [confirm] call can be approved
+// in the client, beside the grant.
+func TestServeHelpMentionsApproval(t *testing.T) {
+	var opts cli.Options
+	cmd := newServeCmd(&opts)
+	for _, want := range []string{
+		"A client that can show an\nMCP form request is asked to approve a call to any other [confirm] task",
+		"that call runs once on approval",
+		"needs --allow-destructive or an approval",
+	} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+}

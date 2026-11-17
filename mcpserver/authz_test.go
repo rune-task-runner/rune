@@ -346,3 +346,30 @@ func TestRefusalNilReachUnchanged(t *testing.T) {
 		t.Errorf("the call did not reach the engine: %q", contentText(res))
 	}
 }
+
+// Spec 049 FR-002: the tasks a call needs a grant or an approval for, the
+// called task first, then what it reaches, each once and in the descriptor's
+// order.
+func TestUngranted(t *testing.T) {
+	cases := []struct {
+		name   string
+		info   TaskInfo
+		grants []string
+		want   []string
+	}{
+		{"not destructive", TaskInfo{Name: "logs"}, nil, nil},
+		{"destructive", TaskInfo{Name: "clean", Destructive: true}, nil, []string{"clean"}},
+		{"granted", TaskInfo{Name: "clean", Destructive: true}, []string{"clean"}, nil},
+		{"reach keeps its order", TaskInfo{Name: "ordered", DestructiveReach: []string{"wipe", "clean"}}, nil, []string{"wipe", "clean"}},
+		{"own name and repeats listed once", TaskInfo{Name: "reset", Destructive: true, DestructiveReach: []string{"reset", "wipe", "wipe"}}, nil, []string{"reset", "wipe"}},
+		{"granted reach dropped", TaskInfo{Name: "full", DestructiveReach: []string{"clean", "wipe"}}, []string{"clean"}, []string{"wipe"}},
+		{"itself first", TaskInfo{Name: "reset", Destructive: true, DestructiveReach: []string{"wipe"}}, nil, []string{"reset", "wipe"}},
+		{"granted itself, reach left", TaskInfo{Name: "reset", Destructive: true, DestructiveReach: []string{"wipe"}}, []string{"reset"}, []string{"wipe"}},
+	}
+	for _, c := range cases {
+		srv := New(&fakeEngine{tasks: []TaskInfo{c.info}}, Options{AllowDestructive: c.grants})
+		if got := srv.ungranted(c.info); !slices.Equal(got, c.want) {
+			t.Errorf("%s: ungranted = %q, want %q", c.name, got, c.want)
+		}
+	}
+}

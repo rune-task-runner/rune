@@ -44,12 +44,15 @@ bearer token is sent in cleartext, and the server prints a warning when it
 starts.
 
 Tasks marked [confirm] are refused unless you name each one with
---allow-destructive; no option allows all of them.
+--allow-destructive; no option allows all of them. A client that can show an
+MCP form request is asked to approve a call to any other [confirm] task, and
+that call runs once on approval.
 
 Use --allow to expose only the tasks you name, and --deny to hide tasks. A
 task named in both is hidden. A hidden task is not listed and cannot be
 called, but the dependencies and hooks of an exposed task still run. A
-[confirm] task needs --allow-destructive whichever of these you set.
+[confirm] task needs --allow-destructive or an approval whichever of these
+you set.
 
 A tool result carries at most 64KiB of stdout and 64KiB of stderr. Longer
 output keeps its beginning and its end around a "[truncated N bytes]" line.

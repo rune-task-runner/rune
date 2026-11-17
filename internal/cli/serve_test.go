@@ -16,6 +16,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/parser"
 	"github.com/rune-task-runner/rune/internal/style"
+	"github.com/rune-task-runner/rune/mcpserver"
 )
 
 // taskListFlags are the serve flags that take task names. They share one
@@ -506,5 +507,68 @@ func TestServeMCPQuietOnLoopbackBind(t *testing.T) {
 	}
 	if strings.Contains(got, "cleartext") {
 		t.Errorf("a loopback server printed the cleartext warning:\n%s", got)
+	}
+}
+
+// Spec 049: `rune mcp` and `rune serve` ask the person at the client, and
+// name rune as the command to run a task with.
+func TestServeMCPOptions(t *testing.T) {
+	got := serveMCPOptions("1.2.3", "rune -f /repo/Runefile", []string{"clean"}, []string{"build"}, []string{"deploy"}, 4096, "hello", true)
+	want := mcpserver.Options{
+		AllowDestructive:     []string{"clean"},
+		AllowDestructiveFlag: "--allow-destructive",
+		AskApproval:          true,
+		RunCommand:           "rune -f /repo/Runefile",
+		AllowList:            []string{"build"},
+		DenyList:             []string{"deploy"},
+		OutputLimit:          4096,
+		Version:              "1.2.3",
+		Instructions:         "hello",
+		Reloadable:           true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("serveMCPOptions = %+v, want %+v", got, want)
+	}
+}
+
+// The command a refusal names has to reach the Runefile the server serves:
+// with --file, a bare `rune clean` in the operator's directory would not.
+func TestRunCommand(t *testing.T) {
+	cases := []struct {
+		flag, runefile, want string
+	}{
+		{"", "/repo/Runefile", "rune"},
+		{"Runefile", "/repo/Runefile", "rune -f /repo/Runefile"},
+		{"x", `C:\repo\Runefile`, `rune -f C:\repo\Runefile`},
+		{"x", "/my project/Runefile", "rune -f '/my project/Runefile'"},
+		{"x", "/srv/R&D/Runefile", "rune -f '/srv/R&D/Runefile'"},
+	}
+	for _, c := range cases {
+		if got := runCommand(c.flag, c.runefile); got != c.want {
+			t.Errorf("runCommand(%q, %q) = %q, want %q", c.flag, c.runefile, got, c.want)
+		}
+	}
+}
+
+// A path is pasted into a shell with the command, so every character a shell
+// would act on is inside quotes, and a quote in the path does not end them.
+func TestShellWord(t *testing.T) {
+	cases := []struct {
+		path, goos, want string
+	}{
+		{"/repo/Runefile", "linux", "/repo/Runefile"},
+		{`C:\Users\RUNNER~1\repo\Runefile`, "windows", `C:\Users\RUNNER~1\repo\Runefile`},
+		{"/my project/Runefile", "linux", "'/my project/Runefile'"},
+		{"/srv/a;b/Runefile", "linux", "'/srv/a;b/Runefile'"},
+		{"/srv/$HOME/Runefile", "darwin", "'/srv/$HOME/Runefile'"},
+		{"/srv/copy (2)/Runefile", "linux", "'/srv/copy (2)/Runefile'"},
+		{"/home/kim/Kim's work/Runefile", "linux", `'/home/kim/Kim'\''s work/Runefile'`},
+		{"/home/kim/Kims'/Runefile", "darwin", `'/home/kim/Kims'\''/Runefile'`},
+		{`C:\Users\Kim's work\Runefile`, "windows", `'C:\Users\Kim''s work\Runefile'`},
+	}
+	for _, c := range cases {
+		if got := shellWord(c.path, c.goos); got != c.want {
+			t.Errorf("shellWord(%q, %q) = %q, want %q", c.path, c.goos, got, c.want)
+		}
 	}
 }

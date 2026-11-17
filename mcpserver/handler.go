@@ -30,6 +30,12 @@ const (
 // call that runs no task returns an error with text only: there is no exit
 // code to report.
 //
+// A call that can run a destructive task the operator has not granted is
+// refused before its arguments are read, as it always was, unless the person
+// at the client can be asked about it. Then the arguments are checked first,
+// so nobody is asked about a call that could not run, and the engine runs
+// the call only once the person approved it (spec 049).
+//
 // The handler belongs to a tool name, not to one load of the task: it takes
 // the task and the engine from the snapshot current when the call starts, so
 // a Replace changes what later calls run without registering the tool again
@@ -48,8 +54,17 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 		for i, p := range t.Params {
 			names[i] = p.Name
 		}
-		if msg := s.refusal(t); msg != "" {
-			return errorResult(msg), nil
+		needs := s.ungranted(t)
+		var asking ApprovalEngine
+		if len(needs) > 0 {
+			engine, ok := snap.engine.(ApprovalEngine)
+			switch {
+			case !s.opts.AskApproval || !ok:
+				return errorResult(s.refusal(t)), nil
+			case !formSupport(req.Session):
+				return errorResult(s.refusal(t) + s.cannotAsk(taskName, reasonNoForm)), nil
+			}
+			asking = engine
 		}
 		decoded, err := decodeArgs(req.Params.Arguments)
 		if err != nil {
@@ -64,7 +79,9 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 		}
 		var res Result
 		var runErr error
-		if le, ok := snap.engine.(ListEngine); ok {
+		if asking != nil {
+			res, runErr = asking.CallApproved(ctx, taskName, args, lists, needs, s.approver(req.Session, snap, t, needs))
+		} else if le, ok := snap.engine.(ListEngine); ok {
 			res, runErr = le.CallLists(ctx, taskName, args, lists)
 		} else {
 			res, runErr = snap.engine.Call(ctx, taskName, args)

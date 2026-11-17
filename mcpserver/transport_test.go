@@ -189,18 +189,7 @@ func TestHTTPReachRefused(t *testing.T) {
 // first: cleanups run last-in first-out, and no session goroutine is left.
 func httpSession(t *testing.T, addr, token string) *mcp.ClientSession {
 	t.Helper()
-	transport := &mcp.StreamableClientTransport{
-		Endpoint:             "http://" + addr,
-		HTTPClient:           &http.Client{Transport: bearer{token}},
-		DisableStandaloneSSE: true,
-	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
-	cs, err := client.Connect(context.Background(), transport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = cs.Close() })
-	return cs
+	return httpClient(t, addr, token, nil)
 }
 
 // Spec 032 FR-010: the refusal holds over Streamable HTTP as on stdio.
@@ -563,4 +552,163 @@ func TestHTTPNilWarnIsSilent(t *testing.T) {
 		t.Errorf("the library wrote %q to the process output", out)
 	}
 	waitUnauthorized(t, loopbackOf(t, addr))
+}
+
+// httpClient is httpSession with client options, so a test can answer
+// approval requests over HTTP. Register the server's stop first.
+func httpClient(t *testing.T, addr, token string, opts *mcp.ClientOptions) *mcp.ClientSession {
+	t.Helper()
+	transport := &mcp.StreamableClientTransport{
+		Endpoint:             "http://" + addr,
+		HTTPClient:           &http.Client{Transport: bearer{token}},
+		DisableStandaloneSSE: true,
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, opts)
+	cs, err := client.Connect(context.Background(), transport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+	return cs
+}
+
+// askServer starts a server that asks for approval over HTTP.
+func askServer(t *testing.T, eng Engine, change func(*Options)) string {
+	t.Helper()
+	addr, stop, err := New(eng, askOptions(change)).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	return addr
+}
+
+// Spec 049 FR-001: over Streamable HTTP the person is asked before anything
+// runs, and the call runs once on approval, as on stdio.
+func TestHTTPApprovedCall(t *testing.T) {
+	eng := applyEngine()
+	who := approving()
+	cs := httpClient(t, askServer(t, eng, nil), "secret", who.options())
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": "prod"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError || contentText(res) != "applied\n[exit 0]" {
+		t.Errorf("approved call over HTTP: isError=%v text=%q", res.IsError, contentText(res))
+	}
+	asked := who.asked()
+	if len(asked) != 1 || asked[0].Message != messageApply {
+		t.Errorf("requests over HTTP = %+v, want one with %q", asked, messageApply)
+	}
+	if eng.runs() != 1 {
+		t.Errorf("runs = %d, want 1", eng.runs())
+	}
+}
+
+// Spec 049 FR-016, FR-028: over HTTP too, a decline, no answer in time and a
+// cancelled call run nothing.
+func TestHTTPNotApproved(t *testing.T) {
+	head := `task "apply" was not approved: `
+
+	eng := applyEngine()
+	cs := httpClient(t, askServer(t, eng, nil), "secret", declining().options())
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": "prod"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := head + "the request was declined. Nothing ran." + remedyApply; !res.IsError || contentText(res) != want {
+		t.Errorf("decline over HTTP: isError=%v %q, want %q", res.IsError, contentText(res), want)
+	}
+	if eng.runs() != 0 {
+		t.Error("the engine ran a declined call")
+	}
+
+	eng = applyEngine()
+	slow := &person{answer: func(ctx context.Context, _ *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+		select {
+		case <-ctx.Done():
+		case <-time.After(300 * time.Millisecond):
+		}
+		return &mcp.ElicitResult{Action: "accept", Content: map[string]any{"approved": true}}, nil
+	}}
+	addr := askServer(t, eng, func(o *Options) { o.ApprovalTimeout = 50 * time.Millisecond })
+	cs = httpClient(t, addr, "secret", slow.options())
+	res, err = cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": "prod"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := head + "no answer arrived within 50ms. Nothing ran." + remedyApply; !res.IsError || contentText(res) != want {
+		t.Errorf("timeout over HTTP: isError=%v %q, want %q", res.IsError, contentText(res), want)
+	}
+	if eng.runs() != 0 {
+		t.Error("the engine ran a call that timed out")
+	}
+
+	eng = applyEngine()
+	eng.returned = make(chan struct{}, 1)
+	shown := make(chan struct{})
+	// A client that cancels its own call takes its own prompt down. The
+	// server's withdrawal travels on the stream the cancellation closed, so
+	// the test ends the handler itself.
+	release := make(chan struct{})
+	waiting := &person{answer: func(ctx context.Context, _ *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+		close(shown)
+		select {
+		case <-ctx.Done():
+		case <-release:
+		}
+		return nil, errors.New("withdrawn")
+	}}
+	cs = httpClient(t, askServer(t, eng, nil), "secret", waiting.options())
+	t.Cleanup(func() { close(release) })
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-shown
+		cancel()
+	}()
+	if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": "prod"}}); err == nil {
+		t.Error("cancelled call over HTTP returned no error")
+	}
+	select {
+	case <-eng.returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler did not return after the call was cancelled")
+	}
+	if eng.runs() != 0 {
+		t.Error("the engine ran a cancelled call")
+	}
+}
+
+// Spec 049 FR-015: a request goes only to the session that made the call.
+func TestHTTPApprovalStaysOnSession(t *testing.T) {
+	eng := applyEngine()
+	addr := askServer(t, eng, nil)
+	first, second := approving(), approving()
+	sessions := []*mcp.ClientSession{
+		httpClient(t, addr, "secret", first.options()),
+		httpClient(t, addr, "secret", second.options()),
+	}
+	var wg sync.WaitGroup
+	for i, env := range []string{"staging", "prod"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := sessions[i].CallTool(context.Background(), &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": env}}); err != nil {
+				t.Errorf("session %d: %v", i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	for i, c := range []struct {
+		who *person
+		env string
+	}{{first, "staging"}, {second, "prod"}} {
+		asked := c.who.asked()
+		if len(asked) != 1 || !strings.Contains(asked[0].Message, `- env: "`+c.env+`"`) {
+			t.Errorf("session %d was shown %+v, want only its own request for %s", i, asked, c.env)
+		}
+	}
+	if eng.runs() != 2 {
+		t.Errorf("runs = %d, want 2", eng.runs())
+	}
 }

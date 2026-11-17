@@ -140,6 +140,20 @@ func refusedText(task string) string {
 	return `task "` + task + `" is destructive; to permit it, add ` + task + ` to --allow-destructive and restart the server`
 }
 
+// cannotAskSuffix is what `rune mcp` and `rune serve` add to a destructive
+// refusal for a client that states no form elicitation, as the clients of
+// these tests do: the command for the called task, and why Rune did not ask
+// (spec 049 FR-021).
+func cannotAskSuffix(task string) string {
+	return cannotAskWith("rune " + task)
+}
+
+// cannotAskWith is cannotAskSuffix for a server whose command is not a bare
+// rune: one started with --file names its Runefile.
+func cannotAskWith(command string) string {
+	return `. Or the operator can run "` + command + `" themselves. Rune could not ask for approval here: the client does not support MCP form elicitation.`
+}
+
 // US2 scenarios 1 and 2: a direct call to an ungranted destructive task is
 // refused before anything runs, and the text names the flag that permits it.
 func TestDestructiveMCP_UngrantedDirectCallRefused(t *testing.T) {
@@ -154,8 +168,8 @@ func TestDestructiveMCP_UngrantedDirectCallRefused(t *testing.T) {
 	for _, c := range cases {
 		dir := writeRunefile(t, destructiveRunefile)
 		text, isError, _ := toolCall(t, dir, c.flags, c.task)
-		if !isError || text != refusedText(c.task) {
-			t.Errorf("%s: isError=%v text=%q, want %q", c.name, isError, text, refusedText(c.task))
+		if !isError || text != refusedText(c.task)+cannotAskSuffix(c.task) {
+			t.Errorf("%s: isError=%v text=%q, want %q", c.name, isError, text, refusedText(c.task)+cannotAskSuffix(c.task))
 		}
 		if exists(t, dir, c.task+".done") {
 			t.Errorf("%s: %s ran although refused", c.name, c.task)
@@ -174,7 +188,7 @@ func TestDestructiveMCP_DependencyFollowsGrant(t *testing.T) {
 
 	dir = writeRunefile(t, destructiveRunefile)
 	text, isError, _ = toolCall(t, dir, nil, "release")
-	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	want := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("release")
 	if !isError || text != want {
 		t.Errorf("ungranted dependency: isError=%v text=%q, want %q", isError, text, want)
 	}

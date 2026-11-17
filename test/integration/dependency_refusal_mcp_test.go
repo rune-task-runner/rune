@@ -129,14 +129,14 @@ func TestDependencyRefusalMCP_RefusedBeforeAnythingRuns(t *testing.T) {
 		flags []string
 		want  string
 	}{
-		{"A", "release", nil, `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`},
-		{"C", "full", nil, `task "full" can run destructive tasks "clean", "wipe"; to permit them, add clean,wipe to --allow-destructive and restart the server`},
-		{"D", "full", []string{"--allow-destructive", "clean"}, `task "full" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server`},
-		{"E", "ordered", nil, `task "ordered" can run destructive tasks "wipe", "clean"; to permit them, add wipe,clean to --allow-destructive and restart the server`},
-		{"F", "publish", nil, `task "publish" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`},
-		{"G", "deploy", nil, `task "deploy" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server`},
-		{"K", "outer", nil, `task "outer" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`},
-		{"O", "rollback", nil, `task "rollback" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server`},
+		{"A", "release", nil, `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("release")},
+		{"C", "full", nil, `task "full" can run destructive tasks "clean", "wipe"; to permit them, add clean,wipe to --allow-destructive and restart the server` + cannotAskSuffix("full")},
+		{"D", "full", []string{"--allow-destructive", "clean"}, `task "full" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server` + cannotAskSuffix("full")},
+		{"E", "ordered", nil, `task "ordered" can run destructive tasks "wipe", "clean"; to permit them, add wipe,clean to --allow-destructive and restart the server` + cannotAskSuffix("ordered")},
+		{"F", "publish", nil, `task "publish" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("publish")},
+		{"G", "deploy", nil, `task "deploy" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server` + cannotAskSuffix("deploy")},
+		{"K", "outer", nil, `task "outer" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("outer")},
+		{"O", "rollback", nil, `task "rollback" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server` + cannotAskSuffix("rollback")},
 	}
 	for _, c := range cases {
 		dir := writeRunefile(t, dependencyRefusalRunefile)
@@ -150,7 +150,7 @@ func TestDependencyRefusalMCP_RefusedBeforeAnythingRuns(t *testing.T) {
 func TestDependencyRefusalMCP_PrivateTask(t *testing.T) {
 	dir := writeRunefile(t, dependencyRefusalRunefile)
 	text, isError, _ := toolCall(t, dir, nil, "ship")
-	checkRefused(t, "ship", dir, text, isError, `task "ship" can run destructive task "_scrub"; to permit it, add _scrub to --allow-destructive and restart the server`)
+	checkRefused(t, "ship", dir, text, isError, `task "ship" can run destructive task "_scrub"; to permit it, add _scrub to --allow-destructive and restart the server`+cannotAskSuffix("ship"))
 	if _, listed := toolHints(t, dir)["_scrub"]; listed {
 		t.Error("_scrub is listed as a tool")
 	}
@@ -165,7 +165,7 @@ func TestDependencyRefusalMCP_ImportedTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	text, isError, _ := toolCall(t, dir, nil, "shipit")
-	checkRefused(t, "shipit", dir, text, isError, `task "shipit" can run destructive task "tools::clean"; to permit it, add tools::clean to --allow-destructive and restart the server`)
+	checkRefused(t, "shipit", dir, text, isError, `task "shipit" can run destructive task "tools::clean"; to permit it, add tools::clean to --allow-destructive and restart the server`+cannotAskSuffix("shipit"))
 }
 
 // Quickstart row N (FR-003): a dependency the host skips does not count.
@@ -173,7 +173,7 @@ func TestDependencyRefusalMCP_HostOS(t *testing.T) {
 	dir := writeRunefile(t, dependencyRefusalRunefile)
 	text, isError, _ := toolCall(t, dir, nil, "dispatch")
 	if runtime.GOOS == "windows" {
-		checkRefused(t, "dispatch", dir, text, isError, `task "dispatch" can run destructive task "wipe-win"; to permit it, add wipe-win to --allow-destructive and restart the server`)
+		checkRefused(t, "dispatch", dir, text, isError, `task "dispatch" can run destructive task "wipe-win"; to permit it, add wipe-win to --allow-destructive and restart the server`+cannotAskSuffix("dispatch"))
 		return
 	}
 	if isError || !strings.Contains(text, "[exit 0]") || !exists(t, dir, "dispatch.done") {
@@ -200,7 +200,7 @@ func TestDependencyRefusalMCP_BeforeArguments(t *testing.T) {
 	dir := writeRunefile(t, dependencyRefusalRunefile)
 	line, _ := mcpServerCall(t, dir, []string{"mcp", "--color=never"}, "release", `{"bogus": 1}`)
 	text, isError := toolReply(t, line)
-	checkRefused(t, "release with bogus", dir, text, isError, `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`)
+	checkRefused(t, "release with bogus", dir, text, isError, `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`+cannotAskSuffix("release"))
 }
 
 // Quickstart rows B, H, I, J, Q (US2, FR-005 to FR-007, FR-011): the called
@@ -215,10 +215,10 @@ func TestDependencyRefusalMCP_GrantsAndOrder(t *testing.T) {
 		ran   []string // the markers a call that runs leaves
 	}{
 		{"B", "release", []string{"--allow-destructive", "clean"}, "", []string{"build.done", "clean.done", "release.done"}},
-		{"H", "reset", nil, `task "reset" is destructive and can run destructive task "wipe"; to permit them, add reset,wipe to --allow-destructive and restart the server`, nil},
-		{"I", "reset", []string{"--allow-destructive", "reset"}, `task "reset" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server`, nil},
+		{"H", "reset", nil, `task "reset" is destructive and can run destructive task "wipe"; to permit them, add reset,wipe to --allow-destructive and restart the server` + cannotAskSuffix("reset"), nil},
+		{"I", "reset", []string{"--allow-destructive", "reset"}, `task "reset" can run destructive task "wipe"; to permit it, add wipe to --allow-destructive and restart the server` + cannotAskSuffix("reset"), nil},
 		{"J", "reset", []string{"--allow-destructive", "reset,wipe"}, "", []string{"wipe.done", "reset.done"}},
-		{"Q", "clean", nil, refusedText("clean"), nil},
+		{"Q", "clean", nil, refusedText("clean") + cannotAskSuffix("clean"), nil},
 	}
 	for _, c := range cases {
 		dir := writeRunefile(t, dependencyRefusalRunefile)

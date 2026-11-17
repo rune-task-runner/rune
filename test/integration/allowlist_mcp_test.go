@@ -269,9 +269,9 @@ func TestAllowlistMCP_HiddenHookRuns(t *testing.T) {
 	}
 }
 
-const (
-	releaseReachesClean = `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
-	cleanIsDestructive  = `task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server`
+var (
+	releaseReachesClean = `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("release")
+	cleanIsDestructive  = `task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("clean")
 )
 
 // Quickstart L, M, N and contracts/mcp-tools.md "Interaction with

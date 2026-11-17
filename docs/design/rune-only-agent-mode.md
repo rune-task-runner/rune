@@ -574,7 +574,8 @@ what can still happen, why removing the shell does not stop it, and what closes 
     look inside a task.
 
 What Rune's own flags do in all of this: `--allow` and `--deny` decide which tasks Rune
-offers as tools, `--allow-destructive` which `[confirm]` tasks Rune will run, and
+offers as tools, `--allow-destructive` which `[confirm]` tasks Rune will run without
+[asking the person](../mcp.md#approving-a-destructive-call-in-the-client), and
 `--no-reload` whether Rune follows a changed Runefile. Each is about what Rune does when
 asked. None of them restricts a client.
 

@@ -1,15 +1,17 @@
 <!--
 Sync Impact Report
-- Version: 1.2.0 → 1.3.0
-- Rationale: MINOR amendment. Principle VII no longer says the agent surface is
-  read-only by default, which was never true of a task without [confirm]: such
-  a task can run and write through the agent surface. Destructive tasks are
-  refused by default, and a task makes no read-only claim unless its author
-  declares one with the new [readonly] attribute, which maps to the MCP
-  read-only hint beside [confirm] and the destructive hint. Prompted by spec 033
-  (truthful MCP tool hints, issue #37). Approved by the maintainer on 2026-11-10.
-- Modified principles: VII AI-Native, Secure by Default (read-only clause
-  replaced, [readonly] mapping added).
+- Version: 1.3.0 → 1.4.0
+- Rationale: MINOR amendment. Principle VII said destructive tasks are refused
+  on the agent surface by default. Spec 049 (issue #47) adds a second way for
+  one to run: the person at the client approves that one call, through MCP form
+  elicitation. With a client that can ask, the call is then put to the person
+  and not refused outright, so the sentence as written stopped being true. The
+  principle now names the two ways a destructive task can run, the operator's
+  grant and the person's approval of one call, and keeps refusal for everything
+  else. Proposed with spec 049. The maintainer's merge of that pull request is
+  the approval; until then this text is a proposal.
+- Modified principles: VII AI-Native, Secure by Default (the sentence on
+  destructive tasks).
 - Modified sections: none.
 - Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
@@ -75,7 +77,10 @@ checked. CI runs on Linux, macOS, and Windows.
 
 ### VII. AI-Native, Secure by Default
 MCP (Model Context Protocol) is first-class: tasks are exposed as tools. Destructive
-tasks are refused on the agent surface by default, and a task makes no read-only
+tasks are refused on the agent surface by default: one runs only when the operator
+granted that task when the server started, or when the person at the client approves
+that one call. A call is put to the person only through a client that states it can
+ask, and anything but an explicit yes is a refusal. A task makes no read-only
 claim unless its author declares one. Destructiveness is author-declared via the
 `[confirm]` attribute and read-only via `[readonly]`, which map to the MCP
 destructive and read-only hints. Secrets come only
@@ -138,4 +143,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.3.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-10
+**Version**: 1.4.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-17

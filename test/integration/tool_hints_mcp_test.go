@@ -243,10 +243,10 @@ func TestToolHintsMCP_GrantChangesNothing(t *testing.T) {
 // spec 034, a call that can reach an ungranted [confirm] task is refused up
 // front, naming that task.
 func TestToolHintsMCP_CallsUnchanged(t *testing.T) {
-	const refusedRelease = `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server`
+	refusedRelease := `task "release" can run destructive task "clean"; to permit it, add clean to --allow-destructive and restart the server` + cannotAskSuffix("release")
 	dir := writeRunefile(t, toolHintsRunefile)
 	text, isError, _ := toolCall(t, dir, nil, "clean")
-	if !isError || text != refusedText("clean") || exists(t, dir, "clean.done") {
+	if !isError || text != refusedText("clean")+cannotAskSuffix("clean") || exists(t, dir, "clean.done") {
 		t.Errorf("clean without a grant: isError=%v text=%q, want the refusal and no marker", isError, text)
 	}
 
