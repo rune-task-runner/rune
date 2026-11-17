@@ -105,7 +105,14 @@ func (fx *reloadFixture) connect() *mcp.ClientSession {
 		fx.t.Fatal(err)
 	}
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v1"}, &mcp.ClientOptions{
-		ToolListChangedHandler: func(context.Context, *mcp.ToolListChangedRequest) { fx.changed <- struct{}{} },
+		// Never blocking: a blocked send here stalls the session of a test
+		// that reads fewer signals than arrive.
+		ToolListChangedHandler: func(context.Context, *mcp.ToolListChangedRequest) {
+			select {
+			case fx.changed <- struct{}{}:
+			default:
+			}
+		},
 	})
 	cs, err := client.Connect(context.Background(), ct, nil)
 	if err != nil {
@@ -384,8 +391,25 @@ func TestReloaderRenameOverSave(t *testing.T) {
 	fx.wantTools("build", "extra1", "extra2")
 }
 
+// open keeps a debounce that was set before it, so a test can make the
+// window long enough that a slow machine cannot split one burst in two.
+func TestReloaderKeepsASetDebounce(t *testing.T) {
+	fx := startReload(t, map[string]string{"Runefile": reloadBase}, func(r *reloader) { r.debounce = time.Hour })
+	if fx.rl.debounce != time.Hour {
+		t.Errorf("debounce = %v, want the hour set before open", fx.rl.debounce)
+	}
+	fx = startReload(t, map[string]string{"Runefile": reloadBase}, nil)
+	if fx.rl.debounce != reloadDebounce {
+		t.Errorf("debounce = %v, want the default %v", fx.rl.debounce, reloadDebounce)
+	}
+}
+
 func TestReloaderCoalesces(t *testing.T) {
-	fx := startReload(t, map[string]string{"Runefile": reloadBase}, nil)
+	// The writes below are 15ms apart. With the default 100ms window, a
+	// runner that stalled for longer than that between two of them split the
+	// burst, and the count below failed on the machine's speed, not on the
+	// reloader. A one-second window leaves the burst whole.
+	fx := startReload(t, map[string]string{"Runefile": reloadBase}, func(r *reloader) { r.debounce = time.Second })
 	content := reloadBase
 	for i := range 10 {
 		content += fmt.Sprintf("\n# Extra.\nextra%d:\n    @echo e\n", i)

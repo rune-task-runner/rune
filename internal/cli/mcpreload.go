@@ -155,7 +155,9 @@ func (r *reloader) open(paths []string) (closeWatch func()) {
 	}()
 	r.events, r.errs, r.missed = events, errs, missed
 	r.addDir, r.removeDir = w.Add, w.Remove
-	r.debounce = reloadDebounce
+	if r.debounce == 0 {
+		r.debounce = reloadDebounce
+	}
 	r.good = paths
 	r.watch(paths)
 	return func() {
