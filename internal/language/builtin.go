@@ -104,6 +104,8 @@ var builtinAttributes = []Builtin{
 	{Name: "returns", Kind: BuiltinAttribute, Signature: "[returns(\"expected output\")]", Documentation: "Describe the task's successful output; surfaced to agents and listings (spec 023)."},
 	{Name: "readonly", Kind: BuiltinAttribute, Signature: "[readonly]", Documentation: "Claim the task changes nothing (sets the MCP readOnlyHint). Rune does not check the body."},
 	{Name: "agent-allow", Kind: BuiltinAttribute, Signature: "[agent-allow(param=\"value\")]", Documentation: "Limit the values an agent may run the task with: each named string or enum parameter must have exactly this value. People on the command line are not limited."},
+	{Name: "plan", Kind: BuiltinAttribute, Signature: "[plan(file=\"path\", summary=\"path\")]", Documentation: "The task makes a plan: when its body ends, Rune moves the plan file and its summary into its store and identifies the plan by its SHA-256 digest. Optional arguments: tool=\"name\" binds the executable, expires=\"30m\" sets how long the plan can be applied (default 1h)."},
+	{Name: "applies", Kind: BuiltinAttribute, Signature: "[applies(\"plan-task\")]", Documentation: "The task applies the stored plan of the named plan task, once, after a person approved that plan. The body reads it from RUNE_PLAN_FILE."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

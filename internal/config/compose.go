@@ -152,6 +152,13 @@ func namespaceInto(f, sub *ast.File, ns string, diags *diag.List) {
 		rewrite(t.Deps)
 		rewrite(t.PostHooks)
 		rewrite(t.FailHooks)
+		// [applies] names its plan task as a dependency names its target: by
+		// the name the module's own file gives it (spec 051).
+		for _, a := range t.Attributes {
+			if a.Kind == ast.AttrApplies && local[a.Str] {
+				a.Str = prefix + a.Str
+			}
+		}
 		t.Name = prefix + t.Name
 		if existing[t.Name] {
 			diags.Codef(diag.CodeDuplicateNamespace, t.Sp, "module collision: task %q already defined", t.Name)

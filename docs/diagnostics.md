@@ -70,6 +70,7 @@ filtering and CI.
 | `RUNE2017` | A string or path parameter reaches a shell command unquoted: **warning**, never gates execution or exit code. Write `{{quote(p)}}` (or `{{quote_each(p)}}` for a variadic) outside any shell quotes, or declare `p:raw` when word splitting is intended |
 | `RUNE2018` | Invalid `[readonly]`: the task also uses `[confirm]`, or runs a dependency or hook that is not `[readonly]` |
 | `RUNE2019` | Invalid `[agent-allow]`: an unknown, repeated, variadic or non-string parameter, a value its enum does not have or that is not printable, or a second `[agent-allow]` on the task |
+| `RUNE2020` | Invalid `[plan]` or `[applies]`: a wrong plan argument or path, a plan task that does not exist or has other parameters, an apply body that does not use `RUNE_PLAN_FILE`, an apply task that another task runs or that runs its plan task, or a combination the attributes do not allow |
 
 ### Project (RUNE3xxx) — errors
 

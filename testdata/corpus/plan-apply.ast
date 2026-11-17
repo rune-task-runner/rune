@@ -1,0 +1,18 @@
+File
+  Task plan
+    doc: "The plan and applies attributes (spec 051): a stored plan and the task that applies it."
+    Attr plan(file="tfplan", summary="tfplan.txt", tool="tofu", expires="30m")
+    Param env required :enum("staging","prod")
+    Body
+      @"echo {{env}}"
+  Task apply
+    Attr applies("plan")
+    Param env required :enum("staging","prod")
+    Body
+      @"echo \"$RUNE_PLAN_FILE\""
+  Task apply-now
+    Attr confirm("Apply now?")
+    Attr applies("plan")
+    Param env required :enum("staging","prod")
+    Body
+      @"echo \"$RUNE_PLAN_FILE\""

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -102,7 +103,7 @@ func examplePrereqs(readme string) []string {
 		}
 		lower := strings.ToLower(line)
 		var prereqs []string
-		for _, tok := range []string{"node", "python", "docker", "agent"} {
+		for _, tok := range []string{"node", "python", "docker", "agent", "opentofu", "terraform"} {
 			if strings.Contains(lower, tok) {
 				prereqs = append(prereqs, tok)
 			}
@@ -122,8 +123,38 @@ func prereqBinary(prereq string) string {
 		return "python3"
 	case "docker":
 		return "docker"
+	case "opentofu":
+		return "tofu"
+	case "terraform":
+		return "terraform"
 	default:
 		return ""
+	}
+}
+
+// TestExamplePrereqBinaries holds a README's prerequisite line to the binary
+// Tier B looks for. A tool the scan does not know reads as "none", and the
+// example would then run, and fail, on a host without that tool.
+func TestExamplePrereqBinaries(t *testing.T) {
+	tests := []struct {
+		line string
+		want []string
+	}{
+		{"**Prerequisites:** none", nil},
+		{"**Prerequisites:** docker", []string{"docker"}},
+		{"**Prerequisites:** python3, node", []string{"node", "python3"}},
+		{"**Prerequisites:** opentofu", []string{"tofu"}},
+		{"**Prerequisites:** terraform", []string{"terraform"}},
+		{"**Prerequisites:** an agent CLI (e.g. `claude`, `codex`)", []string{""}},
+	}
+	for _, tt := range tests {
+		var got []string
+		for _, pr := range examplePrereqs("# Title\n\n" + tt.line + "\n") {
+			got = append(got, prereqBinary(pr))
+		}
+		if !slices.Equal(got, tt.want) {
+			t.Errorf("%q: binaries = %q, want %q", tt.line, got, tt.want)
+		}
 	}
 }
 

@@ -25,6 +25,8 @@ func FuzzParser(f *testing.F) {
 		"deploy env: build\n    echo hi\n",
 		// The agent-allow attribute (spec 050): named string predicates.
 		"[agent-allow(env=\"staging\", region=\"eu\")]\ndeploy env region:\n    echo {{env}}\n",
+		// The plan and applies attributes (spec 051).
+		"[plan(file=\"p\", summary=\"s\")]\nplan:\n    echo hi\n[applies(\"plan\")]\napply:\n    echo $RUNE_PLAN_FILE\n",
 		"deploy env:build\n    echo hi\n",
 		"deploy env:enum():\n    echo hi\n",
 		"deploy env:enum(x):\n    echo hi\n",

@@ -56,7 +56,19 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 		}
 		needs := s.ungranted(t)
 		var asking ApprovalEngine
-		if len(needs) > 0 {
+		switch {
+		case t.AppliesPlan != "":
+			// A task that applies a plan always goes to the engine with an
+			// approval pending, granted or not. Whether the person can be
+			// asked is decided when the engine asks, so that a call its own
+			// checks refuse is refused for that reason first (spec 051).
+			engine, ok := snap.engine.(ApprovalEngine)
+			if !ok {
+				return errorResult(s.planNobody(taskName)), nil
+			}
+			asking = engine
+			needs = planNames(taskName, needs)
+		case len(needs) > 0:
 			engine, ok := snap.engine.(ApprovalEngine)
 			switch {
 			case !s.opts.AskApproval || !ok:

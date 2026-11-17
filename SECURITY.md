@@ -37,6 +37,10 @@ by default (see [docs/mcp.md](docs/mcp.md)):
   is checked for the called task and for everything the call can reach, before anything
   runs, and neither a grant nor an approval lifts it. It covers runs that start through
   Rune. It does not cover an agent's own shell.
+- **A task that applies a plan runs only the plan a person approved.** `[applies("plan")]`
+  runs a task with the plan that the `[plan]` task `plan` made and Rune stored, identified by
+  its SHA-256 digest, only after a person approved that plan and only once, and a grant with
+  `--allow-destructive` approves no plan.
 - **Remote MCP endpoints are opt-in**, bound to loopback unless the operator names another
   address, and token-gated. The HTTP transport has no TLS: on an address that is not loopback
   the token is sent in cleartext, and the server prints a warning when it starts.

@@ -31,6 +31,9 @@ type loadedModule struct {
 	workDir  string
 	baseEnv  []string
 	scope    *eval.Scope
+	// planIdent is this load's part of a plan's binding (spec 051). Zero
+	// when no task makes or applies a plan.
+	planIdent planIdentity
 }
 
 // loadModule resolves a Runefile statically (parse → compose → analyze) and
@@ -85,16 +88,21 @@ func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec 
 		return nil, &ValidationError{Err: errorf("invalid settings")}
 	}
 
-	return &loadedModule{
+	mod := &loadedModule{
 		file:     file,
 		tasks:    indexTasks(file),
 		assigns:  indexAssignments(file),
 		settings: settings,
 		root:     root,
 		workDir:  resolveWorkDir(runefile, settings.WorkingDir),
-		baseEnv:  buildEnv(settings, scope, root),
 		scope:    scope,
-	}, nil
+	}
+	var dotenvPairs []string
+	mod.baseEnv, dotenvPairs = buildEnv(settings, scope, root)
+	if usesPlans(mod.tasks) {
+		mod.planIdent = newPlanIdentity(file, root, settings, dotenvPairs, nil)
+	}
+	return mod, nil
 }
 
 // newMCPAdapter builds an mcpserver.Engine from a resolved Runefile. paths
@@ -129,7 +137,19 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 		now:       func() string { return "" },
 		maskSet:   deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked),
 		goos:      runtime.GOOS,
+		planIdent: mod.planIdent,
+		version:   opts.Version,
+		stderr:    operatorStderr(opts.Stderr),
 	}, rec, nil
+}
+
+// operatorStderr is where an adapter reports what a call's result cannot
+// carry. Calls run at once, so writes to it are serialized.
+func operatorStderr(w io.Writer) io.Writer {
+	if w == nil {
+		return nil
+	}
+	return &syncWriter{w: w}
 }
 
 // defaultHTTPAddr is where --http listens when --addr is not given. It is a
@@ -355,7 +375,14 @@ func checkTaskNames(flag string, names []string, tasks map[string]*ast.Task) err
 // client configuration keeps working when [confirm] is removed (FR-011).
 func warnNonDestructive(w io.Writer, theme style.Theme, names []string, tasks map[string]*ast.Task) {
 	for _, name := range names {
-		if t, ok := tasks[name]; ok && t.Attr(ast.AttrConfirm) == nil {
+		t, ok := tasks[name]
+		if ok && t.AppliesPlan() != "" {
+			// With or without [confirm]: no grant approves a plan (spec 051).
+			fmt.Fprintf(w, "%s: --allow-destructive %s approves no plan: task %q asks the person at the client on every call\n",
+				theme.Warning.Render("warning"), name, name)
+			continue
+		}
+		if ok && t.Attr(ast.AttrConfirm) == nil {
 			fmt.Fprintf(w, "%s: --allow-destructive %s has no effect: task %q is not destructive\n",
 				theme.Warning.Render("warning"), name, name)
 		}
@@ -400,7 +427,7 @@ func warnNoTasksExposed(w io.Writer, theme style.Theme) {
 func destructiveOnly(names []string, tasks map[string]*ast.Task, goos string) []string {
 	var out []string
 	for _, name := range names {
-		if t, ok := tasks[name]; ok && t.Attr(ast.AttrConfirm) != nil && t.AvailableOn(goos) {
+		if t, ok := tasks[name]; ok && t.Attr(ast.AttrConfirm) != nil && t.AppliesPlan() == "" && t.AvailableOn(goos) {
 			out = append(out, name)
 		}
 	}

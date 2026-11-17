@@ -1,0 +1,18 @@
+# A reviewed infrastructure change with Terraform. `plan` saves the plan to a file, and Rune
+# moves that file and its summary into its store under .rune/plans/. `apply` runs only with
+# the stored plan, only after a person approved it, and only once.
+
+# Initialize the working directory.
+init:
+    terraform init -input=false
+
+# Plan the change for one environment and save the plan.
+[plan(file="tfplan", summary="tfplan.txt", tool="terraform")]
+plan env:enum("staging","prod"): init
+    terraform plan -input=false -var env={{quote(env)}} -out=tfplan
+    terraform show -no-color tfplan > tfplan.txt
+
+# Apply the reviewed plan.
+[applies("plan")]
+apply env:enum("staging","prod"):
+    terraform apply -input=false "$RUNE_PLAN_FILE"

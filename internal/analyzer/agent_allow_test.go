@@ -188,3 +188,18 @@ func TestAgentAllowAccepted(t *testing.T) {
 		})
 	}
 }
+
+// [agent-allow] and [plan] share the rule for a value that cannot be read in
+// the source.
+func TestUnreadable(t *testing.T) {
+	for _, s := range []string{"", "staging", "plans/tf plan", "größe"} {
+		if unreadable(s) {
+			t.Errorf("unreadable(%q) = true", s)
+		}
+	}
+	for _, s := range []string{"a\tb", "a\x00b", "a" + string(rune(0x202e)) + "b", "a\xffb"} {
+		if !unreadable(s) {
+			t.Errorf("unreadable(%q) = false", s)
+		}
+	}
+}

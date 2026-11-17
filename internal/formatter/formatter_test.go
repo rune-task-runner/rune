@@ -139,3 +139,24 @@ func TestFormatAgentAllow(t *testing.T) {
 		}
 	}
 }
+
+// Spec 051: [plan] and [applies] have one canonical form each.
+func TestFormatPlan(t *testing.T) {
+	format := func(src string) string {
+		t.Helper()
+		f, diags := parser.Parse("Runefile", src)
+		if diags.HasErrors() {
+			t.Fatalf("parse: %v", diags)
+		}
+		return Format(f)
+	}
+	once := format("[plan( file = \"tfplan\" ,summary=\"tfplan.txt\" )]\nplan env:\n    @echo hi\n\n[applies( \"plan\" )]\napply env:\n    @echo $RUNE_PLAN_FILE\n")
+	for _, want := range []string{"[plan(file=\"tfplan\", summary=\"tfplan.txt\")]\n", "[applies(\"plan\")]\n"} {
+		if !strings.Contains(once, want) {
+			t.Errorf("no %q in:\n%s", want, once)
+		}
+	}
+	if twice := format(once); twice != once {
+		t.Errorf("formatting is not idempotent:\nonce:\n%s\ntwice:\n%s", once, twice)
+	}
+}

@@ -7,8 +7,10 @@ package ast
 import (
 	"fmt"
 	"math"
+	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rune-task-runner/rune/internal/token"
 )
@@ -316,6 +318,83 @@ func (t *Task) AgentPolicy() []*AllowPredicate {
 	return nil
 }
 
+// PlanSpec is what [plan(...)] says about the plan a task makes (spec 051).
+// Expires is the text as written. PlanExpiry reads it.
+type PlanSpec struct {
+	File, Summary, Tool, Expires string
+}
+
+// PlanSpec returns the arguments of the task's first [plan], or nil. The
+// analyzer rejects a second one, an unknown argument and a repeated one.
+func (t *Task) PlanSpec() *PlanSpec {
+	a := t.Attr(AttrPlan)
+	if a == nil {
+		return nil
+	}
+	spec := &PlanSpec{}
+	for _, arg := range a.Allow {
+		switch arg.Name {
+		case "file":
+			spec.File = arg.Value
+		case "summary":
+			spec.Summary = arg.Value
+		case "tool":
+			spec.Tool = arg.Value
+		case "expires":
+			spec.Expires = arg.Value
+		}
+	}
+	return spec
+}
+
+// AppliesPlan returns the plan task named by the task's first [applies], or
+// "" when the task applies no plan.
+func (t *Task) AppliesPlan() string {
+	if a := t.Attr(AttrApplies); a != nil {
+		return a.Str
+	}
+	return ""
+}
+
+// PlanExpiry reads the expires argument of [plan]: a duration from
+// MinPlanExpiry to MaxPlanExpiry, or DefaultPlanExpiry when text is empty.
+func PlanExpiry(text string) (time.Duration, error) {
+	if text == "" {
+		return DefaultPlanExpiry, nil
+	}
+	d, err := time.ParseDuration(text)
+	if err != nil {
+		return 0, fmt.Errorf("not a duration: %w", err)
+	}
+	if d < MinPlanExpiry || d > MaxPlanExpiry {
+		return 0, fmt.Errorf("%s is outside %s to %s", d, MinPlanExpiry, MaxPlanExpiry)
+	}
+	return d, nil
+}
+
+// PlanPathError says why p cannot be a file or summary path of [plan], or ""
+// when it can. The rule reads the text only, so one Runefile is valid or not
+// on every host: filepath.IsAbs would accept C:/x on Linux and /x on Windows.
+func PlanPathError(p string) string {
+	switch {
+	case p == "":
+		return "is empty"
+	case strings.HasPrefix(p, "/"), strings.ContainsRune(p, '\\'):
+		return "is not a relative path with forward slashes"
+	case len(p) >= 2 && p[1] == ':':
+		return "has a drive prefix"
+	}
+	for elem := range strings.SplitSeq(p, "/") {
+		if elem == ".." {
+			return "leaves the task's directory"
+		}
+	}
+	return ""
+}
+
+// SamePlanPath reports whether two [plan] paths name one file.
+func SamePlanPath(a, b string) bool { return path.Clean(a) == path.Clean(b) }
+
 // Returns reports the task's [returns("...")] outcome description, or ""
 // (spec 023 FR-009). Advisory only: Rune never compares task output to it.
 func (t *Task) Returns() string {
@@ -368,6 +447,23 @@ const (
 	AttrReturns          = "returns"         // task outcome description surfaced to agents and listings (spec 023)
 	AttrReadonly         = "readonly"        // claims read-only: sets MCP readOnlyHint
 	AttrAgentAllow       = "agent-allow"     // limits the values an agent may run the task with (spec 050)
+	AttrPlan             = "plan"            // the task makes a plan file that Rune stores (spec 051)
+	AttrApplies          = "applies"         // the task applies the stored plan of the named plan task (spec 051)
+)
+
+// The variables Rune gives the body of a task that applies a plan (spec 051).
+const (
+	PlanFileVar   = "RUNE_PLAN_FILE"
+	PlanIDVar     = "RUNE_PLAN_ID"
+	PlanDigestVar = "RUNE_PLAN_DIGEST"
+)
+
+// The expiry of a stored plan: the default, and the range [plan(expires=...)]
+// may set.
+const (
+	DefaultPlanExpiry = time.Hour
+	MinPlanExpiry     = time.Minute
+	MaxPlanExpiry     = 7 * 24 * time.Hour
 )
 
 // KnownAttributes is the canonical accepted attribute set, in documentation
@@ -380,11 +476,12 @@ var KnownAttributes = []string{
 	AttrNoCD, AttrWorkingDirectory, AttrEnv, AttrDoc, AttrScript,
 	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
 	AttrParamDoc, AttrReturns, AttrReadonly, AttrAgentAllow,
+	AttrPlan, AttrApplies,
 }
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a
 // single string argument (Str); env carries two (Str, Str2); cache carries
-// input/output glob lists; agent-allow carries its predicates.
+// input/output glob lists; agent-allow and plan carry named string arguments.
 type Attribute struct {
 	Kind       string
 	Str        string // confirm prompt, group name, doc, script cmd, working-directory, env name
@@ -392,15 +489,16 @@ type Attribute struct {
 	Inputs     []Expr // cache(inputs=[...])
 	Outputs    []Expr // cache(outputs=[...])
 	HasOutputs bool
-	Allow      []*AllowPredicate // agent-allow(name="value", ...), in source order
+	Allow      []*AllowPredicate // named string arguments of agent-allow(...) and plan(...), in source order
 	Sp         token.Span
 }
 
 func (a *Attribute) Span() token.Span { return a.Sp }
 
-// AllowPredicate is one name="value" of an [agent-allow] attribute: a
-// parameter and the one value an agent run of the task may have for it (spec
-// 050). The two spans let a diagnostic point at the part that is wrong.
+// AllowPredicate is one name="value" of an attribute. In [agent-allow] it is
+// a parameter and the one value an agent run of the task may have for it
+// (spec 050). In [plan] it is one argument (spec 051). The two spans let a
+// diagnostic point at the part that is wrong.
 type AllowPredicate struct {
 	Name    string
 	Value   string

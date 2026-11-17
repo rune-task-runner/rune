@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -112,7 +113,7 @@ func execute(opts Options, runefile string, args []string) error {
 	}
 
 	workDir := resolveWorkDir(runefile, settings.WorkingDir)
-	env := buildEnv(settings, scope, root)
+	env, dotenvPairs := buildEnv(settings, scope, root)
 
 	plan := planRun
 	switch {
@@ -166,6 +167,10 @@ func execute(opts Options, runefile string, args []string) error {
 		stdinTTY:  isTerminal(mopts.Stdin),
 		agent:     agentRun,
 		mask:      maskerFor(set),
+		surface:   surfaceCLI,
+	}
+	if usesPlans(tasks) {
+		eng.planIdent = newPlanIdentity(file, root, settings, dotenvPairs, overrides)
 	}
 
 	invs, err := eng.resolveRoots(rawInvs)
@@ -183,10 +188,26 @@ func execute(opts Options, runefile string, args []string) error {
 		}
 	}
 
+	// A task that applies a plan is checked, put to the person and claimed
+	// before anything runs (spec 051). Plan modes run no body.
+	if plan == planRun {
+		if err := eng.prepareApplyRoot(invs); err != nil {
+			return maskErr(err, set)
+		}
+	}
+
+	var failure error
 	if err := scheduler.Run(eng, invs); err != nil {
-		// maskErr covers the error text itself: the "rune: ..." banner is
-		// printed by callers outside the masked writers.
-		return maskErr(eng.classifyRunErr(err), set)
+		failure = eng.classifyRunErr(err)
+	}
+	if eng.finishApply(CodeFor(failure)) && failure == nil {
+		// The line that says so is already on standard error.
+		failure = &TaskFailure{Err: errorf("the plan file changed while it was being applied"), Silent: true}
+	}
+	// maskErr covers the error text itself: the "rune: ..." banner is
+	// printed by callers outside the masked writers.
+	if failure != nil {
+		return maskErr(failure, set)
 	}
 	return nil
 }
@@ -248,6 +269,33 @@ type engine struct {
 	// mask hides secret values in the text of a policy refusal. Nil masks
 	// nothing.
 	mask func(string) string
+
+	// planIdent is what this load of the Runefile contributes to a plan's
+	// binding (spec 051). Zero when no task makes or applies a plan.
+	planIdent planIdentity
+
+	// surface names where plan events come from in the journal: surfaceMCP
+	// or surfaceCLI.
+	surface string
+
+	// operatorErr, when set (MCP path), receives a warning about the plan
+	// journal in place of the call's captured standard error, which a refused
+	// call drops.
+	operatorErr io.Writer
+
+	// attempt is the claimed plan of this run, set once a person approved it
+	// and until the run ends. Only the body of its invocation is handed the
+	// plan.
+	attempt *applyAttempt
+
+	// clock is the plan store's clock and gitInfo reads the commit recorded
+	// with a plan. Nil means the real ones; tests set them.
+	clock   func() time.Time
+	gitInfo func(ctx context.Context, dir string) (commit string, dirty *bool)
+
+	// planMaxArtifact and planMaxSummary lower the store's size limits in
+	// tests. Zero means the store's own.
+	planMaxArtifact, planMaxSummary int64
 
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
@@ -398,6 +446,10 @@ func (e *engine) Execute(task *ast.Task, params eval.Args) error {
 			printErrorBanner(e.opts, e.theme, f.Error())
 			return &TaskFailure{Err: &bodyNotRunError{err: f.Err}, Silent: true}
 		}
+		if f := e.applyGate(task, params); f != nil {
+			printErrorBanner(e.opts, e.theme, f.Error())
+			return &TaskFailure{Err: &bodyNotRunError{err: f.Err}, Silent: true}
+		}
 	}
 
 	if c := task.Attr(ast.AttrConfirm); c != nil && e.plan == planRun {
@@ -466,6 +518,9 @@ func (e *engine) ExecuteFailHook(task *ast.Task, params eval.Args, f scheduler.F
 	if f := e.policyGate(task, params); f != nil {
 		return f
 	}
+	if f := e.applyGate(task, params); f != nil {
+		return f
+	}
 	if c := task.Attr(ast.AttrConfirm); c != nil {
 		if f := e.confirmFailure(task, c.Str); f != nil {
 			return f
@@ -529,6 +584,9 @@ func (e *engine) runBodyTo(task *ast.Task, params eval.Args, stdout io.Writer, e
 
 	dir := e.taskDir(task)
 	env := e.taskEnv(task)
+	// Last, so that nothing else of these names reaches the body in their
+	// place (spec 051).
+	extraEnv = append(slices.Clip(extraEnv), e.planEnv(task, params)...)
 	if len(extraEnv) > 0 {
 		// A nil env means "inherit the process environment" to the executors;
 		// adding entries must not silently drop that inheritance.
@@ -573,6 +631,9 @@ func (e *engine) runBodyTo(task *ast.Task, params eval.Args, stdout io.Writer, e
 	// [no-exit-message] suppresses the trailing error banner (not the exit code).
 	if err != nil && task.Attr(ast.AttrNoExitMessage) != nil {
 		return &TaskFailure{Err: err, Silent: true}
+	}
+	if err == nil && task.Attr(ast.AttrPlan) != nil {
+		return e.capturePlan(task, params)
 	}
 	return err
 }
@@ -845,14 +906,18 @@ func resolveWorkDir(runefile, setting string) string {
 // buildEnv assembles the task environment: the inherited process environment,
 // any `set dotenv` file, plus — when `set export` is active — every
 // successfully-resolved module variable.
-func buildEnv(settings config.Settings, scope *eval.Scope, root string) []string {
-	env := os.Environ()
+//
+// It also returns the entries the dotenv file gave, as this load read them:
+// they are part of what a plan is made for (spec 051).
+func buildEnv(settings config.Settings, scope *eval.Scope, root string) (env, dotenvPairs []string) {
+	env = os.Environ()
 	if settings.Dotenv != "" {
 		path := settings.Dotenv
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(root, path)
 		}
 		if pairs, err := dotenv.Load(path); err == nil {
+			dotenvPairs = pairs
 			env = append(env, pairs...)
 		}
 	}
@@ -869,7 +934,7 @@ func buildEnv(settings config.Settings, scope *eval.Scope, root string) []string
 			}
 		}
 	}
-	return env
+	return env, dotenvPairs
 }
 
 // docsURL is where the overview points users when a Runefile defines no tasks.

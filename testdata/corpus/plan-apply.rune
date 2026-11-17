@@ -1,0 +1,12 @@
+# The plan and applies attributes (spec 051): a stored plan and the task that applies it.
+[plan(file="tfplan", summary="tfplan.txt", tool="tofu", expires="30m")]
+plan env:enum("staging","prod"):
+    @echo {{env}}
+
+[applies("plan")]
+apply env:enum("staging","prod"):
+    @echo "$RUNE_PLAN_FILE"
+
+[confirm("Apply now?"), applies("plan")]
+apply-now env:enum("staging","prod"):
+    @echo "$RUNE_PLAN_FILE"

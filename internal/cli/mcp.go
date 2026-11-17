@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"io"
 	"runtime"
 	"time"
 
@@ -40,6 +41,25 @@ type mcpAdapter struct {
 	// from --output-limit (spec 042).
 	outputLimit int
 
+	// planIdent is this load's part of a plan's binding, and version the
+	// Rune version recorded with a plan (spec 051). The loaders set them. A
+	// Runefile that uses plans on an adapter without an identity stores and
+	// applies nothing.
+	planIdent planIdentity
+	version   string
+
+	// stderr is the operator's standard error: the server's own, not the
+	// captured stream of a call. A warning about the plan journal goes there,
+	// because a refused call returns no output that could carry it. Nil
+	// leaves the warning in the call's output.
+	stderr io.Writer
+
+	// clock, gitInfo and the two limits are the plan store's clock, the git
+	// reader and the size limits. Zero means the real ones; tests set them.
+	clock                           func() time.Time
+	gitInfo                         func(ctx context.Context, dir string) (commit string, dirty *bool)
+	planMaxArtifact, planMaxSummary int64
+
 	// contextTimeout bounds the [context] hook run; zero means the fixed
 	// defaultContextTimeout. A field (not a global) so tests shrink it per
 	// adapter without racing each other.
@@ -65,6 +85,7 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 			DestructiveReach: destructiveReach,
 			Network:          t.Attr(ast.AttrNetwork) != nil || reachesNetwork,
 			ReadOnly:         t.Attr(ast.AttrReadonly) != nil,
+			AppliesPlan:      t.AppliesPlan(),
 			// Static Runefile text, but capped like every agent-facing string
 			// so an absurd [returns] cannot bloat the tool list (FR-011).
 			Returns: capAgentText(t.Returns()),
@@ -276,7 +297,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	// masked text, so the tool result an agent receives is safe by
 	// construction, and a truncation cut can never split a secret.
 	mopts, flushMask := maskOptions(
-		Options{Stdin: nil, Stdout: outBuf, Stderr: errBuf, Cwd: a.workDir, Quiet: true},
+		Options{Stdin: nil, Stdout: outBuf, Stderr: errBuf, Cwd: a.workDir, Quiet: true, Version: a.version},
 		a.maskSet,
 	)
 
@@ -311,6 +332,14 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		// hook included: it runs because an agent connected.
 		agent: true,
 		mask:  a.maskText,
+
+		planIdent:       a.planIdent,
+		surface:         surfaceMCP,
+		operatorErr:     a.stderr,
+		clock:           a.clock,
+		gitInfo:         a.gitInfo,
+		planMaxArtifact: a.planMaxArtifact,
+		planMaxSummary:  a.planMaxSummary,
 	}
 
 	params, err := bindNamedParams(t, args, lists, scope)
@@ -324,11 +353,38 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		return mcpserver.Result{}, errors.New(d.text(a.maskText))
 	}
 
+	// A task that applies a plan runs only with a stored plan that passed
+	// every check, and only once a person approved that plan in this call
+	// (spec 051). The checks come before the question, so nobody is asked
+	// about a plan that could not be applied.
+	var ticket *planTicket
+	if t.AppliesPlan() != "" {
+		if pending == nil {
+			return mcpserver.Result{}, errors.New(applyNobodyText(t.Name))
+		}
+		if ticket, err = eng.findPlan(t, params); err != nil {
+			return mcpserver.Result{}, err
+		}
+	}
+
 	if pending != nil {
 		// Binding ran no command, so nothing has happened yet. The person
 		// is shown the values bound above, which are the ones the run uses.
-		if err := pending.ask(ctx, a.approvalRequest(t, params, pending.tasks)); err != nil {
+		req := a.approvalRequest(t, params, pending.tasks)
+		ask := func() error { return pending.ask(ctx, req) }
+		if ticket != nil {
+			req.Plan = ticket.approval(a.maskText)
+			ask = func() error {
+				return eng.askApproval(ticket, func() (string, error) { return "", pending.ask(ctx, req) })
+			}
+		}
+		if err := ask(); err != nil {
 			return mcpserver.Result{}, err
+		}
+		if ticket != nil {
+			if err := eng.claimPlan(ticket, params); err != nil {
+				return mcpserver.Result{}, err
+			}
 		}
 		eng.approved = make(map[string]bool, len(pending.tasks))
 		for _, task := range pending.tasks {
@@ -342,6 +398,10 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		// classifyRunErr can render diagnostics into the masked stderr, so it
 		// must precede the flush that drains the writers into the buffers.
 		code = CodeFor(eng.classifyRunErr(runErr))
+	}
+	// Before the flush too: a tampered copy is reported on standard error.
+	if eng.finishApply(code) && code == ExitSuccess {
+		code = ExitTaskFail
 	}
 	flushMask()
 	flushFix()
