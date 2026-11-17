@@ -76,22 +76,37 @@ If you've used `make` or `just`, Rune will feel familiar — with a few delibera
 
 ## Install
 
+### Install script (Linux/macOS)
+
+Verifies the checksum.
+
 ```sh
-# Install script (Linux/macOS) — verifies the checksum:
 curl -sSfL https://raw.githubusercontent.com/rune-task-runner/rune/main/scripts/install.sh | sh
+```
 
-# Homebrew (macOS/Linux):
+### Homebrew (macOS/Linux)
+
+```sh
 brew install rune-task-runner/tap/rune
+```
 
-# Scoop (Windows):
+### Scoop (Windows)
+
+```sh
 scoop bucket add rune https://github.com/rune-task-runner/scoop-bucket && scoop install rune
+```
 
-# From source:
+### From source
+
+```sh
 go install github.com/rune-task-runner/rune/cmd/rune@latest
 ```
 
-Or grab a prebuilt binary from [Releases](https://github.com/rune-task-runner/rune/releases),
-or run it in a container:
+### Prebuilt binary
+
+Download a binary from [Releases](https://github.com/rune-task-runner/rune/releases).
+
+### Container
 
 ```sh
 docker run --rm -v "$PWD":/work ghcr.io/rune-task-runner/rune --list
