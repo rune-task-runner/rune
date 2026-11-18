@@ -67,6 +67,11 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 			opts.Version = version
 			opts.Ctx = cmd.Context()
 			opts.Commands = subcommandNames(cmd.Root())
+			// Where the audit log lives is the operator's to say, through the
+			// environment of the process: a Runefile is editable by the tasks
+			// an agent runs, and a server's environment is not (spec 052).
+			opts.AuditDir = os.Getenv("RUNE_AUDIT_DIR")
+			opts.AuditRetention = os.Getenv("RUNE_AUDIT_RETENTION_DAYS")
 			return nil
 		},
 		// This fires only when no subcommand matched the first positional:

@@ -98,7 +98,23 @@ func (s *Server) SetInstructions(text string) {
 // out a Replace, so it never returns part of one, and initialize carries the
 // instructions in force now. The SDK reads its own instructions once, when
 // the server is built.
+//
+// With an Auditor it also reports every request, around that work, so the
+// record of a tool call starts before the SDK looks the tool up (spec 052).
 func (s *Server) middleware(next mcp.MethodHandler) mcp.MethodHandler {
+	served := s.serve(next)
+	if s.opts.Audit == nil {
+		return served
+	}
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		if method == "tools/call" {
+			return s.auditCall(ctx, method, req, served)
+		}
+		return s.auditRequest(ctx, method, req, served)
+	}
+}
+
+func (s *Server) serve(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 		switch method {
 		case "tools/list":

@@ -51,6 +51,9 @@ type Event struct {
 	Exit       *int      `json:"exit,omitempty"`
 	State      string    `json:"state,omitempty"`
 	Tampered   bool      `json:"tampered,omitempty"`
+	// Invocation is the id of the agent's call the event happened in, as
+	// the audit log records it (spec 052). Empty on the command line.
+	Invocation string `json:"invocation,omitempty"`
 }
 
 // Log appends e to the journal as one line, with the clock's time when e has

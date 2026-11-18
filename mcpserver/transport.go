@@ -102,6 +102,7 @@ func (s *Server) tokenMiddleware(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("Authorization")
 		if subtle.ConstantTimeCompare([]byte(got), want) != 1 {
+			s.auditAuthFailure(r)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -116,4 +117,17 @@ func (s *Server) tokenMiddleware(token string, next http.Handler) http.Handler {
 func isLoopback(a net.Addr) bool {
 	tcp, ok := a.(*net.TCPAddr)
 	return ok && tcp.IP.IsLoopback()
+}
+
+// auditAuthFailure reports a request refused for its bearer token. Only the
+// address it came from is taken from the request: what an unauthenticated
+// client says about itself is not evidence.
+func (s *Server) auditAuthFailure(r *http.Request) {
+	if s.opts.Audit == nil {
+		return
+	}
+	now := s.now()
+	if ok, suppressed := s.authFailures.allow(now); ok {
+		s.opts.Audit.AuthFailed(r.Context(), AuditAuthFailure{Time: now, Remote: r.RemoteAddr, Suppressed: suppressed})
+	}
 }

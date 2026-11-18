@@ -48,6 +48,12 @@ type mcpAdapter struct {
 	planIdent planIdentity
 	version   string
 
+	// ident is the identity of this load for the audit record of a call
+	// (spec 052). gitState reads the repository state for it; nil means the
+	// real git, and tests set it.
+	ident    planIdentity
+	gitState func(ctx context.Context, dir string) (state, commit string, dirty *bool)
+
 	// stderr is the operator's standard error: the server's own, not the
 	// captured stream of a call. A warning about the plan journal goes there,
 	// because a refused call returns no output that could carry it. Nil
@@ -183,7 +189,47 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 var (
 	_ mcpserver.ListEngine     = (*mcpAdapter)(nil)
 	_ mcpserver.ApprovalEngine = (*mcpAdapter)(nil)
+	_ mcpserver.AuditEngine    = (*mcpAdapter)(nil)
 )
+
+// AuditIdentity reports what a call runs against: this load's Runefile and
+// its digests, and the state of the repository at this moment (spec 052).
+func (a *mcpAdapter) AuditIdentity(ctx context.Context) mcpserver.AuditIdentity {
+	id := mcpserver.AuditIdentity{
+		Runefile:         a.ident.runefile,
+		DefinitionDigest: a.ident.def,
+		ConfigDigest:     a.ident.config,
+	}
+	read := a.gitState
+	if read == nil {
+		read = gitState
+	}
+	id.GitState, id.GitCommit, id.GitDirty = read(ctx, a.root)
+	return id
+}
+
+// Redact masks this load's secrets for an audit record.
+func (a *mcpAdapter) Redact(s string) string { return a.maskText(s) }
+
+// effectiveArgs lists a bound call's parameters for the audit record, in
+// declaration order, masked: a variadic with its elements, any other
+// parameter with its one value.
+func (a *mcpAdapter) effectiveArgs(t *ast.Task, params eval.Args) []mcpserver.AuditArg {
+	args := make([]mcpserver.AuditArg, 0, len(t.Params))
+	for _, p := range t.Params {
+		arg := mcpserver.AuditArg{Name: p.Name}
+		if p.Kind == ast.ParamVariadicPlus || p.Kind == ast.ParamVariadicStar {
+			arg.Variadic = true
+			for _, element := range params.Lists[p.Name] {
+				arg.Values = append(arg.Values, a.maskText(element))
+			}
+		} else {
+			arg.Values = []string{a.maskText(params.Values[p.Name])}
+		}
+		args = append(args, arg)
+	}
+	return args
+}
 
 // limit is the output limit in force for this adapter's calls: the
 // operator's flag, else the Runefile's setting, else the default.
@@ -268,6 +314,9 @@ func (a *mcpAdapter) maskText(s string) string {
 // before anything runs (spec 050). With an approval pending, it asks after
 // that, so nobody is asked about a call a policy refuses.
 func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]string, lists map[string][]string, limit int, pending *pendingApproval) (mcpserver.Result, error) {
+	// The audit record of this call, or nil on a server that keeps none.
+	// Each refusal below says which kind it is (spec 052).
+	rec := mcpserver.AuditFromContext(ctx)
 	t, ok := a.tasks[name]
 	if !ok {
 		return mcpserver.Result{}, errorf("unknown task: %s", name)
@@ -277,6 +326,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	// so the SDK rejects it as unknown before this line; the check here keeps
 	// the Engine contract safe for callers that bypass tool registration.
 	if !t.AvailableOn(a.goos) {
+		rec.SetErrorKind(mcpserver.AuditKindPolicy)
 		return mcpserver.Result{}, availabilityErr(name, t, a.goos)
 	}
 	// The capture is bounded while the task writes, not cut afterwards, so a
@@ -320,7 +370,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		settings:    a.settings,
 		workDir:     a.workDir,
 		root:        a.root,
-		env:         agentRunEnv(a.baseEnv),
+		env:         invocationEnv(agentRunEnv(a.baseEnv), rec.ID()),
 		opts:        mopts,
 		plan:        planRun,
 		now:         a.now,
@@ -340,16 +390,22 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		gitInfo:         a.gitInfo,
 		planMaxArtifact: a.planMaxArtifact,
 		planMaxSummary:  a.planMaxSummary,
+
+		invocation: rec.ID(),
+		audit:      rec,
 	}
 
 	params, err := bindNamedParams(t, args, lists, scope)
 	if err != nil {
+		rec.SetErrorKind(mcpserver.AuditKindValidation)
 		return mcpserver.Result{}, err
 	}
+	rec.SetEffective(a.effectiveArgs(t, params))
 
 	// A grant or an approval answers whether a destructive task may run, not
 	// which values an agent may run it with, so the policy comes first.
 	if d := eng.preflightPolicy(t, params); d != nil {
+		rec.SetErrorKind(mcpserver.AuditKindPolicy)
 		return mcpserver.Result{}, errors.New(d.text(a.maskText))
 	}
 
@@ -360,9 +416,11 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	var ticket *planTicket
 	if t.AppliesPlan() != "" {
 		if pending == nil {
+			rec.SetErrorKind(mcpserver.AuditKindPolicy)
 			return mcpserver.Result{}, errors.New(applyNobodyText(t.Name))
 		}
 		if ticket, err = eng.findPlan(t, params); err != nil {
+			rec.SetErrorKind(mcpserver.AuditKindPolicy)
 			return mcpserver.Result{}, err
 		}
 	}
@@ -383,6 +441,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		}
 		if ticket != nil {
 			if err := eng.claimPlan(ticket, params); err != nil {
+				rec.SetErrorKind(mcpserver.AuditKindPolicy)
 				return mcpserver.Result{}, err
 			}
 		}
@@ -411,4 +470,16 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 		ExitCode:      code,
 		FixSuggestion: capAgentText(fixBuf.String()),
 	}, nil
+}
+
+// invocationEnv adds the id of the agent's call to the environment of its
+// tasks, after the load's own variables, so that a dotenv file or an
+// exported variable of the same name does not replace it. A task's [env]
+// attribute still can: it is the author's text, like the body, and the id is
+// attribution, not proof. A call nobody records has no id and adds none.
+func invocationEnv(env []string, id string) []string {
+	if id == "" {
+		return env
+	}
+	return append(env, invocationVar+"="+id)
 }

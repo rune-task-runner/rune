@@ -36,26 +36,18 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 	// tasks to the agent over a localhost, token-gated MCP endpoint. The
 	// same adapter serves both; its Tasks() already excludes the hook.
 	var contextText string
+	finish := func(error) {}
 	if e.file != nil {
 		if adapter := e.newAgentAdapter(); adapter != nil {
 			contextText = adapter.gatherContext(e.ctx, e.opts.Stderr)
-
-			token := randomToken()
-			srv := mcpserver.New(adapter, e.agentMCPOptions(adapter.limit()))
-			if addr, stop, err := srv.StartHTTP(e.agentHTTPConfig(token)); err == nil {
-				defer stop()
-				opts.MCPURL = "http://" + addr
-				opts.MCPToken = token
-			} else {
-				// Still best-effort, but say so: a silent skip leaves the
-				// user wondering why the agent has no tool access.
-				fmt.Fprintf(e.opts.Stderr, "%s: agent MCP endpoint unavailable; the agent runs without task tools: %v\n",
-					e.theme.Warning.Render("warning"), err)
-			}
+			var stop func()
+			stop, finish = e.openAgentEndpoint(task.Name, adapter, &opts)
+			defer stop()
 		}
 	}
 
 	finalText, err := agent.CLIProvider{}.Run(e.ctx, buildAgentPrompt(contextText, body.String()), opts)
+	finish(err)
 	if err != nil {
 		return err
 	}
@@ -66,6 +58,43 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 		}
 	}
 	return nil
+}
+
+// openAgentEndpoint starts the endpoint an agent task offers its agent and
+// puts its address and token into opts. The run is recorded in the audit log
+// first, as the parent of the calls the agent makes (spec 052): when it
+// cannot be, no endpoint is opened, because a call nobody can record is not
+// offered. It returns the function that stops the endpoint and the one that
+// records how the agent ended. Both are safe to call when nothing started.
+func (e *engine) openAgentEndpoint(task string, adapter *mcpAdapter, opts *agent.Options) (stop func(), finish func(error)) {
+	stop, finish = func() {}, func(error) {}
+	warning := e.theme.Warning.Render("warning")
+	run, aud, err := e.startAgentRun(task, adapter)
+	if err != nil {
+		fmt.Fprintf(e.opts.Stderr, "%s: %s; the agent runs without task tools\n", warning, agentRunNotRecorded(err))
+		return stop, finish
+	}
+	finish = func(runErr error) { run.finish(e.ctx, runErr, e.mask) }
+
+	token := randomToken()
+	serverOpts := e.agentMCPOptions(adapter.limit())
+	serverOpts.Audit = aud
+	addr, stopHTTP, err := mcpserver.New(adapter, serverOpts).StartHTTP(e.agentHTTPConfig(token))
+	if err != nil {
+		// Still best-effort, but say so: a silent skip leaves the user
+		// wondering why the agent has no tool access.
+		fmt.Fprintf(e.opts.Stderr, "%s: agent MCP endpoint unavailable; the agent runs without task tools: %v\n", warning, err)
+		return stop, finish
+	}
+	opts.MCPURL = "http://" + addr
+	opts.MCPToken = token
+	return stopHTTP, finish
+}
+
+// agentRunNotRecorded words the reason an agent run could not be recorded.
+// An error of the log already starts with "audit log:".
+func agentRunNotRecorded(err error) string {
+	return fmt.Sprintf("audit log: the agent run could not be recorded (%s)", strings.TrimPrefix(err.Error(), "audit log: "))
 }
 
 // agentHTTPConfig is the transport of the endpoint an agent task opens for
@@ -110,6 +139,7 @@ func (e *engine) newAgentAdapter() *mcpAdapter {
 		now:       e.now,
 		goos:      e.goos,
 		planIdent: e.planIdent,
+		ident:     e.loadIdentity(),
 		version:   e.opts.Version,
 		clock:     e.clock,
 		gitInfo:   e.gitInfo,
@@ -133,4 +163,14 @@ func randomToken() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+// loadIdentity is the identity of the load this engine runs, for the audit
+// record of an agent run. An engine built without one, as in a test, has
+// none.
+func (e *engine) loadIdentity() planIdentity {
+	if e.identity != nil {
+		return e.identity()
+	}
+	return e.planIdent
 }

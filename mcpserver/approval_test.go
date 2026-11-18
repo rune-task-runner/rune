@@ -1089,3 +1089,173 @@ func TestRunHint(t *testing.T) {
 		t.Errorf("runHint with a line break in the name = %s, want %s", got, want)
 	}
 }
+
+// Spec 052: the record of a call that needed approval says whether the
+// person was asked, how the request ended and what it covered. A call that
+// ran nothing has no exit code.
+func TestAuditApprovalDecision(t *testing.T) {
+	accept := map[string]any{"approved": true}
+	tests := []struct {
+		name     string
+		answer   func(context.Context, *mcp.ElicitParams) (*mcp.ElicitResult, error)
+		options  func(*Options)
+		noForm   bool
+		args     map[string]any
+		asked    bool
+		decision string
+		outcome  string
+		kind     string
+	}{
+		{name: "approved", answer: answerWith("accept", accept), asked: true, decision: AuditDecisionApproved, outcome: AuditCompleted},
+		{name: "declined", answer: answerWith("decline", nil), asked: true, decision: AuditDecisionDeclined, outcome: AuditRefused, kind: AuditKindApproval},
+		{name: "dismissed", answer: answerWith("cancel", nil), asked: true, decision: AuditDecisionDismissed, outcome: AuditRefused, kind: AuditKindApproval},
+		{name: "not given", answer: answerWith("accept", map[string]any{"approved": false}), asked: true, decision: AuditDecisionNotGiven, outcome: AuditRefused, kind: AuditKindApproval},
+		{name: "no valid answer", answer: answerWith("accept", nil), asked: true, decision: AuditDecisionNoAnswer, outcome: AuditRefused, kind: AuditKindApproval},
+		{
+			name: "timed out",
+			answer: func(ctx context.Context, _ *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			options: func(o *Options) { o.ApprovalTimeout = 30 * time.Millisecond },
+			asked:   true, decision: AuditDecisionTimedOut, outcome: AuditTimedOut, kind: AuditKindApproval,
+		},
+		{name: "a client that cannot show a form", noForm: true, decision: AuditDecisionCannotAsk, outcome: AuditRefused, kind: AuditKindPolicy},
+		{
+			name: "a request too large to show", answer: answerWith("accept", accept),
+			args:     map[string]any{"env": strings.Repeat("x", 10000)},
+			decision: AuditDecisionCannotAsk, outcome: AuditRefused, kind: AuditKindPolicy,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eng, rec := applyEngine(), newRecorder()
+			opts := askOptions(func(o *Options) {
+				o.Audit = rec
+				if tt.options != nil {
+					tt.options(o)
+				}
+			})
+			var clientOpts *mcp.ClientOptions
+			if !tt.noForm {
+				clientOpts = (&person{answer: tt.answer}).options()
+			}
+			cs := connectClient(t, New(eng, opts), clientOpts)
+			args := tt.args
+			if args == nil {
+				args = map[string]any{"env": "prod"}
+			}
+			callTool(t, cs, "apply", args)
+			_, end := rec.only(t)
+			want := AuditApproval{Asked: tt.asked, Decision: tt.decision, Tasks: []string{"apply"}}
+			if end.Approval == nil || !reflect.DeepEqual(*end.Approval, want) {
+				t.Errorf("approval %+v, want %+v", end.Approval, want)
+			}
+			if end.Outcome != tt.outcome || end.ErrorKind != tt.kind {
+				t.Errorf("outcome %q kind %q, want %q %q", end.Outcome, end.ErrorKind, tt.outcome, tt.kind)
+			}
+			ran := tt.outcome == AuditCompleted
+			if (end.ExitCode != nil) != ran || (eng.runs() == 1) != ran {
+				t.Errorf("exit code %v, %d runs", end.ExitCode, eng.runs())
+			}
+			if !ran && end.Error == "" {
+				t.Error("a refusal with no error text")
+			}
+		})
+	}
+
+	t.Run("the Runefile changed", func(t *testing.T) {
+		eng, rec := applyEngine(), newRecorder()
+		var srv *Server
+		who := &person{answer: func(context.Context, *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+			srv.Replace(eng, 0)
+			return &mcp.ElicitResult{Action: "accept", Content: accept}, nil
+		}}
+		srv = New(eng, askOptions(func(o *Options) { o.Audit = rec }))
+		callTool(t, connectClient(t, srv, who.options()), "apply", map[string]any{"env": "prod"})
+		_, end := rec.only(t)
+		if end.Approval == nil || end.Approval.Decision != AuditDecisionChanged || end.Outcome != AuditRefused || end.ExitCode != nil {
+			t.Errorf("approval %+v, outcome %q", end.Approval, end.Outcome)
+		}
+	})
+
+	t.Run("the call was cancelled while the request was open", func(t *testing.T) {
+		eng, rec := applyEngine(), newRecorder()
+		shown := make(chan struct{})
+		who := &person{answer: func(ctx context.Context, _ *mcp.ElicitParams) (*mcp.ElicitResult, error) {
+			close(shown)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}}
+		cs := connectClient(t, New(eng, askOptions(func(o *Options) { o.Audit = rec })), who.options())
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			<-shown
+			cancel()
+		}()
+		if _, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "apply", Arguments: map[string]any{"env": "prod"}}); err == nil {
+			t.Fatal("the cancelled call returned no error")
+		}
+		_, end := rec.only(t)
+		if end.Approval == nil || end.Approval.Decision != AuditDecisionCancelled || !end.Approval.Asked {
+			t.Errorf("approval %+v", end.Approval)
+		}
+		if end.Outcome != AuditCancelled || end.ExitCode != nil || eng.runs() != 0 {
+			t.Errorf("outcome %q, exit %v, %d runs", end.Outcome, end.ExitCode, eng.runs())
+		}
+	})
+
+	t.Run("a server that asks nobody", func(t *testing.T) {
+		eng, rec := applyEngine(), newRecorder()
+		cs := connectClient(t, New(eng, Options{Audit: rec}), approving().options())
+		callTool(t, cs, "apply", map[string]any{"env": "prod"})
+		_, end := rec.only(t)
+		if end.Approval != nil || end.Outcome != AuditRefused || end.ErrorKind != AuditKindPolicy {
+			t.Errorf("approval %+v, outcome %q, kind %q", end.Approval, end.Outcome, end.ErrorKind)
+		}
+	})
+}
+
+// Spec 052 with spec 051: a task that applies a plan records why nobody
+// could be asked.
+func TestAuditPlanApprovalCannotAsk(t *testing.T) {
+	plan := samplePlan()
+	newEngine := func(p *PlanApproval) Engine {
+		eng := planServerEngine()
+		eng.plan = p
+		return eng
+	}
+
+	tests := []struct {
+		name     string
+		options  Options
+		client   *mcp.ClientOptions
+		plan     *PlanApproval
+		decision string
+		kind     string
+		outcome  string
+	}{
+		{"nobody is asked on this server", Options{}, approving().options(), plan, AuditDecisionCannotAsk, AuditKindPolicy, AuditRefused},
+		{"the client cannot show a form", Options{AskApproval: true}, nil, plan, AuditDecisionCannotAsk, AuditKindPolicy, AuditRefused},
+		{"the engine reported no plan", Options{AskApproval: true}, approving().options(), nil, "", AuditKindInternal, AuditError},
+		{"approved", Options{AskApproval: true}, approving().options(), plan, AuditDecisionApproved, "", AuditCompleted},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := newRecorder()
+			tt.options.Audit = rec
+			cs := connectClient(t, New(newEngine(tt.plan), tt.options), tt.client)
+			callTool(t, cs, "apply", map[string]any{"env": "prod"})
+			_, end := rec.only(t)
+			if end.Outcome != tt.outcome || end.ErrorKind != tt.kind {
+				t.Errorf("outcome %q kind %q", end.Outcome, end.ErrorKind)
+			}
+			switch {
+			case tt.decision == "" && end.Approval != nil:
+				t.Errorf("approval %+v, want none", end.Approval)
+			case tt.decision != "" && (end.Approval == nil || end.Approval.Decision != tt.decision):
+				t.Errorf("approval %+v, want %q", end.Approval, tt.decision)
+			}
+		})
+	}
+}

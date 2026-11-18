@@ -136,6 +136,27 @@ absent, the task fails with an actionable error naming the missing interpreter (
 [container image](docker.md) ships only the static binary — see its caveat. See
 [Executors](how-to/executors.md).
 
+### "audit log: this call was not run" (in an agent's tool result)
+
+An MCP server writes the start of every tool call to the [audit log](mcp.md#the-audit-log)
+before the call runs. When it cannot, the call is refused and nothing runs. The message
+names the reason and the log directory, and the server prints it on standard error too.
+
+**Fix:** make the directory writable, or free the disk it is on. To keep the log somewhere
+else, start the server with `RUNE_AUDIT_DIR` set to a directory outside the project.
+`rune log --dir` prints the directory in use.
+
+### "audit log: ... is inside the project" (when the server starts, exit 2)
+
+`RUNE_AUDIT_DIR`, or the state directory of your user, is inside the Runefile's directory
+or the tasks' working directory. The log must be where a task does not normally write.
+
+**Fix:** set `RUNE_AUDIT_DIR` to a directory outside the project.
+
+### `rune log` shows the log, not my `log` task
+
+`log` is a built-in command. **Fix:** run the task with `rune -- log`.
+
 ### A cached task ran when you expected a skip
 
 `[cache]` re-runs (rather than falsely skipping) when a declared **output is missing** or an

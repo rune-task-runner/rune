@@ -50,6 +50,27 @@ const (
 	outcomeChanged           // the server's tasks were replaced meanwhile
 )
 
+// decision is the word an audit record holds for how a request ended.
+func (o outcome) decision() string {
+	switch o {
+	case outcomeApproved:
+		return AuditDecisionApproved
+	case outcomeNotGiven:
+		return AuditDecisionNotGiven
+	case outcomeDeclined:
+		return AuditDecisionDeclined
+	case outcomeDismissed:
+		return AuditDecisionDismissed
+	case outcomeTimedOut:
+		return AuditDecisionTimedOut
+	case outcomeCancelled:
+		return AuditDecisionCancelled
+	case outcomeChanged:
+		return AuditDecisionChanged
+	}
+	return AuditDecisionNoAnswer
+}
+
 // approvalSchema is the form every request asks for: one required boolean
 // that defaults to false, so submitting a form untouched approves nothing.
 // Each call returns a new map.
@@ -329,14 +350,22 @@ func (s *Server) approvalTimeout() time.Duration {
 func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo, names []string) func(context.Context, ApprovalRequest) error {
 	applies := t.AppliesPlan != ""
 	return func(ctx context.Context, req ApprovalRequest) error {
+		// What the audit record says about the decision. A request that was
+		// never sent is recorded as one that could not be.
+		rec := AuditFromContext(ctx)
+		cannotAsk := func(text string) error {
+			rec.decided(false, AuditDecisionCannotAsk, names)
+			rec.SetErrorKind(AuditKindPolicy)
+			return errors.New(text)
+		}
 		if applies {
 			// The engine has checked the call by now. Only here is it known
 			// that the one thing missing is somebody to ask.
 			switch {
 			case !s.opts.AskApproval:
-				return errors.New(s.planNobody(t.Name))
+				return cannotAsk(s.planNobody(t.Name))
 			case !formSupport(session):
-				return errors.New(s.planCannotAsk(t.Name, reasonNoForm))
+				return cannotAsk(s.planCannotAsk(t.Name, reasonNoForm))
 			case req.Plan == nil:
 				// A request without a plan would ask the person to approve
 				// a digest they are not shown.
@@ -346,9 +375,9 @@ func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo
 		message, fits := approvalMessage(t.Name, names, req)
 		if !fits {
 			if applies {
-				return errors.New(s.planCannotAsk(t.Name, reasonTooLarge))
+				return cannotAsk(s.planCannotAsk(t.Name, reasonTooLarge))
 			}
-			return errors.New(s.refusal(t) + s.cannotAsk(t.Name, reasonTooLarge))
+			return cannotAsk(s.refusal(t) + s.cannotAsk(t.Name, reasonTooLarge))
 		}
 		wait, cancel := context.WithTimeout(ctx, s.approvalTimeout())
 		defer cancel()
@@ -371,9 +400,11 @@ func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo
 		if o == outcomeApproved && s.state.Load() != snap {
 			o = outcomeChanged
 		}
+		rec.decided(true, o.decision(), names)
 		if o == outcomeApproved {
 			return nil
 		}
+		rec.SetErrorKind(AuditKindApproval)
 		return errors.New(s.outcomeText(o, t.Name, names, !applies))
 	}
 }

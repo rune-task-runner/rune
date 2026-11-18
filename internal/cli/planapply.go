@@ -303,6 +303,7 @@ func (e *engine) planStore() *planstore.Store {
 // stop a run, and must not go unnoticed either.
 func (e *engine) journal(store *planstore.Store, ev planstore.Event) {
 	ev.Surface = e.surface
+	ev.Invocation = e.invocation
 	err := store.Log(ev)
 	switch {
 	case err == nil:
@@ -428,6 +429,7 @@ func (e *engine) capturePlan(task *ast.Task, args eval.Args) error {
 		return e.planFailure("the plan of task %q was not stored: %s", task.Name, e.masked(err.Error()))
 	}
 
+	e.audit.SetPlan(mcpserver.AuditPlanStored, rec.ID, rec.Artifact.SHA256)
 	created := planstore.Event{
 		Event: planstore.EventPlanCreated, PlanTask: task.Name, Plan: rec.ID,
 		Digest: rec.Artifact.SHA256, Args: rec.Args,
@@ -644,6 +646,7 @@ func (e *engine) claimPlan(ticket *planTicket, args eval.Args) error {
 		return errorf("task %q was not run: %s", ticket.apply.Name, reason)
 	}
 	e.attempt = &applyAttempt{task: ticket.apply.Name, argsKey: args.Key(), ticket: ticket, claim: claim}
+	e.audit.SetPlan(mcpserver.AuditPlanApplied, ticket.rec.ID, ticket.rec.Artifact.SHA256)
 	ev := ticket.event(planstore.EventApplyStarted)
 	ev.Attempt = claim.ID
 	e.journal(ticket.store, ev)

@@ -58,6 +58,11 @@ type Options struct {
 	// of stdout and stderr in a tool result. Nil means the flag was not given,
 	// which an empty value is not. Only ServeMCP reads it (spec 042).
 	MCPOutputLimit *string
+	// AuditDir is RUNE_AUDIT_DIR: the directory the audit logs live under.
+	// Empty means the user's state directory. AuditRetention is the raw
+	// RUNE_AUDIT_RETENTION_DAYS. Servers and `rune log` read them (spec 052).
+	AuditDir       string
+	AuditRetention string
 	// MCPNoReload is --no-reload: rune serve keeps the tasks it read at
 	// start and watches no file. Only ServeMCP reads it (spec 043).
 	MCPNoReload bool
