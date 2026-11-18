@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.10.0] - 2026-11-18
+
+### Added
+- Breaking: rune mcp asks the person at the client to approve a [confirm] call the operator did not grant, through MCP form elicitation; other clients get the refusal with the command to run (#102)
+- A task can limit the values an agent may run it with: [agent-allow(env="staging")] refuses any other value before anything runs, also through dependencies, hooks and a body that runs rune (#103)
+- An apply task runs only the plan a person approved: [plan] stores the plan file by its SHA-256 digest, and [applies] runs once with that stored file after the approval of that plan (#104)
+- Breaking: every MCP server records what agents ask of it in an audit log outside the project, and rune log shows it; a call that cannot be recorded is refused, and a task named log is run with rune -- log (#105)
+- Breaking: the tasks agents call run in an operating-system sandbox: no network without [network] and writes only inside the project; where no sandbox can confine a call it is refused, unless the server runs with --sandbox off (#108)
+
+### Documentation
+- Separate README installation methods
+
 ## [0.9.0] - 2026-11-16
 
 ### Added
