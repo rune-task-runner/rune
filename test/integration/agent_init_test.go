@@ -312,7 +312,9 @@ func TestAgentInit_DryRunAndCheck(t *testing.T) {
 	if err := os.WriteFile(patch, []byte(dry.stdout), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	apply := exec.Command(git, "apply", patch)
+	// Git for Windows turns line endings into \r\n by default; the files a
+	// run writes end their lines as the difference does.
+	apply := exec.Command(git, "-c", "core.autocrlf=false", "apply", patch)
 	apply.Dir = copyDir
 	if out, err := apply.CombinedOutput(); err != nil {
 		t.Fatalf("git apply: %v\n%s\n--- patch ---\n%s", err, out, dry.stdout)
