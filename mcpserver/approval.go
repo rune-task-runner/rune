@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -26,6 +28,11 @@ const (
 
 	reasonNoForm   = "the client does not support MCP form elicitation"
 	reasonTooLarge = "the approval request would be too large to show"
+
+	// A request shows this much of a plan's rendered summary: its head and
+	// its tail, because a plan tool prints its totals last (spec 051).
+	summaryHeadBytes = 3072
+	summaryTailBytes = 1024
 )
 
 // outcome is how one approval request ended. Only outcomeApproved runs the
@@ -118,6 +125,18 @@ func approvalMessage(called string, names []string, req ApprovalRequest) (string
 		}
 		b.WriteByte('\n')
 	}
+	if plan := req.Plan; plan != nil {
+		fmt.Fprintf(&b, "Plan: %s made by \"%s\" at %s\n", escapeLine(plan.ID), escapeLine(plan.Task), escapeLine(plan.Created))
+		fmt.Fprintf(&b, "Artifact: sha256:%s (%d bytes)\n", escapeLine(plan.Digest), plan.Size)
+		for _, note := range plan.Notes {
+			b.WriteString("Note: ")
+			b.WriteString(escapeLine(note))
+			b.WriteByte('\n')
+		}
+		b.WriteString("Summary:\n")
+		b.WriteString(SummaryLines(plan.Summary, summaryHeadBytes, summaryTailBytes))
+		b.WriteByte('\n')
+	}
 	b.WriteString("Destructive tasks it can run:\n")
 	for _, name := range names {
 		b.WriteString("- ")
@@ -126,8 +145,89 @@ func approvalMessage(called string, names []string, req ApprovalRequest) (string
 		b.WriteString(confirmationLine(name, messages[name]))
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nApproving runs this call once.")
+	if req.Plan != nil {
+		b.WriteString("\nApproving applies this plan once.")
+	} else {
+		b.WriteString("\nApproving runs this call once.")
+	}
 	return b.String(), b.Len() <= maxApprovalBytes
+}
+
+// SummaryLines renders a plan's summary for a person: each line indented by
+// two spaces with characters that are not printable escaped, and "  (empty)"
+// for a summary with no text. A rendering longer than head+tail bytes shows
+// the lines that fit in head, a mark with the number of rendered bytes left
+// out, and the lines that fit in tail. A line longer than its share is cut
+// inside the line. The result does not end with a line break.
+func SummaryLines(summary string, head, tail int) string {
+	if strings.TrimSpace(summary) == "" {
+		return "  (empty)"
+	}
+	var lines []string
+	total := 0
+	for line := range strings.SplitSeq(strings.TrimRight(summary, "\r\n"), "\n") {
+		rendered := "  " + escapeLine(strings.TrimSuffix(line, "\r"))
+		lines = append(lines, rendered)
+		total += len(rendered) + 1
+	}
+	if total-1 <= head+tail {
+		return strings.Join(lines, "\n")
+	}
+
+	var shown []string
+	used, first := 0, 0
+	for ; first < len(lines) && used+len(lines[first])+1 <= head; first++ {
+		shown = append(shown, lines[first])
+		used += len(lines[first]) + 1
+	}
+	if first == 0 && head > 0 {
+		cut := cutBytes(lines[0], head)
+		shown = append(shown, cut)
+		used += len(cut) + 1
+		first = 1
+	}
+
+	var end []string
+	endUsed := 0
+	last := len(lines)
+	for last > first && endUsed+len(lines[last-1])+1 <= tail {
+		last--
+		end = append(end, lines[last])
+		endUsed += len(lines[last]) + 1
+	}
+	if len(end) == 0 && last > first && tail > 2 {
+		cut := "  " + cutBytesEnd(lines[last-1], tail-2)
+		end = append(end, cut)
+		endUsed = len(cut) + 1
+	}
+	slices.Reverse(end)
+	shown = append(shown, fmt.Sprintf("  [summary cut: %d bytes not shown]", total-used-endUsed))
+	return strings.Join(append(shown, end...), "\n")
+}
+
+// cutBytes returns the longest prefix of s within n bytes that ends at a
+// character boundary.
+func cutBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
+}
+
+// cutBytesEnd returns the longest suffix of s within n bytes that starts at
+// a character boundary.
+func cutBytesEnd(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	start := len(s) - n
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
 }
 
 // confirmationLine is what a request shows for one destructive task: its
@@ -227,9 +327,27 @@ func (s *Server) approvalTimeout() time.Duration {
 // the server's state. Every other end is an error whose text is the tool
 // result. Nothing is kept: a call sent again asks again.
 func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo, names []string) func(context.Context, ApprovalRequest) error {
+	applies := t.AppliesPlan != ""
 	return func(ctx context.Context, req ApprovalRequest) error {
+		if applies {
+			// The engine has checked the call by now. Only here is it known
+			// that the one thing missing is somebody to ask.
+			switch {
+			case !s.opts.AskApproval:
+				return errors.New(s.planNobody(t.Name))
+			case !formSupport(session):
+				return errors.New(s.planCannotAsk(t.Name, reasonNoForm))
+			case req.Plan == nil:
+				// A request without a plan would ask the person to approve
+				// a digest they are not shown.
+				return fmt.Errorf("task %q was not run: the engine reported no plan to approve", t.Name)
+			}
+		}
 		message, fits := approvalMessage(t.Name, names, req)
 		if !fits {
+			if applies {
+				return errors.New(s.planCannotAsk(t.Name, reasonTooLarge))
+			}
 			return errors.New(s.refusal(t) + s.cannotAsk(t.Name, reasonTooLarge))
 		}
 		wait, cancel := context.WithTimeout(ctx, s.approvalTimeout())
@@ -256,7 +374,7 @@ func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo
 		if o == outcomeApproved {
 			return nil
 		}
-		return errors.New(s.outcomeText(o, t.Name, names))
+		return errors.New(s.outcomeText(o, t.Name, names, !applies))
 	}
 }
 
@@ -266,7 +384,10 @@ func (s *Server) approver(session *mcp.ServerSession, snap *snapshot, t TaskInfo
 // (Claude Code dismisses, Codex declines), and their operator would
 // otherwise be left with no way forward. A cancelled call has no reader, and
 // a changed Runefile has its own way forward.
-func (s *Server) outcomeText(o outcome, called string, names []string) string {
+//
+// grantHelps is false for a task that applies a plan, which no grant can run:
+// the remedy then names the command only.
+func (s *Server) outcomeText(o outcome, called string, names []string, grantHelps bool) string {
 	var reason string
 	switch o {
 	case outcomeNotGiven:
@@ -284,16 +405,17 @@ func (s *Server) outcomeText(o outcome, called string, names []string) string {
 	default:
 		reason = "the client returned no valid answer"
 	}
-	return fmt.Sprintf("task %q was not approved: %s. Nothing ran.", called, reason) + s.remedy(called, names)
+	return fmt.Sprintf("task %q was not approved: %s. Nothing ran.", called, reason) + s.remedy(called, names, grantHelps)
 }
 
 // remedy names the ways to run a call without a request: the grant flag with
 // the tasks to add, and the command for the called task. Each is left out
 // where the server has none. It names the operator, because the agent reads
-// it too and must not take it for an instruction to itself.
-func (s *Server) remedy(called string, names []string) string {
+// it too and must not take it for an instruction to itself. Without
+// grantHelps the grant flag is left out too.
+func (s *Server) remedy(called string, names []string, grantHelps bool) string {
 	var ways []string
-	if s.opts.AllowDestructiveFlag != "" {
+	if grantHelps && s.opts.AllowDestructiveFlag != "" {
 		ways = append(ways, fmt.Sprintf("add %s to %s and restart the server", strings.Join(names, ","), s.opts.AllowDestructiveFlag))
 	}
 	if s.opts.RunCommand != "" {

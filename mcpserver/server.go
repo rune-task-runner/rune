@@ -85,6 +85,13 @@ type TaskInfo struct {
 	// verify results against it. Like Doc and Instructions, it must already be
 	// masked and size-capped by the engine; this package never processes it.
 	Returns string
+	// AppliesPlan, when not empty, names the task whose stored plan this task
+	// applies (spec 051). The tool is advertised as destructive and says so in
+	// its description. Every call is put to the person at the client through
+	// the ApprovalEngine, whatever Options.AllowDestructive names: a grant
+	// does not approve a plan. Without Options.AskApproval, an ApprovalEngine
+	// and a client that can show a form, the call is refused.
+	AppliesPlan string
 }
 
 // check validates one string value against the parameter's advertised
@@ -177,6 +184,23 @@ type ApprovalRequest struct {
 	// CallApproved's tasks. A task with no entry is shown with a default
 	// question.
 	Confirmations []Confirmation
+	// Plan describes the stored plan the call would apply. The engine of a
+	// task with AppliesPlan sets it. Nil for every other call.
+	Plan *PlanApproval
+}
+
+// PlanApproval is what a person is shown about a plan (spec 051). Every
+// string must already be masked: this package escapes and cuts them but knows
+// no secret.
+type PlanApproval struct {
+	ID      string // the plan's id
+	Task    string // the task that made it
+	Created string // RFC 3339, UTC
+	Digest  string // hex SHA-256 of the artifact
+	Size    int64  // bytes of the artifact
+	Summary string // the stored summary, in full; the server cuts it
+	// Notes are shown above the summary, one line each, after "Note: ".
+	Notes []string
 }
 
 // ApprovalArg is one parameter and what it is bound to: one value, or a
@@ -344,7 +368,7 @@ func toolName(name string) string {
 
 // toolFor derives an mcp.Tool from a task's metadata.
 func toolFor(t TaskInfo) *mcp.Tool {
-	destructive := t.Destructive || len(t.DestructiveReach) > 0
+	destructive := t.Destructive || len(t.DestructiveReach) > 0 || t.AppliesPlan != ""
 	network := t.Network
 	desc := t.Doc
 	if t.Returns != "" {
@@ -359,6 +383,12 @@ func toolFor(t TaskInfo) *mcp.Tool {
 			desc += "\n\n"
 		}
 		desc += policy
+	}
+	if t.AppliesPlan != "" {
+		if desc != "" {
+			desc += "\n\n"
+		}
+		desc += fmt.Sprintf("Plan approval: applies the plan made by task %q. Every call asks the person at the client to approve that plan.", t.AppliesPlan)
 	}
 	return &mcp.Tool{
 		Name:        toolName(t.Name),

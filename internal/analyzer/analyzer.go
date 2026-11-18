@@ -28,6 +28,7 @@ func Analyze(f *ast.File) diag.List {
 	a.collect()
 	a.checkConstraints()
 	a.checkAgentAllow()
+	a.checkPlanBinding()
 	a.checkContext()
 	a.checkReadonly()
 	a.checkExpressions()
@@ -274,12 +275,17 @@ func (a *analyzer) checkAllowPredicates(t *ast.Task, attr *ast.Attribute) {
 				}
 			}
 		}
-		// Such a character, and a byte that is not UTF-8, cannot be read in
-		// the source, so the policy would not be the one the file shows.
-		if !utf8.ValidString(pred.Value) || strings.ContainsFunc(pred.Value, func(r rune) bool { return !strconv.IsPrint(r) }) {
+		if unreadable(pred.Value) {
 			a.diags.Codef(diag.CodeInvalidAgentAllow, pred.ValueSp, "agent-allow value for parameter %q holds a character that is not printable", pred.Name)
 		}
 	}
+}
+
+// unreadable reports whether s holds a character that is not printable or a
+// byte that is not UTF-8. Neither can be read in the source, so a value an
+// attribute enforces would not be the one the file shows.
+func unreadable(s string) bool {
+	return !utf8.ValidString(s) || strings.ContainsFunc(s, func(r rune) bool { return !strconv.IsPrint(r) })
 }
 
 // checkContext enforces the [context] hook contract (spec 021 FR-001,

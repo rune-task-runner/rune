@@ -42,6 +42,10 @@ const (
 	// parameter, a value its enum lacks or that is not printable, or a second
 	// attribute on the task (spec 050).
 	CodeInvalidAgentAllow = "RUNE2019"
+	// Invalid [plan] or [applies]: a wrong argument or path, a plan task that
+	// does not exist or has other parameters, an apply body that does not read
+	// the stored plan, or an apply task run by another task (spec 051).
+	CodeInvalidPlanBinding = "RUNE2020"
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

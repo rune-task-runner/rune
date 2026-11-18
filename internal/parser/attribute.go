@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"strings"
+
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/diag"
 	"github.com/rune-task-runner/rune/internal/token"
@@ -56,6 +58,22 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 		a.Str = p.parseSingleStringArg(name.Lit)
 		return a
 
+	case ast.AttrApplies:
+		// The span covers the argument too: every error about the binding
+		// points at the whole attribute (spec 051).
+		if _, ok := p.expect(token.LPAREN, "to open applies(...)"); !ok {
+			return a
+		}
+		if s, ok := p.accept(token.STRING); ok {
+			a.Str = s.Lit
+		} else {
+			p.codef(diag.CodeInvalidAttribute, p.cur().Span, "applies(...) requires a string argument")
+		}
+		if rp, ok := p.expect(token.RPAREN, "to close applies(...)"); ok {
+			a.Sp = name.Span.To(rp.Span)
+		}
+		return a
+
 	case ast.AttrEnv, ast.AttrParamDoc:
 		p.expect(token.LPAREN, "to open "+name.Lit+"(...)")
 		if s, ok := p.accept(token.STRING); ok {
@@ -74,7 +92,11 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 		return a
 
 	case ast.AttrAgentAllow:
-		p.parseAgentAllowArgs(a)
+		p.parseNamedStringArgs(a, "a parameter name", "the value agents may pass")
+		return a
+
+	case ast.AttrPlan:
+		p.parseNamedStringArgs(a, "an argument name", "the argument's value")
 		return a
 
 	default:
@@ -130,16 +152,16 @@ func (p *parser) parseCacheArgs(a *ast.Attribute) {
 	a.Sp = a.Sp.To(rp.Span)
 }
 
-// parseAgentAllowArgs parses agent-allow(name="value", ...): at least one
-// predicate, each a parameter name, "=", and a string literal (spec 050). It
-// stops at the first piece that is missing and skips to the closing
-// parenthesis, so one mistake gives one error.
-func (p *parser) parseAgentAllowArgs(a *ast.Attribute) {
-	if _, ok := p.expect(token.LPAREN, "to open agent-allow(...)"); !ok {
+// parseNamedStringArgs parses name(key="value", ...) into a.Allow: at least
+// one pair, each a name, "=", and a string literal. agent-allow (spec 050) and
+// plan (spec 051) share it. It stops at the first piece that is missing and
+// skips to the closing parenthesis, so one mistake gives one error.
+func (p *parser) parseNamedStringArgs(a *ast.Attribute, nameWhat, valueWhat string) {
+	if _, ok := p.expect(token.LPAREN, "to open "+a.Kind+"(...)"); !ok {
 		return
 	}
-	if p.parseAllowPredicates(a) {
-		if rp, ok := p.expect(token.RPAREN, "to close agent-allow(...)"); ok {
+	if p.parseNamedStrings(a, nameWhat, valueWhat) {
+		if rp, ok := p.expect(token.RPAREN, "to close "+a.Kind+"(...)"); ok {
 			a.Sp = a.Sp.To(rp.Span)
 			return
 		}
@@ -171,18 +193,20 @@ func (p *parser) skipToCloseParen() {
 	}
 }
 
-// parseAllowPredicates parses the predicates up to the closing parenthesis.
-// It returns false once it has reported a piece that is missing.
-func (p *parser) parseAllowPredicates(a *ast.Attribute) bool {
+// parseNamedStrings parses the pairs up to the closing parenthesis. It
+// returns false once it has reported a piece that is missing.
+func (p *parser) parseNamedStrings(a *ast.Attribute, nameWhat, valueWhat string) bool {
+	in := " in " + a.Kind + "(...)"
+	_, noun, _ := strings.Cut(nameWhat, " ") // "a parameter name" without its article
 	for {
-		name, ok := p.expect(token.IDENT, "as a parameter name in agent-allow(...)")
+		name, ok := p.expect(token.IDENT, "as "+nameWhat+in)
 		if !ok {
 			return false
 		}
-		if _, ok := p.expect(token.EQUALS, "after the parameter name in agent-allow(...)"); !ok {
+		if _, ok := p.expect(token.EQUALS, "after the "+noun+in); !ok {
 			return false
 		}
-		value, ok := p.expect(token.STRING, "as the value agents may pass")
+		value, ok := p.expect(token.STRING, "as "+valueWhat)
 		if !ok {
 			return false
 		}

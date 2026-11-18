@@ -338,13 +338,13 @@ func TestOutcomeText(t *testing.T) {
 		{outcomeChanged, `task "apply" was not approved: the Runefile changed while the request was pending; call again. Nothing ran.`},
 	}
 	for _, c := range cases {
-		if got := srv.outcomeText(c.o, "apply", names); got != c.want {
+		if got := srv.outcomeText(c.o, "apply", names, true); got != c.want {
 			t.Errorf("outcomeText(%v):\n got %q\nwant %q", c.o, got, c.want)
 		}
 	}
 	short := New(applyEngine(), askOptions(func(o *Options) { o.ApprovalTimeout = 50 * time.Millisecond }))
 	want := `task "apply" was not approved: no answer arrived within 50ms. Nothing ran.` + remedyApply
-	if got := short.outcomeText(outcomeTimedOut, "apply", names); got != want {
+	if got := short.outcomeText(outcomeTimedOut, "apply", names, true); got != want {
 		t.Errorf("timeout text with a configured wait:\n got %q\nwant %q", got, want)
 	}
 }
@@ -367,7 +367,7 @@ func TestRemedy(t *testing.T) {
 	}
 	for _, c := range cases {
 		srv := New(applyEngine(), askOptions(c.change))
-		if got := srv.remedy("release", names); got != c.want {
+		if got := srv.remedy("release", names, true); got != c.want {
 			t.Errorf("%s: remedy = %q, want %q", c.name, got, c.want)
 		}
 	}
@@ -1068,7 +1068,7 @@ func TestOutcomeNames(t *testing.T) {
 	srv := New(applyEngine(), askOptions(nil))
 	seen := map[string]outcome{}
 	for o := outcomeNotGiven; o <= outcomeChanged; o++ {
-		text := srv.outcomeText(o, "apply", []string{"apply"})
+		text := srv.outcomeText(o, "apply", []string{"apply"}, true)
 		if other, dup := seen[text]; dup {
 			t.Errorf("outcomes %v and %v share the text %q", other, o, text)
 		}

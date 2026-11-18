@@ -220,7 +220,7 @@ Each tool carries three MCP hints that tell a client what its task claims:
 | Hint | Value | True when |
 |---|---|---|
 | `readOnlyHint` | `true`, or left out | The task has `[readonly]` |
-| `destructiveHint` | `true` or `false`, always present | The task, or anything it can run, has `[confirm]` |
+| `destructiveHint` | `true` or `false`, always present | The task, or anything it can run, has `[confirm]`, or the task has `[applies]` |
 | `openWorldHint` | `true` or `false`, always present | The task, or anything it can run, has `[network]` |
 
 What a task can run is its dependencies, its `&&` and `||` hooks, and everything those run in
@@ -467,6 +467,11 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   refuses any other value before anything runs, for the called task and for every task the
   call can reach. Neither a grant nor an approval lifts it; see
   [Restricting the values an agent may pass](#restricting-the-values-an-agent-may-pass).
+- **A task that applies a plan runs only the plan a person approved.** `[applies("plan")]`
+  runs the task with the stored plan of `plan`, identified by its SHA-256 digest, only after
+  the person at the client approved that plan, and only once. A grant with
+  `--allow-destructive` approves no plan; see
+  [Applying a reviewed plan](#applying-a-reviewed-plan).
 - **The operator chooses which tasks are tools.** `--allow` and `--deny` narrow the tool
   list. They never add to it: a private task, the `[context]` hook, and a task restricted
   to another OS stay unexposed even when `--allow` names them.
@@ -719,6 +724,467 @@ another tool, is the author's own. The first version compares one exact value pe
 parameter: there are no patterns and no lists, and a policy cannot name a `number`,
 `boolean`, `path`, `raw` or variadic parameter. A wrong declaration is the static error
 [`RUNE2019`](diagnostics.md).
+
+## Applying a reviewed plan
+
+An agent runs `plan`, a person looks at the result and approves, and the agent then runs
+`apply`. By themselves the three are not tied together: `apply` can plan again and change
+things nobody looked at, and a file left at the plan's path can be swapped between the
+review and the apply.
+
+Two task attributes tie them together. `[plan(...)]` marks the task that makes a plan and
+names the file it writes. `[applies("...")]` marks the task that applies the plan of a named
+plan task. Rune takes the plan file into a store it manages, identifies it by its SHA-256
+digest, and lets the apply task run only with that stored file, only after a person approved
+that digest, and only once.
+
+```rune
+# Plan the infrastructure change.
+[plan(file="tfplan", summary="tfplan.txt", tool="tofu")]
+plan env:enum("staging","prod"):
+    tofu plan -var env={{quote(env)}} -out=tfplan
+    tofu show -no-color tfplan > tfplan.txt
+
+# Apply the reviewed plan.
+[applies("plan")]
+apply env:enum("staging","prod"):
+    tofu apply "$RUNE_PLAN_FILE"
+```
+
+Served with `rune mcp`:
+
+| Call | Result |
+|---|---|
+| An agent calls `plan` with `env=prod` | Runs. Rune moves `tfplan` and `tfplan.txt` into its store and reports the plan's id and digest |
+| An agent calls `apply` with `env=prod` | The person at the client is shown the target, the digest and the summary, and asked |
+| The person approves | `apply` runs once with `RUNE_PLAN_FILE` set to a private copy of the stored plan |
+| An agent calls `apply` again | Refused: the plan was already used |
+| An agent calls `apply` with no plan made | Refused: there is no plan for these arguments |
+| The stored plan or its summary was changed on disk | Refused: the file does not match its digest |
+| The Runefile changed after the plan | Refused: the plan was made for another definition |
+| An agent calls `plan` again, then `apply` | The person is asked about the new plan. The old one is gone |
+| The client cannot show a request | Refused, with the command the operator can run |
+| A person runs `rune plan prod`, then `rune apply prod` | The terminal shows the same identity and summary and asks |
+
+The relationship is only what the attributes state. Rune does not infer it from task names.
+The syntax, the arguments of `[plan]` and the static rules are in the
+[Runefile guide](runefile.md#plan-and-apply). A Runefile with neither attribute is served and
+run as before, and no store is created. Two runnable examples are
+[plan-apply-opentofu](examples/plan-apply-opentofu/README.md) and
+[plan-apply-terraform](examples/plan-apply-terraform/README.md).
+
+### The flow
+
+1. **Plan.** The agent calls `plan`. When the body ends without error, Rune copies the
+   declared file and its summary into the store under `.rune/plans/` beside the Runefile,
+   computes the SHA-256 digest of the file while copying, and removes both from the
+   workspace. The stored bytes equal the bytes read. The result reports the plan:
+
+   ```text
+   plan <id>: sha256:<hex>, <n> bytes, expires <time>. Apply it with "<apply>".
+   ```
+
+2. **Request.** The agent calls `apply` with the same arguments. Rune finds the newest plan
+   of the plan task whose arguments equal the call's, and checks it. No argument, environment
+   variable or file the agent supplies selects or approves a plan: the tool's input schema
+   holds the task's parameters only.
+3. **Approval.** The person at the client is shown the task, its arguments, the plan's id,
+   the digest and size of the artifact, and the summary, and approves that one call.
+4. **Apply.** Rune claims the plan, so that of any number of calls and processes exactly one
+   proceeds. It makes a private copy of the stored plan, verified against the recorded digest
+   while it is copied, read-only, in a directory only the owner can enter. The body of `apply`
+   runs once with `RUNE_PLAN_FILE` naming that copy. The body of `plan` does not run. When
+   the run ends, Rune verifies the copy again, records the plan as applied or failed with the
+   exit code, and deletes the artifact, the summary and the copy.
+
+The plan line is on standard error, so it is in the tool result and on the terminal. `<id>`
+is 16 hex characters, and `<time>` is RFC 3339 in UTC, to the second. With several apply
+tasks the names are joined by ` or `. With none the last sentence is `No task applies it.`
+
+- **A plan is stored when the body ends.** If the body fails, nothing is stored and an
+  earlier plan for the same arguments stays as it was. A hook of the plan task that fails
+  afterwards does not undo the plan.
+- **`--dry-run` and `--summary` store nothing.** When `plan` or `apply` is named with one of
+  them, nothing is stored, asked or used.
+- **A file at the workspace path is not used.** A file placed at `tfplan` after the plan is
+  not what `apply` receives. The body gets the stored bytes.
+- **The tool of an apply task says so.** Its `destructiveHint` is true, and its description
+  ends with
+  `Plan approval: applies the plan made by task "plan". Every call asks the person at the client to approve that plan.`
+  The tool of a plan task is unchanged.
+
+A plan task fails, after its body ended without error, when the plan cannot be stored:
+
+| When | The task fails with |
+|---|---|
+| The file or the summary cannot be stored | `plan file "<path>" of task "plan" <detail>`, or `plan summary "<path>" ...`, with `is missing`, `is not a regular file`, `is a symbolic link` or `is larger than <limit>` |
+| The declared tool is not on the path | `plan tool "<name>" of task "plan" was not found on the path` |
+| The declared tool is on the path and cannot be read | `plan tool "<name>" of task "plan" cannot be identified: <reason>` |
+| The store cannot be used | `the plan of task "plan" was not stored: <reason>` |
+
+The limit is 256 MiB for the file and 1 MiB for the summary. A workspace file that cannot
+be removed after it was stored is a warning,
+`plan <id>: could not remove "<path>" from the workspace: <reason>`, and the plan stands.
+
+### The approval request
+
+Every `apply` call from an agent is put to the person at the client, through the request of
+[Approving a destructive call in the client](#approving-a-destructive-call-in-the-client).
+The form, the five-minute wait and what counts as yes are the same. The request also shows
+the plan:
+
+```text
+Approve this Rune task call?
+
+Task: apply
+Arguments:
+- env: "prod"
+Plan: <id> made by "plan" at <time>
+Artifact: sha256:<hex> (<n> bytes)
+Note: the previous apply of this target failed at <time>. Check the target before approving.
+Summary:
+  <line>
+  [summary cut: <n> bytes not shown]
+  <line>
+Destructive tasks it can run:
+- apply: Run "apply"?
+
+Approving applies this plan once.
+```
+
+- **The `Note:` line.** It appears only when the newest earlier attempt for the same plan
+  task and arguments failed or did not finish. For an unfinished one it reads
+  `Note: the previous apply of this target started at <time> and did not finish. Check the target before approving.`
+- **The summary.** It is what the plan body wrote to the `summary` file. Each line is
+  indented by two spaces, secrets are masked like task output, and a character that is not
+  printable is shown as an escape. An empty summary is the one line `  (empty)`, and the plan
+  can still be approved.
+- **A long summary.** The summary takes at most 4096 bytes of the request. A longer one
+  shows its head and its tail: the first lines that fit in 3072 bytes, the cut mark, and the
+  last lines that fit in 1024 bytes, because a plan tool prints its totals last. A single
+  line longer than its share is cut inside the line. `<n>` counts the rendered bytes left
+  out.
+- **The size of the request.** The whole request is at most 8 KiB. A call whose request
+  would be larger is refused as too large. The summary can never cause that by itself.
+- **With `[confirm]`.** When `apply` also has `[confirm("Really?")]`, one request is sent,
+  and it holds both the plan and the confirmation message. When `apply` has a dependency with
+  a `[confirm]` the operator did not grant, the one request names that task too.
+- **What an approval covers.** The one call it was given in, and that plan, once. It is
+  never stored, so it cannot be reused or go stale. What can go stale is the plan, which
+  carries the expiry.
+
+A request that is declined, dismissed, timed out or cancelled, or answered after a Runefile
+[reload](#reloading), runs nothing and leaves the plan usable: a later approved call can
+still apply it. The result is one of the texts of
+[Approving a destructive call in the client](#approving-a-destructive-call-in-the-client),
+and what follows it names the command only, never `--allow-destructive`:
+
+```text
+task "apply" was not approved: the request was declined. Nothing ran. To run it without a request, the operator can run "rune apply" themselves.
+```
+
+### What an agent is refused
+
+A refusal is an error result with no exit code and no task output, and nothing ran. The same
+state gives the same text. Every value shown is masked and bounded: the arguments are written
+as `name="value"` pairs joined by `, `, each value cut to 64 characters with `...`.
+
+The refusals of the plan checks and of the claim start with `task "apply" was not run: `.
+
+| When | The text goes on |
+|---|---|
+| No plan was made for these arguments | `there is no plan for env="prod"; run "plan" with the same arguments first` |
+| No plan was made, and the task has no parameters | `there is no plan; run "plan" first` |
+| The plan was applied | `plan <id> was already applied at <time>; run "plan" again and review the new plan` |
+| The apply of the plan failed | `the apply of plan <id> failed at <time>; check the target, then run "plan" again and review the new plan` |
+| An apply of the plan did not finish | `an apply of plan <id> started at <time> and did not finish, so its outcome is unknown; check the target, then run "plan" again and review the new plan` |
+| The plan expired, before the request or while it was pending | `plan <id> expired at <time>; run "plan" again` |
+| A newer plan was stored while the request was pending | `plan <id> was replaced by a newer plan; call "apply" again` |
+| A part the plan is bound to changed | `plan <id> no longer matches: the <parts> changed since it was made; run "plan" again` |
+| The stored artifact or summary does not verify, before the request or after the approval | `the stored <what> of plan <id> <detail>; run "plan" again` |
+| Two calls were approved and the other one got the plan | `plan <id> was already used by another call` |
+| The store cannot be used | `the plan store cannot be used: <reason>` |
+
+`<parts>` is one or more of `Runefile definition`, `configuration`, `working directory`,
+`host` and `tool "<name>"`, in this order, joined by `, `. A declared tool that is no longer
+on the path counts as changed. `<what>` is `artifact` or `summary`. `<detail>` is
+`is missing`, `is not a regular file` or `does not have the recorded digest`. A stored file
+that was replaced by a symbolic link is not a regular file.
+
+**The order of checks.** For one `apply` call from an agent:
+
+1. Unknown argument names, then value types, missing arguments and defaults.
+2. The [`[agent-allow]` policy](#restricting-the-values-an-agent-may-pass). A value it
+   refuses is refused for the value, and the person is not asked. This holds for a client
+   that cannot be asked too.
+3. The plan: it is found, it is ready, the parts it is bound to are unchanged, and the stored
+   artifact and summary have their recorded digests.
+4. The approval request, with the plan and every `[confirm]` message in it. Where the person
+   cannot be asked, the refusal that says why.
+5. The claim and the private copy.
+6. The run, and then the record of how it ended.
+
+A refusal at steps 1 to 3 sends no request. A refusal at step 4 or 5 leaves the plan's state
+as it was. A `[confirm]` call from a client that cannot be asked is refused before its
+arguments are read. An `apply` call is checked first, so a call that could not run anyway is
+refused for its own reason.
+
+**A grant approves no plan.** `--allow-destructive apply` is accepted and has no effect on
+the plan approval: the person is still asked on every call. No server flag approves a
+plan. The server prints a warning when it starts and on a reload, and its startup line does
+not list the task among the granted ones:
+
+```text
+warning: --allow-destructive apply approves no plan: task "apply" asks the person at the client on every call
+```
+
+**A client that cannot be asked.** A client that stated no form elicitation is refused, and
+nothing runs. The text names the command the operator can run and the reason:
+
+```text
+task "apply" applies a plan and runs only when the person at the client approves that plan. The operator can run "rune apply" themselves. Rune could not ask for approval here: the client does not support MCP form elicitation.
+```
+
+A call whose request would be too large is refused with the same text and the reason
+`the approval request would be too large to show`. As for a `[confirm]` call, the command
+names the task only, so add the arguments the task needs, and a server started with
+[`-f`](#starting-the-server) names its Runefile in it.
+
+**The command line is the manual way.** The plan the agent made is in the store, and plans
+made through the server and from the command line share that store. The operator runs
+`rune apply prod` in the same directory and is asked at the terminal about the same plan:
+
+```text
+Plan <id> made by "plan" at <time>
+Target: apply env="prod"
+Artifact: sha256:<hex> (<n> bytes)
+Note: <as in the request>
+Summary:
+  <line>
+Apply this plan once? [y/N]
+```
+
+- `y` runs the apply with the stored plan. Any other answer runs nothing and leaves the plan
+  usable.
+- With `--yes` the identity is printed and the apply runs without a question.
+- Without a terminal and without `--yes` the call is refused, as a `[confirm]` task is:
+  `task "apply" was not confirmed (Apply this plan once?): stdin is not a terminal; pass --yes to approve`.
+- A `[confirm("...")]` message of the apply task is printed as `Confirmation: <message>`
+  above the question, and the one answer covers it.
+- The terminal shows more of a long summary than the request: a head of 48 KiB and a tail
+  of 16 KiB.
+- An apply task must be the only task named in a command. Otherwise it is the usage error
+  `a task that applies a plan must be the only task named in a command`.
+- The command line makes the same checks and gives the same refusals as the table above.
+
+**A task body that runs `rune`.** In an agent run, the command line refuses to run an apply
+task, with or without `--yes`. When an agent calls a task whose body runs
+`rune --yes apply prod`, the inner `rune` exits with an error and
+`task "apply" applies a plan and cannot run inside an agent run: a person has to approve the plan in the call that applies it`.
+
+**`agent` tasks.** The endpoint an [`agent` task](#agent-task-bodies) opens for its own
+agent never asks, so an `apply` call there is refused:
+`task "apply" applies a plan and runs only when the person at the client approves that plan; nobody can be asked in this session.`
+Where the server has a command to name, the text goes on with
+` The operator can run "rune apply" themselves.`
+
+### The states of a plan
+
+| State | Meaning | Can be applied |
+|---|---|---|
+| `ready` | Stored, and not claimed, replaced or expired | Yes |
+| `unfinished` | A call claimed it and no outcome is recorded | No |
+| `applied` | The apply ended without failure. Its exit code is recorded | No |
+| `failed` | The apply failed, or the plan file changed while it was being applied. Its exit code is recorded | No |
+| `replaced` | A newer plan of the same task and arguments was stored | No |
+| `expired` | The time is after its expiry | No |
+
+A plan goes from `ready` to `replaced`, to `expired`, or, at the claim, to `unfinished`, and
+from `unfinished` to `applied` or `failed`. There is no way back to `ready`.
+
+- **The target is the arguments.** A plan belongs to the Runefile's path, the plan task and
+  the effective arguments, defaults included. The plan and apply tasks have the same
+  parameters, and `apply` uses the plan made for equal arguments. A plan for `env=staging`
+  is no plan for `env=prod`. The elements of a variadic parameter are part of the arguments
+  compared. Two Runefiles in one directory keep their plans apart.
+- **Only the newest plan can be applied.** A new plan of the same plan task with the same
+  arguments replaces the earlier unused one, and its artifact bytes are deleted. When two
+  plan runs for the same arguments end at once, both are stored and the newer one replaces
+  the other.
+- **A plan expires.** One hour after it was made, or after the time `expires` sets, from one
+  minute to seven days.
+- **A claim uses up the plan, whatever stops the attempt.** A dependency of `apply` that
+  fails before the body starts still consumes the plan. It is recorded as used and failed,
+  and the attempt is not given back.
+- **What a plan is bound to.** The arguments, the working directory of the plan task, the
+  Runefile definition, the configuration, the host's operating system and architecture, and,
+  when `tool` is declared, the tool. A change to any of them refuses the apply.
+- **The Runefile definition is the whole Runefile**, composed with what it imports. Any
+  change to it after a plan refuses the apply. That is coarser than the apply task alone and
+  cannot miss a change.
+- **The configuration is Rune's.** It is the resolved settings, the dotenv file and the
+  variable overrides of the command line: `rune region=eu plan` and `rune region=us apply`
+  are different configurations, and the apply is refused. The tool's own configuration is
+  inside its saved plan and under its own checks.
+- **The tool is an executable.** Rune does not run the tool outside a task body, so it
+  records the path and the digest of the executable that the `tool` name resolves to in the
+  plan body's environment and directory. At the apply it resolves the name again, in the
+  apply body's environment and directory, and that has to be the same executable: an apply
+  task whose own `PATH` finds another one is refused.
+- **Recorded, not compared.** The Rune version, and the git commit and whether the tree was
+  dirty, when `git` can tell. The plan file and its summary are what the task makes, so
+  they do not make the tree dirty.
+- **A reload during an apply.** The call runs against the load of the Runefile it started
+  with. Its plan was checked against that load.
+
+### Retention and the journal
+
+The store is `.rune/plans/` in the Runefile's directory, where the cache already is, so the
+server and the command line see the same plans. It is local: there is no remote or shared
+store. It is created when the first plan is stored.
+
+- **Modes.** Directories are created with mode `0700` and files with `0600` or `0400`, so no
+  file is readable by group or others.
+- **Links.** `.rune` and `.rune/plans` must be real directories. A symbolic link is refused,
+  and on POSIX hosts `.rune/plans` must belong to the current user.
+- **Version control.** `.rune/plans/.gitignore` holds `*`, so nothing in the store is
+  offered for commit.
+- **A plan can hold secrets.** Its bytes are in the store only: in the artifact, the summary
+  and the private copy. The record of a plan holds digests, the masked text of the arguments
+  and times, never plan or summary bytes.
+
+| What | Limit |
+|---|---|
+| Artifact | 256 MiB |
+| Summary | 1 MiB |
+| Default expiry | 1 hour |
+| Artifact and summary bytes | Deleted when the plan is applied, failed, replaced or expired, at the latest when the store is next used |
+| Bytes of an unfinished attempt | Kept for 24 hours after the claim, because an apply may still be reading them, and deleted then |
+| Record | Removed 7 days after its last event |
+| A plan directory with no record, left by a process that was killed while storing | Removed once it is 24 hours old |
+| Journal | 1 MiB, then the older half of the lines is dropped |
+
+Rune cleans the store when a plan is stored and when an `apply` call looks one up. Nothing
+runs in the background.
+
+The journal is `.rune/plans/journal.jsonl`, with one JSON object per line and mode `0600`.
+It links a plan's creation, each approval request and its answer, and each apply attempt:
+
+```json
+{"time":"2026-11-17T10:04:11Z","event":"plan-created","surface":"mcp","planTask":"plan","plan":"7f3c9a1e52b84d06","digest":"9b1f...","args":"env=\"prod\""}
+{"time":"2026-11-17T10:05:02Z","event":"approval-requested","surface":"mcp","planTask":"plan","plan":"7f3c9a1e52b84d06","digest":"9b1f...","applyTask":"apply","args":"env=\"prod\""}
+{"time":"2026-11-17T10:05:09Z","event":"approval-given","surface":"mcp","planTask":"plan","plan":"7f3c9a1e52b84d06","digest":"9b1f...","applyTask":"apply","args":"env=\"prod\""}
+{"time":"2026-11-17T10:05:09Z","event":"apply-started","surface":"mcp","planTask":"plan","plan":"7f3c9a1e52b84d06","digest":"9b1f...","applyTask":"apply","args":"env=\"prod\"","attempt":"c41d0e7a9b3355f2"}
+{"time":"2026-11-17T10:05:31Z","event":"apply-finished","surface":"mcp","planTask":"plan","plan":"7f3c9a1e52b84d06","digest":"9b1f...","applyTask":"apply","args":"env=\"prod\"","attempt":"c41d0e7a9b3355f2","exit":0,"state":"applied"}
+```
+
+| Event | Written when | It also carries |
+|---|---|---|
+| `plan-created` | A plan was stored | |
+| `plan-replaced` | A newer plan took a plan's place | `replacedBy`, the id of the newer plan |
+| `approval-requested` | An apply call reached the approval, at the client or at the terminal | `applyTask` |
+| `approval-given` | The person approved | `applyTask`, and `reason` when `--yes` answered |
+| `approval-not-given` | The person did not approve, or could not be asked | `applyTask`, `reason` |
+| `apply-refused` | A plan check or the claim refused the call | `applyTask`, `reason` |
+| `apply-started` | The plan was claimed | `applyTask`, `attempt` |
+| `apply-finished` | The run ended | `applyTask`, `attempt`, `exit`, `state`, `tampered` |
+
+- Every line carries the time, the event, the surface (`mcp` or `cli`), the plan task and
+  the arguments, and the plan's id and artifact digest whenever a plan is known. Only an
+  `apply-refused` for no plan has none.
+- A line never holds plan or summary bytes, and argument values are masked.
+- A call refused for its arguments or by the `[agent-allow]` policy involves no plan and is
+  not in the journal.
+- A person who could not be asked is recorded as `approval-requested` followed by
+  `approval-not-given` with the reason.
+- When a line cannot be written, Rune prints a warning and goes on.
+
+### Recovery
+
+Rune never runs an apply again by itself. A plan whose apply failed or did not finish can
+never be applied, and a new plan costs one more review.
+
+| What happened | State of the plan | What to do |
+|---|---|---|
+| The body of `apply` failed | `failed`, with the exit code. The result is the task's failure | Check the target. Run `plan` again and review the new plan |
+| The tool refused the plan because the remote state changed | `failed` | Run `plan` again and review the new plan |
+| A dependency of `apply` failed before the body started | `failed` | Run `plan` again and review the new plan |
+| The apply was stopped before it ended, such as by a killed server | `unfinished`. The outcome is unknown | Check the target. Run `plan` again and review the new plan |
+| The plan file changed while it was being applied | `failed`, marked as tampered | Check the target. Run `plan` again and review the new plan |
+| The request was declined, dismissed, timed out or cancelled | `ready` | Call `apply` again |
+| The Runefile was reloaded while the request was pending | `ready` | Call `apply` again. If the Runefile definition changed, that call is refused and `plan` has to run again |
+| A new plan was stored while the request was pending | The old plan is `replaced`. No failure is recorded | Call `apply` again. The request is about the new plan |
+| The client sent the call again after a connection loss | Unchanged | It is a new call: it asks again, and runs only if the plan is still unused |
+
+- **After a failed or unfinished apply, the next request says so.** The request for a later
+  plan of the same plan task and arguments carries the `Note:` line with the time of that
+  attempt.
+- **A changed plan file.** Rune checks the private copy when the run of the apply call ends.
+  If its digest differs, standard error gets
+  `plan <id>: the plan file changed while it was being applied; recorded as failed and tampered`
+  and the call fails. A call that would have ended with exit code 0 ends with 1.
+- **There is no rollback.** Rune does not undo a failed or partial apply.
+
+### What a matching digest proves
+
+A matching digest proves that the bytes the apply task receives are the bytes that were
+stored when the plan task finished, and that the summary shown is the one stored with them.
+Both are checked against their recorded digests before the person is asked.
+
+It does not prove that the remote system is unchanged since the plan. The tool's own state
+lock and stale-plan check stay in force, Rune does not replace or weaken them, and a stale
+plan fails in the tool. It does not undo a partial apply.
+
+**What the binding does not see.**
+
+- Values read by `env(...)` are not part of any digest.
+- Scripts a body calls are not part of any digest.
+- A version manager's shim keeps one identity across the versions it selects, because the
+  tool's identity is the executable the name resolves to.
+- A dotenv file edited under a running server changes nothing for that server until it
+  restarts. The file is not watched, and the server keeps the configuration it loaded, so its
+  own plans stay valid for it. The command line, and a server started or reloaded since, read
+  the changed file and refuse the apply: the configuration changed.
+
+**Trusted execution assumptions.**
+
+- **Processes of the same user are trusted.** File modes keep other users of the machine
+  out of the store. They do not keep out a process of the same user: an agent that has its
+  own shell can write there, as it can edit the Runefile.
+  [Rune-only agent mode](design/rune-only-agent-mode.md) is about closing that. The private
+  copy is checked again after the apply, so that a change is at least recorded.
+- **On Windows, file modes do not restrict access.** Every other rule holds.
+- **The summary is the author's.** The plan body writes it, for example with `tofu show`.
+  Rune stores it with the artifact in one record and shows it. Rune does not parse the
+  artifact, so the summary is what the plan task wrote.
+- **The client reports the answer.** As for every approval request, Rune trusts the client
+  to show the request and to report your answer.
+
+### Tool compatibility
+
+| Workflow | Exact-plan integration | How |
+|---|---|---|
+| OpenTofu | Supported | Save the plan with `tofu plan -out=tfplan`, apply it with `tofu apply "$RUNE_PLAN_FILE"`. See [plan-apply-opentofu](examples/plan-apply-opentofu/README.md) |
+| Terraform | Supported | Save the plan with `terraform plan -out=tfplan`, apply it with `terraform apply "$RUNE_PLAN_FILE"`. See [plan-apply-terraform](examples/plan-apply-terraform/README.md) |
+| Helm | Not supported | See below |
+| Database migration runners | Not supported | See below |
+
+**OpenTofu and Terraform.** `plan -out` writes one file, and `apply <file>` consumes that
+file with the tool's own stale-plan check. That file is the artifact Rune stores, and the
+output of `show` is the summary.
+
+**Helm is not supported.** Helm has no saved plan: a dry run renders manifests. An
+exact-plan integration would have to bind the chart or package, the values, the rendered
+output, the hooks and post-renderers, the target and the release state, and verify the
+reviewed payload before anything is changed. Do not present a Helm dry run or rendered
+manifests as a saved plan. A dry run is not a saved plan that Helm replays, and applying
+rendered manifests directly does not keep Helm's release and hook semantics.
+
+**Database migration runners are not supported.** A migration runner validates the checksums
+of a directory against a live database and has no single artifact to bind. An exact-plan
+integration would have to bind the ordered migration bundle and its checksums, the runner
+and its options, the database identity and the schema-history baseline, and validate them
+under the runner's locking rules. Checksums alone do not freeze the target database.
 
 ## Agent task bodies
 

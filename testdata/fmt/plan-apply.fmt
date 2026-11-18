@@ -1,0 +1,9 @@
+# The plan and applies attributes (spec 051): a stored plan and the task that applies it.
+[plan(file="tfplan", summary="tfplan.txt")]
+plan env:
+    @echo {{quote(env)}}
+
+[confirm]
+[applies("plan")]
+apply env:
+    @echo "$RUNE_PLAN_FILE"

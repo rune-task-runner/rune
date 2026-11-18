@@ -109,6 +109,11 @@ func (e *engine) newAgentAdapter() *mcpAdapter {
 		maskSet:   deriveMaskSet(e.env, e.tasks, e.settings.Secrets, e.settings.Unmasked),
 		now:       e.now,
 		goos:      e.goos,
+		planIdent: e.planIdent,
+		version:   e.opts.Version,
+		clock:     e.clock,
+		gitInfo:   e.gitInfo,
+		stderr:    operatorStderr(e.opts.Stderr),
 	}
 }
 

@@ -32,3 +32,20 @@ func TestRegistryPrefixMatch(t *testing.T) {
 		t.Errorf("MatchKind(executor,\"py\") = %+v, want python", got)
 	}
 }
+
+// Spec 051: completion and hover read the registry, so both attributes have
+// to be in it with a signature an author can copy.
+func TestRegistryHasPlanAttributes(t *testing.T) {
+	for name, signature := range map[string]string{
+		"plan":    `[plan(file="path", summary="path")]`,
+		"applies": `[applies("plan-task")]`,
+	} {
+		b, ok := Lookup(BuiltinAttribute, name)
+		if !ok || b.Signature != signature || b.Documentation == "" {
+			t.Errorf("Lookup(%q) = %+v, %v", name, b, ok)
+		}
+		if got := MatchKind(BuiltinAttribute, name[:2]); len(got) == 0 {
+			t.Errorf("MatchKind(%q) finds nothing", name[:2])
+		}
+	}
+}

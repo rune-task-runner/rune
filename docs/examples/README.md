@@ -47,6 +47,8 @@ Each isolates one feature so you can see exactly how it works.
 | [settings-dotenv](settings-dotenv/README.md) | Settings, `set export`, and `.env` loading. |
 | [secret-masking](secret-masking/README.md) | Sensitive values masked as `***` in all output. |
 | [os-filtering](os-filtering/README.md) | Tasks restricted to a specific OS. |
+| [plan-apply-opentofu](plan-apply-opentofu/README.md) | Applying only the plan a person approved, with `[plan]` and `[applies]`. Needs opentofu. |
+| [plan-apply-terraform](plan-apply-terraform/README.md) | The same with Terraform. Needs terraform. |
 
 ## How to run any example
 

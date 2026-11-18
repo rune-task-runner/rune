@@ -1,0 +1,5 @@
+# OpenTofu's working files. A plan task that fails can leave tfplan and tfplan.txt behind.
+.terraform/
+*.tfstate*
+tfplan
+tfplan.txt

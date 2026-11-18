@@ -83,3 +83,43 @@ func destructiveTasks(names []string) string {
 	}
 	return "destructive tasks " + strings.Join(quoted, ", ")
 }
+
+// planNames lists the tasks an approval of a call to a task that applies a
+// plan covers: the task itself first, granted or not, then the destructive
+// tasks it reaches that the operator has not granted (spec 051).
+func planNames(task string, ungranted []string) []string {
+	names := []string{task}
+	for _, name := range ungranted {
+		if name != task {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// planNeeds is the start of every refusal of a task that applies a plan. It
+// never names the grant flag: a grant does not approve a plan.
+func planNeeds(task string) string {
+	return fmt.Sprintf("task %q applies a plan and runs only when the person at the client approves that plan", task)
+}
+
+// operatorCan is the sentence that names the command for the called task,
+// or "" when the server has none.
+func (s *Server) operatorCan(called string) string {
+	if s.opts.RunCommand == "" {
+		return ""
+	}
+	return " The operator can run " + s.runHint(called) + " themselves."
+}
+
+// planNobody refuses a task that applies a plan on a server or engine that
+// asks nobody.
+func (s *Server) planNobody(called string) string {
+	return planNeeds(called) + "; nobody can be asked in this session." + s.operatorCan(called)
+}
+
+// planCannotAsk refuses a task that applies a plan when this client, or
+// this request, cannot be put to the person.
+func (s *Server) planCannotAsk(called, reason string) string {
+	return planNeeds(called) + "." + s.operatorCan(called) + " Rune could not ask for approval here: " + reason + "."
+}

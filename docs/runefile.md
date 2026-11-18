@@ -367,6 +367,8 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [returns("JSON array of IDs")]  # outcome description: shown to agents and in --list
 [param-doc("env", "Target environment")]  # describe one parameter for the tool schema
 [agent-allow(env="staging")]    # the only value an agent may run the task with
+[plan(file="tfplan", summary="tfplan.txt")]  # the task makes a plan, which Rune stores
+[applies("plan")]               # runs only with the approved plan of the named task, once
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
 [cache(inputs = ["go.mod", "src/**/*.go"], outputs = ["dist/app"])]  # content-hash caching
 ```
@@ -398,6 +400,11 @@ used twice, a value the parameter's `enum` does not have, a value with a charact
 not printable, a parameter of another type, and a second `[agent-allow]` on one task are
 each a static error (`RUNE2019`). Rune never drops a policy it cannot apply. See
 [Restricting the values an agent may pass](mcp.md#restricting-the-values-an-agent-may-pass).
+
+`[plan(file="...", summary="...")]` marks a task that makes a plan, and `[applies("<task>")]`
+marks the task that applies the plan of the named plan task. The apply task runs only with
+the plan Rune stored, only after a person approved that plan, and only once. See
+[Plan and apply](#plan-and-apply).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it
 when an agent session starts and injects its output into the agent's context — see
@@ -453,6 +460,83 @@ build:
 ```
 
 Clear the cache with `rune --clear-cache`.
+
+### Plan and apply
+
+`[plan(...)]` marks a task that makes a plan and names the file it writes.
+`[applies("<task>")]` marks the task that applies the plan of the named plan task. The
+relationship is only what these attributes state: Rune does not infer it from task names.
+
+```rune
+# Plan the infrastructure change.
+[plan(file="tfplan", summary="tfplan.txt", tool="tofu", expires="30m")]
+plan env:enum("staging","prod"):
+    tofu plan -var env={{quote(env)}} -out=tfplan
+    tofu show -no-color tfplan > tfplan.txt
+
+# Apply the reviewed plan.
+[applies("plan")]
+apply env:enum("staging","prod"):
+    tofu apply "$RUNE_PLAN_FILE"
+```
+
+When the body of `plan` ends, Rune moves `tfplan` and `tfplan.txt` into a store under
+`.rune/plans/` and identifies the plan by its SHA-256 digest. `apply` runs only with that
+stored plan, only after a person approved it, and only once. An agent's call is put to the
+person at the client, and a person who runs `rune apply prod` is asked at the terminal. The
+flow, the approval request, the refusals and the store are in
+[Applying a reviewed plan](mcp.md#applying-a-reviewed-plan).
+
+`plan` takes four arguments, each at most once, in any order. Each value is a string
+literal.
+
+| Argument | Required | Rule |
+|---|---|---|
+| `file` | Yes | The plan file the body writes. A relative path written with forward slashes, resolved against the task's working directory |
+| `summary` | Yes | The text file the body writes for a person to read. The same rules as `file`, and a different file |
+| `tool` | No | The name of an executable, looked up on the path. Not a path. Rune records which executable it is, and refuses the apply when it changed |
+| `expires` | No | How long the plan can be applied: a duration from `1m` to `168h`, such as `"30m"`. The default is one hour |
+
+A path is relative when it does not start with `/` or `\`, has no drive prefix such as `C:`,
+holds no `\`, and has no `..` element. The rule reads the text only, so it is the same on
+every host. A value cannot be empty or hold a character that is not printable.
+
+The body of an apply task receives three variables:
+
+| Variable | Value |
+|---|---|
+| `RUNE_PLAN_FILE` | Absolute path of the private copy of the approved plan |
+| `RUNE_PLAN_ID` | The plan id |
+| `RUNE_PLAN_DIGEST` | `sha256:<hex>` of the artifact |
+
+Only the apply task's own body receives them, not its dependencies or hooks. Rune adds them
+last, so they win over the process environment, a dotenv file and exported variables.
+
+The rules for the pair:
+
+- **`[applies]` names a plan task.** The named task must exist and have `[plan]`. One plan
+  task can have several apply tasks. Inside a module the name is local, as a dependency name
+  is: `[applies("plan")]` in module `infra` binds `infra::plan`.
+- **The same parameters.** An apply task has the parameters of its plan task: the same
+  number and, position by position, the same name, parameter kind (required, defaulted, `+`,
+  `*`), constraint kind and enum values. Defaults may differ. The arguments are the target,
+  so `apply` uses the plan made for equal arguments.
+- **The body uses `RUNE_PLAN_FILE`.** An apply body that does not mention it would not apply
+  the reviewed plan.
+- **An apply task is called itself.** No task can name it as a dependency or hook, and on the
+  command line it must be the only task named.
+- **An apply task does not run its plan task.** It cannot reach it through a dependency or
+  hook: the plan would be made again after it was approved.
+- **Rune sets the plan variables.** An apply task cannot set `RUNE_PLAN_FILE`,
+  `RUNE_PLAN_ID` or `RUNE_PLAN_DIGEST` with `[env]`.
+- **What the attributes cannot be combined with.** Neither can be on a task twice, both
+  cannot be on one task, and neither can be combined with `[cache]`, `[readonly]` or
+  `[context]`, or used on an `agent` task.
+
+A declaration that breaks one of these rules, or a wrong `plan` argument, is a static error
+(`RUNE2020`) at the offending text, before anything runs, and `rune mcp` does not start on
+such a Runefile. `[plan]` without arguments, `[plan()]`, an argument with no quoted value,
+a trailing comma and `[applies]` without a name are syntax errors.
 
 ## Imports and modules
 

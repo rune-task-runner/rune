@@ -1,17 +1,17 @@
 <!--
 Sync Impact Report
-- Version: 1.3.0 → 1.4.0
-- Rationale: MINOR amendment. Principle VII said destructive tasks are refused
-  on the agent surface by default. Spec 049 (issue #47) adds a second way for
-  one to run: the person at the client approves that one call, through MCP form
-  elicitation. With a client that can ask, the call is then put to the person
-  and not refused outright, so the sentence as written stopped being true. The
-  principle now names the two ways a destructive task can run, the operator's
-  grant and the person's approval of one call, and keeps refusal for everything
-  else. Proposed with spec 049. The maintainer's merge of that pull request is
-  the approval; until then this text is a proposal.
-- Modified principles: VII AI-Native, Secure by Default (the sentence on
-  destructive tasks).
+- Version: 1.4.0 → 1.4.1
+- Rationale: PATCH amendment, a clarification. Principle VII says a destructive
+  task runs only when the operator granted it or the person approves that one
+  call, and that destructiveness is declared with `[confirm]`. Spec 051 (issue
+  #49) adds a task that applies a reviewed plan, declared with `[applies]`. It
+  is also advertised as destructive, and it is stricter: it runs only when the
+  person approves that plan, and a grant approves no plan. The principle now
+  names `[applies]` beside `[confirm]` and states that rule. No principle is
+  removed or redefined. Proposed with spec 051. The maintainer's merge of that
+  pull request is the approval; until then this text is a proposal.
+- Modified principles: VII AI-Native, Secure by Default (the sentence on how
+  destructiveness is declared).
 - Modified sections: none.
 - Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
@@ -83,7 +83,9 @@ that one call. A call is put to the person only through a client that states it 
 ask, and anything but an explicit yes is a refusal. A task makes no read-only
 claim unless its author declares one. Destructiveness is author-declared via the
 `[confirm]` attribute and read-only via `[readonly]`, which map to the MCP
-destructive and read-only hints. Secrets come only
+destructive and read-only hints. A task that applies a reviewed plan, declared via
+the `[applies]` attribute, is also advertised as destructive and runs only when the
+person approves that plan, never on a grant. Secrets come only
 from the environment or the agent CLI's own session — never from a Runefile, and
 never surfaced in task descriptions, schemas, or listings. Any remote MCP endpoint
 is opt-in, localhost-bound, and token-gated.
@@ -143,4 +145,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.4.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-17
+**Version**: 1.4.1 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-17

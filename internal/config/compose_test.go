@@ -137,3 +137,27 @@ func TestComposeImportRewritesFailHooks(t *testing.T) {
 	}
 	t.Fatal("ci::test not found after compose")
 }
+
+// Spec 051 research R4: [applies] names its plan task by the name the
+// module's own file gives it, as a dependency does.
+func TestComposeNamespacesApplies(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "infra.rune", "[plan(file=\"p\", summary=\"s\")]\nplan:\n    @echo plan\n\n[applies(\"plan\")]\napply:\n    @echo $RUNE_PLAN_FILE\n\n[applies(\"elsewhere\")]\nother:\n    @echo $RUNE_PLAN_FILE\n")
+	main := writeFile(t, dir, "Runefile", "mod infra \"infra.rune\"\n")
+	src, _ := os.ReadFile(main)
+	f, _ := parser.Parse(main, string(src))
+	if diags := Compose(f, diag.SourceProvider(srcProvider)); diags.HasErrors() {
+		t.Fatalf("unexpected: %v", diags)
+	}
+	got := map[string]string{}
+	for _, tk := range f.Tasks {
+		got[tk.Name] = tk.AppliesPlan()
+	}
+	if got["infra::apply"] != "infra::plan" {
+		t.Errorf("infra::apply applies %q, want infra::plan", got["infra::apply"])
+	}
+	// A name that is not a task of the module is left for the analyzer.
+	if got["infra::other"] != "elsewhere" {
+		t.Errorf("infra::other applies %q, want elsewhere", got["infra::other"])
+	}
+}

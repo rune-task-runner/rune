@@ -66,6 +66,7 @@ If you've used `make` or `just`, Rune will feel familiar — with a few delibera
 - **AI-native and secure by default.** Tasks are first-class MCP tools. Destructive tasks
   are refused until the operator allows them or the person approves the call in the client,
   `[agent-allow]` limits the values an agent may pass,
+  `[applies]` runs a task once, with the plan a person approved,
   only `[readonly]` tasks claim to be read-only,
   and secrets come from the environment only, never the Runefile.
 - **Multi-language bodies.** Write task bodies in shell, Python, Node, or drive an AI agent.
