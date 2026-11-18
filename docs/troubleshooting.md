@@ -153,6 +153,58 @@ or the tasks' working directory. The log must be where a task does not normally 
 
 **Fix:** set `RUNE_AUDIT_DIR` to a directory outside the project.
 
+### "the sandbox is unavailable" (in an agent's tool result, and when the server starts)
+
+The tasks an agent calls run in [a sandbox](mcp.md#the-sandbox). On Linux it needs
+[bubblewrap](https://github.com/containers/bubblewrap). When the sandbox cannot work, the
+server starts, prints a warning, and refuses every task call before anything runs. The
+message names the reason.
+
+**Fix:** by reason:
+
+- *bubblewrap (bwrap) was not found on the PATH*: install it, for example
+  `apt install bubblewrap`. The next call uses it, with no restart.
+- *bubblewrap could not start a sandbox*: the host does not let bubblewrap create
+  namespaces. A default container is one such host. Allow unprivileged user namespaces
+  for it, or run the server where they are allowed.
+- *this system has no sandbox backend*: macOS and Windows have none.
+- *the PATH holds ..., which the sandbox hides*: a directory of the server's `PATH` is
+  under `/run`, `/tmp` or `/var/tmp`, which a task does not see. Start the server with a
+  `PATH` that does not need it.
+
+To run tasks without a sandbox, start the server with `--sandbox off`, or set
+`RUNE_SANDBOX=off`. The server then says so when it starts and in every record of the
+audit log.
+
+### "Read-only file system" or "Could not resolve host" in a task an agent ran
+
+The task ran in [the sandbox](mcp.md#the-sandbox): it writes only inside the project, and
+it has no network unless it is marked `[network]`. The output ends with a line that says
+so: `note: task "build" ran in the sandbox: ...`.
+
+**Fix:** mark a task that needs the network with `[network]`. For a tool that writes
+under your home directory, point it into the project with `[env]`; a tool that follows
+`XDG_CACHE_HOME` already has a private cache directory. A task that writes `.git`, such as
+one that commits, is a task to run yourself.
+
+### "the Runefile looks for it and it does not exist" (in an agent's tool result)
+
+The Runefile names a file inside the project that is not there: an optional import
+(`import? "local.rune"`), or a module that lives in a directory and is declared without
+its path (`mod api`, found at `api/Runefile` after `api.rune` was looked for). A task
+could create the missing file, and the next load would read it, so the call is refused.
+
+**Fix:** create the file, give the module its path (`mod api "api/Runefile"`), or remove
+the optional import.
+
+### "holds more than one Runefile" (exit 2)
+
+The directory has two files that are both a Runefile name, such as `Runefile` and
+`.runefile`. Rune does not pick one: a file added beside the Runefile would otherwise
+replace it in silence.
+
+**Fix:** remove all but one, or name the one you mean with `--file`.
+
 ### `rune log` shows the log, not my `log` task
 
 `log` is a built-in command. **Fix:** run the task with `rune -- log`.

@@ -1,17 +1,21 @@
 <!--
 Sync Impact Report
-- Version: 1.4.0 → 1.4.1
-- Rationale: PATCH amendment, a clarification. Principle VII says a destructive
-  task runs only when the operator granted it or the person approves that one
-  call, and that destructiveness is declared with `[confirm]`. Spec 051 (issue
-  #49) adds a task that applies a reviewed plan, declared with `[applies]`. It
-  is also advertised as destructive, and it is stricter: it runs only when the
-  person approves that plan, and a grant approves no plan. The principle now
-  names `[applies]` beside `[confirm]` and states that rule. No principle is
-  removed or redefined. Proposed with spec 051. The maintainer's merge of that
-  pull request is the approval; until then this text is a proposal.
-- Modified principles: VII AI-Native, Secure by Default (the sentence on how
-  destructiveness is declared).
+- Version: 1.4.1 → 1.5.0
+- Rationale: MINOR amendment, a new commitment inside an existing principle.
+  Principle VII states the security defaults of the agent surface. Until now a
+  task an agent called ran as an ordinary process of the server's user, and
+  `[network]` was a hint. Spec 053 (issue #51) makes the operating system
+  confine such a task: no network unless the author declares `[network]`, and
+  writes only inside the project. Where no backend can do that the call is
+  refused, unless the operator started the server unsandboxed. The principle now
+  states that default. No principle is removed or redefined. Proposed with
+  spec 053. The maintainer's merge of that pull request is the approval; until
+  then this text is a proposal.
+- Modified principles: VII AI-Native, Secure by Default (one sentence added).
+- Principle V (Boringly Portable) is unaffected in its text: Rune stays pure Go
+  and one static binary on Linux, macOS and Windows. The sandbox backend is a
+  separate program (bubblewrap), optional, on Linux only, and needed only by
+  the agent surface. Spec 053's plan records it in Complexity Tracking.
 - Modified sections: none.
 - Added sections: none. Removed sections: none.
 - Templates requiring review: .specify/templates/plan-template.md (Constitution
@@ -85,7 +89,11 @@ claim unless its author declares one. Destructiveness is author-declared via the
 `[confirm]` attribute and read-only via `[readonly]`, which map to the MCP
 destructive and read-only hints. A task that applies a reviewed plan, declared via
 the `[applies]` attribute, is also advertised as destructive and runs only when the
-person approves that plan, never on a grant. Secrets come only
+person approves that plan, never on a grant. A task an agent runs is confined by the
+operating system where a backend exists: it has no network unless its author declares
+`[network]`, and it writes only inside the project. Where no backend exists the call is
+refused, unless the operator started the server unsandboxed, which every record states.
+Secrets come only
 from the environment or the agent CLI's own session — never from a Runefile, and
 never surfaced in task descriptions, schemas, or listings. Any remote MCP endpoint
 is opt-in, localhost-bound, and token-gated.
@@ -145,4 +153,4 @@ versioning: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or section, PATCH for clarifications. Reviewers verify that changes
 comply with the principles in force.
 
-**Version**: 1.4.1 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-17
+**Version**: 1.5.0 | **Ratified**: 2026-06-10 | **Last Amended**: 2026-11-18

@@ -59,6 +59,10 @@ repository). `list-tasks` is marked `[readonly]`, so it tells clients it changes
   > **Secrets come from the environment only**, never
   > the Runefile, and are never shown in any task description exposed to an agent.
 
+- **A task an agent calls is confined.** On Linux with bubblewrap, such a task has no
+  network unless it is marked `[network]` and writes only inside the project. On a host
+  with no sandbox the call is refused, unless you start the server with `--sandbox off`.
+  See [The sandbox](../mcp.md#the-sandbox).
 - **This limits what Rune runs, not what the agent can do.** Registering Rune does not
   remove the client's own shell, where an agent can still type the command a refused task
   would have run. [Rune-only agent mode](../design/rune-only-agent-mode.md) says which

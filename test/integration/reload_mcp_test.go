@@ -303,7 +303,7 @@ func TestReloadMCP_AddedTaskIsListed(t *testing.T) {
 		t.Errorf("call lint = %q", got)
 	}
 	got := p.waitStderr("reloaded Runefile:", 1)
-	if want := "rune MCP server on stdio\nreloaded Runefile: 1 tool added, 0 removed, 0 changed\n"; got != want {
+	if want := offStderr(offLine("stdio", "") + "reloaded Runefile: 1 tool added, 0 removed, 0 changed\n"); got != want {
 		t.Errorf("stderr = %q, want %q", got, want)
 	}
 }
@@ -425,7 +425,7 @@ func TestReloadMCP_NoReload(t *testing.T) {
 		t.Error("--no-reload: the client was notified")
 	}
 	p.wantTools("build")
-	if got := p.stderr.String(); got != "rune MCP server on stdio\n" {
+	if got := p.stderr.String(); got != offStderr(offLine("stdio", "")) {
 		t.Errorf("--no-reload: stderr = %q, want only the startup line", got)
 	}
 

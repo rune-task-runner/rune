@@ -90,7 +90,7 @@ var builtinAttributes = []Builtin{
 	{Name: "cache", Kind: BuiltinAttribute, Signature: "[cache(inputs = [], outputs = [])]", Documentation: "Skip the task when inputs and outputs are unchanged since the last run."},
 	{Name: "env", Kind: BuiltinAttribute, Signature: "[env(\"KEY\", \"value\")]", Documentation: "Set an environment variable for the task."},
 	{Name: "working-directory", Kind: BuiltinAttribute, Signature: "[working-directory(\"./path\")]", Documentation: "Run the task in the given directory, relative to the Runefile."},
-	{Name: "network", Kind: BuiltinAttribute, Signature: "[network]", Documentation: "Declare the task uses the network (sets the MCP openWorldHint, on this task and any task that runs it)."},
+	{Name: "network", Kind: BuiltinAttribute, Signature: "[network]", Documentation: "Give the task the network when an agent calls it; without it an agent's call has none where a sandbox is enforced. Also sets the MCP openWorldHint, on this task and any task that runs it."},
 	{Name: "no-cd", Kind: BuiltinAttribute, Signature: "[no-cd]", Documentation: "Run the task in the invocation directory instead of the working directory."},
 	{Name: "no-exit-message", Kind: BuiltinAttribute, Signature: "[no-exit-message]", Documentation: "Suppress the trailing error banner on failure (exit code is unaffected)."},
 	{Name: "linux", Kind: BuiltinAttribute, Signature: "[linux]", Documentation: "Only available on Linux."},

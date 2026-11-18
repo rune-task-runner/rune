@@ -49,6 +49,14 @@ by default (see [docs/mcp.md](docs/mcp.md)):
   owner only. It is not signed: a process that runs as the same user can change it. Ship
   the records elsewhere for retention you control (see
   [the audit log](docs/mcp.md#the-audit-log)).
+- **A task an agent runs is confined by the operating system.** On Linux, with
+  bubblewrap, such a task has no network unless its author marked it `[network]`, writes
+  only inside the project, and cannot change the Runefile, the files it loads, `.git`, the
+  stored plans or the audit log. Where no sandbox can work, on macOS, on Windows and on a
+  host without bubblewrap, the call is refused, unless the operator started the server with
+  `--sandbox off`, which the startup output and every audit record state. The sandbox does
+  not keep a task from reading what its user can read, and a `[network]` task has the
+  host's whole network (see [the sandbox](docs/mcp.md#the-sandbox)).
 - **Remote MCP endpoints are opt-in**, bound to loopback unless the operator names another
   address, and token-gated. The HTTP transport has no TLS: on an address that is not loopback
   the token is sent in cleartext, and the server prints a warning when it starts.

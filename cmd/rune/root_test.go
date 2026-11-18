@@ -221,3 +221,43 @@ func TestEveryRootFlagConflictsWithSelfUpgrade(t *testing.T) {
 	root.Flags().VisitAll(check)
 	root.PersistentFlags().VisitAll(check)
 }
+
+// Spec 053: the two ways Rune starts itself are handled before the command
+// line is parsed, and nothing else is.
+func TestInternalCommand(t *testing.T) {
+	ctx := context.Background()
+	if code, handled := internalCommand(ctx, []string{cli.SandboxProbeArg}); !handled || code != cli.ExitSuccess {
+		t.Errorf("the probe: code %d, handled %v", code, handled)
+	}
+	for _, args := range [][]string{nil, {}, {"build"}, {cli.SandboxProbeArg, "x"}, {"mcp", cli.SandboxWorkerArg}} {
+		if _, handled := internalCommand(ctx, args); handled {
+			t.Errorf("%v was handled", args)
+		}
+	}
+	if got := run([]string{cli.SandboxProbeArg}); got != cli.ExitSuccess {
+		t.Errorf("run(--sandbox-probe) = %d", got)
+	}
+}
+
+// The sandbox's mode reaches the options from the environment, as the audit
+// log's directory does.
+func TestRootReadsSandboxEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte("build:\n    @echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("RUNE_SANDBOX", "off")
+	var opts cli.Options
+	root := newRootCmd(&opts, "1.2.3", "abc", nil)
+	addCommands(root, &opts)
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"version"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if opts.SandboxEnv != "off" {
+		t.Errorf("SandboxEnv = %q", opts.SandboxEnv)
+	}
+}

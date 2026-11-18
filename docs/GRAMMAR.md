@@ -55,7 +55,7 @@ AttrItem    = "private"
             | "parallel"
             | "linux" | "macos" | "windows" | "unix"
             | "no-cd"
-            | "network"                  (* sets MCP openWorldHint *)
+            | "network"                  (* gives an agent's call the network; sets MCP openWorldHint *)
             | "readonly"                 (* claims read-only: sets MCP readOnlyHint *)
             | "no-exit-message"          (* suppress the trailing error banner *)
             | "context"                  (* project-health hook injected into agent context *)

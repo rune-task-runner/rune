@@ -801,7 +801,7 @@ func TestServeRetention(t *testing.T) {
 			// A server that is stopped before it starts still opened its log.
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			_ = ServeMCP(Options{Cwd: dir, Stderr: &bytes.Buffer{}, Ctx: ctx, AuditDir: base, AuditRetention: tt.retention, MCPNoReload: true}, true, "127.0.0.1:0", tokenFile(t))
+			_ = ServeMCP(Options{Cwd: dir, Stderr: &bytes.Buffer{}, Ctx: ctx, AuditDir: base, AuditRetention: tt.retention, MCPNoReload: true, SandboxEnv: "off"}, true, "127.0.0.1:0", tokenFile(t))
 			if _, err := os.Stat(old); (err == nil) != tt.oldKept {
 				t.Errorf("the file 31 days old: kept %v, want %v", err == nil, tt.oldKept)
 			}
@@ -826,6 +826,8 @@ func TestExecuteAgentRecordsTheRun(t *testing.T) {
 		eng, stdout, _ := confirmEngine(t, agentSrc(script), nil, false, false)
 		base := t.TempDir()
 		eng.opts.AuditDir, eng.opts.AuditRetention = base, "0"
+		// The endpoint is tested unsandboxed here, as it was before spec 053.
+		eng.opts.SandboxEnv = "off"
 		eng.planIdent = planIdentity{runefile: filepath.Join(eng.root, "Runefile"), def: "aa", config: "bb"}
 		return eng, stdout, audit.ProjectDir(base, eng.planIdent.runefile)
 	}
@@ -892,5 +894,48 @@ func TestOutcomesMatchTheServer(t *testing.T) {
 	}
 	if len(audit.Outcomes) != 10 {
 		t.Errorf("%d outcomes, want the eight of a call, incomplete and ok", len(audit.Outcomes))
+	}
+}
+
+// Spec 053: the start of a call states how the call is confined, as the
+// server's sandbox says at that moment. An auditor with no sandbox records
+// what every server did before there was one.
+func TestAuditorSandboxState(t *testing.T) {
+	cases := []struct {
+		name    string
+		sandbox *audit.Sandbox
+		want    audit.Sandbox
+	}{
+		{"confining", &audit.Sandbox{Enforced: true, Backend: "bubblewrap", Mode: "enforce"}, audit.Sandbox{Enforced: true, Backend: "bubblewrap", Mode: "enforce"}},
+		{"unavailable", &audit.Sandbox{Mode: "enforce"}, audit.Sandbox{Mode: "enforce"}},
+		{"off", &audit.Sandbox{Mode: "off"}, audit.Sandbox{Mode: "off"}},
+		{"no sandbox", nil, audit.Sandbox{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, _ := testAuditor(t)
+			asked := 0
+			if c.sandbox != nil {
+				a.sandbox = func(context.Context) *audit.Sandbox {
+					asked++
+					return c.sandbox
+				}
+			}
+			call := sampleCall()
+			if err := a.CallStarted(context.Background(), call); err != nil {
+				t.Fatal(err)
+			}
+			actions := auditActions(t, a.log.Dir())
+			if len(actions) != 1 || actions[0].Sandbox == nil || *actions[0].Sandbox != c.want {
+				t.Fatalf("sandbox = %+v, want %+v", actions[0].Sandbox, c.want)
+			}
+			if c.sandbox != nil && asked != 1 {
+				t.Errorf("the state was asked %d times for one call", asked)
+			}
+			// An action with no completion keeps what its start said.
+			if actions[0].Outcome != audit.OutcomeIncomplete {
+				t.Errorf("outcome = %q", actions[0].Outcome)
+			}
+		})
 	}
 }

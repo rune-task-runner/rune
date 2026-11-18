@@ -225,7 +225,7 @@ func TestAuditLogCompletedAndFailed(t *testing.T) {
 			if p.Git == nil || p.Git.State != "commit" || p.Git.Commit != commit || p.Git.Dirty == nil || *p.Git.Dirty {
 				t.Errorf("git of the first call: %+v", p.Git)
 			}
-			if build.Sandbox == nil || build.Sandbox.Enforced {
+			if build.Sandbox == nil || build.Sandbox.Enforced || build.Sandbox.Mode != "off" {
 				t.Errorf("sandbox: %+v", build.Sandbox)
 			}
 			if check.Outcome != "failed" || check.ExitCode == nil || *check.ExitCode != 3 {
@@ -775,7 +775,8 @@ func TestAuditLogPlanApply(t *testing.T) {
 			t.Errorf("a record has a field %s", field)
 		}
 	}
-	if strings.Count(raw, `"sandbox":{"enforced":false}`) != 2 {
+	// These servers run unsandboxed, as the harness starts them (spec 053).
+	if strings.Count(raw, `"sandbox":{"enforced":false,"mode":"off"}`) != 2 {
 		t.Errorf("not every call states the sandbox:\n%s", raw)
 	}
 	for _, needle := range []string{"plan env=prod serial=1", "Plan: 1 to add for prod"} {

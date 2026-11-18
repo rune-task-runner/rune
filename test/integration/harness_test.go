@@ -57,9 +57,40 @@ func TestMain(m *testing.M) {
 		_ = os.RemoveAll(dir)
 		os.Exit(1)
 	}
+	// The existing tests exercise the server unsandboxed, so that they test
+	// what they tested before spec 053. The sandbox tests take the variable
+	// out of their server's environment.
+	if err := os.Setenv("RUNE_SANDBOX", "off"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// What a server started with the sandbox off adds to its startup line and
+// prints before it (spec 053).
+const (
+	sandboxOffPart    = "sandbox: off, tasks run unsandboxed"
+	sandboxOffWarning = "warning: sandbox: off. The tasks agents call run without a sandbox: they can use the network and write wherever this user can."
+)
+
+// offLine is a startup line as a server started unsandboxed prints it: the
+// line of before spec 053 with the sandbox's part added last. parts is what
+// stood in the parentheses, or "" for none.
+func offLine(transport, parts string) string {
+	if parts != "" {
+		parts += "; "
+	}
+	return "rune MCP server on " + transport + " (" + parts + sandboxOffPart + ")\n"
+}
+
+// offStderr is the standard error of such a server: its warning, then
+// whatever else it printed.
+func offStderr(rest string) string {
+	return sandboxOffWarning + "\n" + rest
 }
 
 // moduleRoot walks up from the working directory to the directory holding go.mod.

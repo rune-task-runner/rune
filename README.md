@@ -69,6 +69,8 @@ If you've used `make` or `just`, Rune will feel familiar — with a few delibera
   `[applies]` runs a task once, with the plan a person approved,
   only `[readonly]` tasks claim to be read-only,
   every call is recorded in an audit log that `rune log` reads,
+  a task an agent calls runs in a sandbox with no network unless it is marked `[network]`
+  and with writes only inside the project (Linux, with bubblewrap),
   and secrets come from the environment only, never the Runefile.
 - **Multi-language bodies.** Write task bodies in shell, Python, Node, or drive an AI agent.
 - **First-class editor support.** `rune lsp` is a built-in language server (LSP 3.17): live
@@ -79,6 +81,11 @@ If you've used `make` or `just`, Rune will feel familiar — with a few delibera
   [editor setup](editors/README.md).
 
 ## Install
+
+To let AI agents call your tasks on Linux, also install
+[bubblewrap](https://github.com/containers/bubblewrap) (`apt install bubblewrap`): it is the
+[sandbox](docs/mcp.md#the-sandbox) those tasks run in. Without it `rune mcp` refuses task
+calls unless you start it with `--sandbox off`. Running tasks yourself needs nothing else.
 
 ### Install script (Linux/macOS)
 

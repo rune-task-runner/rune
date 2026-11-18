@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -28,6 +29,40 @@ const reloadDebounce = 100 * time.Millisecond
 type pathRecorder struct {
 	paths []string
 	seen  map[string]fileStamp
+	// read holds the recorded files a load got the content of. The others
+	// were looked for and not found.
+	read map[string]bool
+}
+
+// found lists the files the load read, the Runefile first.
+func (r *pathRecorder) found() []string {
+	return slices.DeleteFunc(slices.Clone(r.paths), func(path string) bool { return !r.read[path] })
+}
+
+// notFound lists the files the load looked for and did not find: the
+// candidate names of a module found under a later name, and optional
+// imports. A task that creates one changes the next load (spec 053).
+func (r *pathRecorder) notFound() []string {
+	return slices.DeleteFunc(slices.Clone(r.paths), func(path string) bool { return r.read[path] })
+}
+
+// addRead records the Runefile itself, which a load reads before it has a
+// source provider to ask.
+func (r *pathRecorder) addRead(path string) {
+	r.add(path)
+	r.markRead(path)
+}
+
+// markRead records that the load has the content of path.
+func (r *pathRecorder) markRead(path string) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	if r.read == nil {
+		r.read = map[string]bool{}
+	}
+	r.read[abs] = true
 }
 
 // fileStamp is what a stat shows of a file. Two equal stamps mean the file
@@ -84,7 +119,11 @@ func (r *pathRecorder) add(path string) {
 func (r *pathRecorder) wrap(src diag.SourceProvider) diag.SourceProvider {
 	return func(path string) ([]byte, bool) {
 		r.add(path)
-		return src(path)
+		content, ok := src(path)
+		if ok {
+			r.markRead(path)
+		}
+		return content, ok
 	}
 }
 
@@ -122,6 +161,9 @@ type reloader struct {
 	// pending asks run for one more reload: a file changed after a load
 	// read it and before it was watched.
 	pending bool
+
+	// sandbox is the server's sandbox, the same for every load (spec 053).
+	sandbox *sandboxState
 }
 
 // configure gives a freshly loaded adapter the operator's grants and output
@@ -132,6 +174,7 @@ func (r *reloader) configure(a *mcpAdapter) {
 		a.grants[name] = true
 	}
 	a.outputLimit = r.flagLimit
+	a.sandbox = r.sandbox
 }
 
 // open starts watching paths and returns a function that stops watching.

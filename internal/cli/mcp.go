@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/rune-task-runner/rune/internal/ast"
@@ -65,6 +66,14 @@ type mcpAdapter struct {
 	clock                           func() time.Time
 	gitInfo                         func(ctx context.Context, dir string) (commit string, dirty *bool)
 	planMaxArtifact, planMaxSummary int64
+
+	// sandbox is the server's sandbox (spec 053). In mode enforce every body
+	// of a call runs confined, or the call is refused. Nil, as on an adapter
+	// a test builds, runs bodies in this process. loaded and missing are the
+	// files this load read, and those it looked for and did not find: a body
+	// may change neither kind.
+	sandbox         *sandboxState
+	loaded, missing []string
 
 	// contextTimeout bounds the [context] hook run; zero means the fixed
 	// defaultContextTimeout. A field (not a global) so tests shrink it per
@@ -140,6 +149,19 @@ func (a *mcpAdapter) Tasks() []mcpserver.TaskInfo {
 // dependencies, then && hooks, then || hooks. So the list reads in the order
 // the Runefile does: for outer: reset and reset: wipe, it is reset, wipe.
 func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
+	for _, next := range a.reachTasks(t)[1:] {
+		if next.Attr(ast.AttrConfirm) != nil {
+			destructive = append(destructive, next.Name)
+		}
+		network = network || next.Attr(ast.AttrNetwork) != nil
+	}
+	return destructive, network
+}
+
+// reachTasks lists t and then every task a run of t can reach through its
+// dependencies and hooks, each once, in the order a run first reaches them.
+func (a *mcpAdapter) reachTasks(t *ast.Task) []*ast.Task {
+	reached := []*ast.Task{t}
 	// A task run as a failure hook runs its dependencies and && hooks but not
 	// its own || hooks: the scheduler does not chain post-mortems. hookOnly
 	// marks such a task, so a later ordinary edge can still walk them.
@@ -157,10 +179,7 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 		case !visited[next.Name]:
 			visited[next.Name] = true
 			hookOnly[next.Name] = failHook
-			if next.Attr(ast.AttrConfirm) != nil {
-				destructive = append(destructive, next.Name)
-			}
-			network = network || next.Attr(ast.AttrNetwork) != nil
+			reached = append(reached, next)
 			walk(next, true, !failHook)
 		case hookOnly[next.Name] && !failHook:
 			hookOnly[next.Name] = false
@@ -183,7 +202,7 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 		}
 	}
 	walk(t, true, true)
-	return destructive, network
+	return reached
 }
 
 var (
@@ -200,11 +219,16 @@ func (a *mcpAdapter) AuditIdentity(ctx context.Context) mcpserver.AuditIdentity 
 		DefinitionDigest: a.ident.def,
 		ConfigDigest:     a.ident.config,
 	}
-	read := a.gitState
-	if read == nil {
-		read = gitState
+	switch {
+	case a.gitState != nil:
+		id.GitState, id.GitCommit, id.GitDirty = a.gitState(ctx, a.root)
+	case a.sandbox.enforcing():
+		// Git runs what a repository's configuration names, and a task may
+		// have written that configuration: it is asked inside a sandbox.
+		id.GitState, id.GitCommit, id.GitDirty = gitStateWith(ctx, a.root, a.sandbox.gitRunner())
+	default:
+		id.GitState, id.GitCommit, id.GitDirty = gitState(ctx, a.root)
 	}
-	id.GitState, id.GitCommit, id.GitDirty = read(ctx, a.root)
 	return id
 }
 
@@ -407,6 +431,21 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	if d := eng.preflightPolicy(t, params); d != nil {
 		rec.SetErrorKind(mcpserver.AuditKindPolicy)
 		return mcpserver.Result{}, errors.New(d.text(a.maskText))
+	}
+
+	// Where the server enforces a sandbox, the call runs confined or not at
+	// all (spec 053). The check comes before a person is asked, so nobody
+	// approves a call that would then be refused.
+	if a.sandbox.enforcing() {
+		confined, err := a.sandboxPreflight(ctx, eng, t)
+		if err != nil {
+			rec.SetErrorKind(mcpserver.AuditKindSandbox)
+			return mcpserver.Result{}, errors.New(a.sandbox.refusal(t.Name, err))
+		}
+		eng.sandbox = confined
+		// After the load's own variables and before a task's [env], which
+		// the engine adds when it runs the body.
+		eng.env = append(slices.Clip(eng.env), sandboxTmpEnv, "XDG_CACHE_HOME="+a.sandbox.cacheDir())
 	}
 
 	// A task that applies a plan runs only with a stored plan that passed

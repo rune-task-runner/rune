@@ -17,12 +17,6 @@ import (
 // agent to call back into, drives the configured agent CLI, and writes the
 // agent's final output to stdout.
 func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, env []string) error {
-	var body strings.Builder
-	for _, ln := range lines {
-		body.WriteString(ln.Text)
-		body.WriteByte('\n')
-	}
-
 	opts := agent.Options{
 		AgentCmd: e.settings.AgentCmd,
 		Dir:      dir,
@@ -39,6 +33,13 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 	finish := func(error) {}
 	if e.file != nil {
 		if adapter := e.newAgentAdapter(); adapter != nil {
+			// The [context] hook and the calls the agent makes run task
+			// code for an agent: both are confined, under the mode of this
+			// run's environment (spec 053). A mode that cannot be read stops
+			// the task here, before its agent starts.
+			if err := e.confineEndpoint(adapter); err != nil {
+				return err
+			}
 			contextText = adapter.gatherContext(e.ctx, e.opts.Stderr)
 			var stop func()
 			stop, finish = e.openAgentEndpoint(task.Name, adapter, &opts)
@@ -46,17 +47,33 @@ func (e *engine) executeAgent(task *ast.Task, lines []shell.Line, dir string, en
 		}
 	}
 
-	finalText, err := agent.CLIProvider{}.Run(e.ctx, buildAgentPrompt(contextText, body.String()), opts)
+	finalText, err := agent.CLIProvider{}.Run(e.ctx, buildAgentPrompt(contextText, joinBody(lines)), opts)
 	finish(err)
 	if err != nil {
 		return err
 	}
-	if finalText != "" {
-		fmt.Fprint(e.opts.Stdout, finalText)
-		if !strings.HasSuffix(finalText, "\n") {
-			fmt.Fprintln(e.opts.Stdout)
-		}
+	writeAgentText(e.opts.Stdout, finalText)
+	return nil
+}
+
+// confineEndpoint gives the adapter of an agent task's endpoint its sandbox
+// and tells the person when the tasks the agent calls are not confined. An
+// (agent) task has no flag of its own, so the mode is the variable's.
+func (e *engine) confineEndpoint(adapter *mcpAdapter) error {
+	mode, err := sandboxModeOf(nil, e.opts.SandboxEnv)
+	if err != nil {
+		return err
 	}
+	state := e.endpointSandbox
+	if state == nil {
+		state = hostSandboxState(e.opts, mode, adapter.root, adapter.ident.runefile)
+	}
+	if state.enforcing() {
+		_ = state.ready(e.ctx)
+	}
+	warnSandbox(e.opts.Stderr, e.theme, state)
+	adapter.sandbox = state
+	adapter.loaded, adapter.missing = e.loaded, e.missing
 	return nil
 }
 

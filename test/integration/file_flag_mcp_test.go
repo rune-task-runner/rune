@@ -219,7 +219,7 @@ func TestFileFlagMCP_WithoutFlagUnchanged(t *testing.T) {
 		p.wantTools("build")
 		// The stderr pipe is copied by its own goroutine, which can trail the
 		// handshake on stdout.
-		if got := waitForText(t, p.stderr, "rune MCP server on stdio\n", 1); got != "rune MCP server on stdio\n" {
+		if got := waitForText(t, p.stderr, offLine("stdio", ""), 1); got != offStderr(offLine("stdio", "")) {
 			t.Errorf("stderr = %q, want only the startup line", got)
 		}
 	}

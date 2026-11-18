@@ -221,7 +221,7 @@ Each tool carries three MCP hints that tell a client what its task claims:
 |---|---|---|
 | `readOnlyHint` | `true`, or left out | The task has `[readonly]` |
 | `destructiveHint` | `true` or `false`, always present | The task, or anything it can run, has `[confirm]`, or the task has `[applies]` |
-| `openWorldHint` | `true` or `false`, always present | The task, or anything it can run, has `[network]` |
+| `openWorldHint` | `true` or `false`, always present | The task, or anything it can run, has `[network]`. The hint is for the client; [the sandbox](#the-sandbox) is what gives or denies the network |
 
 What a task can run is its dependencies, its `&&` and `||` hooks, and everything those run in
 turn, including private tasks and tasks in imported modules. A failure hook's own `||` hooks
@@ -485,8 +485,12 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   change.
 - **`--allow` grants nothing destructive.** A `[confirm]` task needs `--allow-destructive`
   whichever of the two filters is set, and a grant does not make a hidden task a tool.
-- **Network tasks are flagged.** `[network]` sets the MCP `openWorldHint` on the task and on
-  every task that can reach it.
+- **A task is confined by the operating system.** A task an agent calls has no network
+  unless it is marked `[network]`, and writes only inside the project. Where no sandbox
+  can do that, the call is refused, unless the operator started the server with
+  `--sandbox off`; see [The sandbox](#the-sandbox).
+- **Network tasks are flagged.** `[network]` also sets the MCP `openWorldHint` on the task
+  and on every task that can reach it.
 - **Secrets come from the environment only.** API keys and secrets are read from the
   environment (or the agent CLI's own session) — **never** from the Runefile, and they are
   never included in any tool description, schema, or log.
@@ -1191,6 +1195,233 @@ integration would have to bind the ordered migration bundle and its checksums, t
 and its options, the database identity and the schema-history baseline, and validate them
 under the runner's locking rules. Checksums alone do not freeze the target database.
 
+## The sandbox
+
+A task an agent calls runs in a sandbox that the operating system enforces. It has two
+rules:
+
+1. A task has no network unless its author marked it `[network]`.
+2. A task writes only inside the project, and not to the files that decide what it may do.
+
+```text
+$ rune mcp
+rune MCP server on stdio (sandbox: bubblewrap)
+```
+
+The sandbox applies to every task body that runs for an agent: a tool call on `rune mcp`
+or `rune serve`, on either transport; a tool call on the endpoint an `(agent)` task opens;
+and the `[context]` task, at a server's start and before an `(agent)` task's prompt. It
+covers the whole body: the built-in shell with its redirections and built-in commands, an
+interpreter, a shell override, an agent program, and every process any of them starts. Each
+body has a sandbox of its own, so a task's dependencies and hooks get their own rules.
+
+A task a person runs on the command line is not confined.
+
+### What it does not do
+
+- It does not decide which tasks an agent may call. `--allow`, `--deny`,
+  `--allow-destructive`, approvals, `[agent-allow]` and plans do that, as before.
+- It does not keep a task from reading. A task reads what its user can read, apart from
+  the [hidden locations](#what-a-task-can-read). What a task prints goes to the agent.
+- It does not limit CPU, memory or disk use.
+
+### The mode
+
+The sandbox has two modes. `enforce` is the default.
+
+| Set with | Form |
+|---|---|
+| A flag of `rune mcp` and `rune serve` | `--sandbox enforce` or `--sandbox off` |
+| The environment of the server | `RUNE_SANDBOX=enforce` or `RUNE_SANDBOX=off` |
+
+The flag wins over the variable. The endpoint of an `(agent)` task has no flag and reads
+the variable. A Runefile cannot set the mode: a task could edit a Runefile, and it cannot
+change the flags or the environment of the server that runs it. Any other value is a usage
+error before any Runefile code runs.
+
+In mode `off` tasks run as they did before there was a sandbox, and the server says so:
+
+```text
+warning: sandbox: off. The tasks agents call run without a sandbox: they can use the network and write wherever this user can.
+rune MCP server on stdio (sandbox: off, tasks run unsandboxed)
+```
+
+There is no mode that confines where it can and runs unconfined elsewhere. That would be a
+silent fallback.
+
+### Where it works
+
+| System | State | A call |
+|---|---|---|
+| Linux with [bubblewrap](https://github.com/containers/bubblewrap) and user namespaces for it | supported | runs confined |
+| Linux without bubblewrap on the `PATH` | unavailable | is refused |
+| Linux where bubblewrap cannot create namespaces, such as a default container | unavailable | is refused |
+| Linux where the `PATH` holds a directory under `/run`, `/tmp` or `/var/tmp`, such as NixOS | unavailable | is refused |
+| macOS, Windows and every other system | unsupported | is refused |
+
+Tested with bubblewrap 0.8.0 on Debian 12 in a privileged container, and with bubblewrap
+0.11.1 on Linux 7.0 under Ubuntu's AppArmor profile for it. Install it with your package
+manager, for example `apt install bubblewrap`.
+
+Rune decides by starting a sandbox, not by asking for a version. It looks when the server
+starts, and again on a call while the sandbox is unavailable, so a backend installed later
+is used without a restart.
+
+A server whose sandbox is unavailable still starts, so that the tool list and `rune log`
+work. It says what is wrong and refuses every call before anything of it runs:
+
+```text
+warning: sandbox: bubblewrap (bwrap) was not found on the PATH. Every task call will be refused. Install bubblewrap, or turn the sandbox off with --sandbox off or RUNE_SANDBOX=off to run tasks unsandboxed.
+rune MCP server on stdio (sandbox: unavailable, calls are refused)
+```
+
+The agent gets the same reason and remedy as the error of its call:
+`task "build" was not run: the sandbox is unavailable: bubblewrap (bwrap) was not found on the PATH. Install bubblewrap, or turn the sandbox off with --sandbox off or RUNE_SANDBOX=off to run tasks unsandboxed.`
+
+The [container image](docker.md) has no backend. There the container is the boundary:
+start the server with `--sandbox off`.
+
+### What `[network]` gives
+
+| | Without `[network]` | With `[network]` |
+|---|---|---|
+| Outbound connections, any protocol | fail | work |
+| Name lookup | fails | works |
+| Services on the host's loopback address | out of reach | reachable |
+| Sockets in the host's abstract namespace | out of reach | reachable |
+| A listener the body starts and connects to | works, on a loopback of the body's own | works |
+
+A task without `[network]` has a network of its own with one loopback interface and
+nothing on it. The denial does not depend on proxy variables or on the name of a program.
+
+`[network]` gives the task the host's network as a whole. It applies to the body of the
+task that carries it and to the processes that body starts. It does not apply to the
+task's dependencies, hooks or callers, and it changes no filesystem rule. A body that
+starts `rune` stays in its own sandbox: an inner `[network]` task gains nothing.
+
+### What a task can write
+
+- The project: the directory of the Runefile, with symbolic links resolved.
+- `/tmp`: a directory of the body's own, new for each body and removed when the body
+  ends. `TMPDIR` names it.
+- A cache directory of the project's own that stays between calls. `XDG_CACHE_HOME` names
+  it. It lives under your cache directory, in `rune/sandbox/`, outside the project.
+
+Everything else is read-only. A write by an absolute path, through `..`, through a symbolic
+link or through a second mount of the project fails with `Read-only file system`.
+
+A task whose `[working-directory]`, or whose `set working-directory`, names a directory
+outside the project is refused before anything runs. So is every task of a project that
+is itself one of the [hidden locations](#what-a-task-can-read), such as a Runefile kept in
+`~/.docker`.
+
+### What a task cannot change
+
+A task reads these and cannot change, remove, rename or replace them:
+
+| Path | Why |
+|---|---|
+| The Runefile, and every file it imports or loads as a module | They decide which tasks exist and what each may do |
+| The file named by `set dotenv` | It is part of the configuration a plan is bound to |
+| `.git` in the project | The repository's own state and configuration |
+| `.rune` in the project | Rune's task cache and the stored plans with their approved copies |
+
+A person who edits the Runefile while the server runs is not a task: the server reloads as
+before.
+
+Four cases cannot be protected by a mount, and Rune refuses the call instead, with the
+path named:
+
+| Case | What to do |
+|---|---|
+| The Runefile, a file it loads or the dotenv file has a second name (a hard link) | Remove the other name, or replace the file with a copy of itself |
+| One of the protected paths is reached through a symbolic link inside the project | Use the real path |
+| The Runefile looks for a file inside the project that does not exist: an optional import, or a module that lives in a directory and is declared without its path | Create the file, give the module its path (`mod api "api/Runefile"`), or remove the optional import |
+| The server was started in a directory below the Runefile's and found the Runefile by searching up | Start the server in the Runefile's directory, or name the Runefile with `--file` |
+
+The last two matter because a task could create the missing file, or a nearer Runefile,
+and the next load or the next start would read it. For the same reason a directory that
+holds more than one Runefile name, such as `Runefile` and `.runefile`, is an error for every
+`rune` command: Rune does not pick one.
+
+Rune's own work for a call happens in the server and keeps working: the task cache,
+capturing and applying a plan, and the audit record. When Rune asks `git` for the commit
+and whether the tree is dirty, it does so inside a sandbox too, with no network and
+nothing writable, so a repository that a task prepared cannot run a command outside one.
+
+### What a task can read
+
+A task sees the rest of the filesystem read-only, as your user does. These locations are
+empty for it, and read-only:
+
+- `/run` with the per-user runtime directories under it, and `/var/tmp`. This is where
+  the container daemon's socket, the session bus and the desktop's sockets are.
+- The host's `/tmp`, which the body's own directory replaces.
+- The directory of the audit logs.
+- The socket named by `SSH_AUTH_SOCK`, and the socket of a `DOCKER_HOST` that starts with
+  `unix://`.
+- In your home directory, when they exist: `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`,
+  `.docker`, `.config/gcloud`, `.config/gh`, `.netrc`, `.git-credentials`, `.npmrc`,
+  `.pypirc` and `.password-store`. This holds when the Runefile is in the home directory
+  itself.
+
+A task sees only the null, zero, full, random and terminal devices, and only its own
+processes. It inherits no open file of the server, has no terminal, and holds no
+capability, also when the server runs as root.
+
+### Credentials
+
+A credential reaches a task through the environment, as before, and is masked in what the
+task prints. Credential files and agent sockets in the hidden locations are not available.
+A task that needs one is a task for a person to run, or for a server started with
+`--sandbox off`.
+
+### Processes end with their body
+
+Every process a body starts ends when the body ends, when the call is cancelled, and when
+the server stops. This includes a process that detached itself. A task that starts a
+service for later calls does not work when confined.
+
+### When a task fails in the sandbox
+
+A program that fails because of the sandbox names no cause: it says
+`Could not resolve host` or `Read-only file system`. Rune adds one line to the output of a
+confined body that failed:
+
+```text
+note: task "build" ran in the sandbox: it has no network (it is not marked [network]) and can write only inside /repo.
+```
+
+A body that succeeds gets no such line.
+
+### Making a Runefile work in the sandbox
+
+- Mark a task that downloads, publishes or calls a service with `[network]`.
+- Give a module in a directory its path, and create or remove an optional import.
+- Point a tool that writes under your home directory into the project with `[env]`. A
+  tool that follows `XDG_CACHE_HOME` already writes to the private cache directory.
+  For Go, a module that is not in the module cache yet needs `[network]` and a writable
+  `GOMODCACHE`, for example `[env("GOMODCACHE", ".cache/gomod")]`.
+- A task that commits, tags or fetches writes `.git`. Run it yourself.
+
+### Limits
+
+- A task reads what your user can read outside the hidden locations. The sandbox is not
+  secret confidentiality.
+- A `[network]` task shares the host's network: its loopback services and its
+  abstract-namespace sockets included.
+- A file inside the project that already has a second name outside it is the same file,
+  and a write changes both. Package managers such as pnpm and uv make such links to a
+  store outside the project. Rune detects this only for the Runefile, the files it loads
+  and the dotenv file.
+- A Unix socket in a readable location that is not hidden stays reachable.
+- The configuration files of an agent client inside the project, such as `.mcp.json`, are
+  writable like the rest of the project. See
+  [Rune-only agent mode](design/rune-only-agent-mode.md).
+- An `(agent)` task that an agent calls runs its agent program inside the sandbox. It
+  needs `[network]` to reach its model, and an agent program that writes its own state
+  under your home directory fails there.
+
 ## The audit log
 
 Every Rune MCP server records what agents ask of it: `rune mcp`, `rune serve` and the
@@ -1226,7 +1457,7 @@ attempts as well as the runs.
 | The arguments as the agent sent them | At the start |
 | The client name and version, the transport and how the session was authenticated | At the start |
 | The Runefile path, the digests of the Runefile and of the configuration, and the git state | At the start |
-| Whether a sandbox was enforced. It never is today, and the record says so | At the start |
+| Whether a sandbox was enforced, the backend that enforced it, and the server's mode | At the start |
 | The outcome, the UTC end time and the duration | At the end |
 | The exit code, when a task ran | At the end |
 | The arguments the task ran with, defaults included | At the end |
@@ -1248,7 +1479,7 @@ parent.
 |---|---|---|
 | `completed` | The task ran and exited 0 | 0 |
 | `failed` | The task ran and exited with another code | The code |
-| `refused` | A policy, a missing grant or an approval that was not given stopped the call | None |
+| `refused` | A policy, a missing grant, an approval that was not given or a sandbox that could not confine the call stopped it | None |
 | `invalid-arguments` | The arguments did not fit the task | None |
 | `unknown-tool` | No task has the name | None |
 | `cancelled` | The call was cancelled | Only if a task ran |
@@ -1257,7 +1488,9 @@ parent.
 | `incomplete` | There is a start and no end: the call is still running, or the server stopped | None |
 
 A refused call never has an exit code, in the files or in any output. When no task ran, the
-record names the kind of error: `protocol`, `validation`, `policy`, `approval` or `internal`.
+record names the kind of error: `protocol`, `validation`, `policy`, `approval`, `sandbox`
+or `internal`. `sandbox` is a call refused because [the sandbox](#the-sandbox) could not
+confine it.
 
 The git state is `commit` with the commit id and whether the tree was dirty, `unborn` for a
 repository with no commit yet, `none` outside a repository, or `unavailable` when git could
@@ -1309,7 +1542,7 @@ named `log`.
 The times are UTC, whatever `--tz` says.
 
 ```json
-{"schemaVersion":1,"type":"call","id":"b81e04f7a2c9d310","start":"2026-11-18T08:05:02.114Z","end":"2026-11-18T08:05:24.214Z","durationMs":22100,"outcome":"completed","exitCode":0,"session":"5f0e7a11c3d2b694","transport":"stdio","auth":"process","client":{"name":"claude-code","version":"2.1.0","reported":true},"tool":"apply","task":"apply","arguments":{"supplied":{"env":"prod"},"effective":{"env":"prod"}},"approval":{"asked":true,"decision":"approved","tasks":["apply"]},"plan":{"role":"applied","id":"7f3c9a1e52b84d06","digest":"sha256:9b1f..."},"sandbox":{"enforced":false},"project":{"runefile":"/repo/Runefile","definitionDigest":"sha256:41aa...","configDigest":"sha256:77c0...","git":{"state":"commit","commit":"07afc00...","dirty":false}}}
+{"schemaVersion":1,"type":"call","id":"b81e04f7a2c9d310","start":"2026-11-18T08:05:02.114Z","end":"2026-11-18T08:05:24.214Z","durationMs":22100,"outcome":"completed","exitCode":0,"session":"5f0e7a11c3d2b694","transport":"stdio","auth":"process","client":{"name":"claude-code","version":"2.1.0","reported":true},"tool":"apply","task":"apply","arguments":{"supplied":{"env":"prod"},"effective":{"env":"prod"}},"approval":{"asked":true,"decision":"approved","tasks":["apply"]},"plan":{"role":"applied","id":"7f3c9a1e52b84d06","digest":"sha256:9b1f..."},"sandbox":{"enforced":true,"backend":"bubblewrap","mode":"enforce"},"project":{"runefile":"/repo/Runefile","definitionDigest":"sha256:41aa...","configDigest":"sha256:77c0...","git":{"state":"commit","commit":"07afc00...","dirty":false}}}
 ```
 
 | Field | Meaning |
@@ -1333,7 +1566,7 @@ The times are UTC, whatever `--tz` says.
 | `approval` | `asked`, `decision` and `tasks` |
 | `grants` | The destructive tasks the operator's grant allowed for this call |
 | `plan` | `role` (`stored` or `applied`), `id` and `digest` |
-| `sandbox` | `enforced`, always `false` today |
+| `sandbox` | `enforced`; `backend`, when a sandbox was enforced; and `mode`, `enforce` or `off`. A record written before there was a sandbox has `enforced` only |
 | `project` | `runefile`, `definitionDigest`, `configDigest` and `git` |
 | `method` | The method of a request |
 | `remote`, `suppressed` | The address of an authentication failure, and how many failures were left out before it |
@@ -1421,9 +1654,9 @@ id in its `invocation` field, for every event a tool call caused.
 
 The log is operational evidence on your machine. Its files belong to your user, so a
 process that runs as you can read and change them: an agent that has its own shell, or a
-task body that writes to an absolute path. Rune does not sign the records. Until a sandbox
-exists, treat the log as a record of what happened, not as proof against the party that
-could edit it.
+task that runs on a server started with `--sandbox off`. A task that runs in
+[the sandbox](#the-sandbox) cannot reach the log. Rune does not sign the records. Treat
+the log as a record of what happened, not as proof against a party that could edit it.
 
 For retention you control, ship the records off the machine:
 
@@ -1452,6 +1685,12 @@ Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
 The run of an `agent` task and every call its agent makes through that endpoint are in
 [the audit log](#the-audit-log), with the run as the parent of the calls. When the run
 cannot be recorded, the agent runs without the endpoint and Rune prints a warning.
+
+The `[context]` task that prepares the prompt, and every task the agent calls through
+that endpoint, run in [the sandbox](#the-sandbox) under the mode of `RUNE_SANDBOX`. A
+value that is no mode stops the task before its agent starts. An `agent` task that an
+agent calls through `rune mcp` runs its agent program inside the sandbox, and gets no
+endpoint.
 
 The agent a task launches keeps the tools its own configuration gives it, a shell among
 them. Rune does not restrict them.

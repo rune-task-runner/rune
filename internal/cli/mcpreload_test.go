@@ -1099,7 +1099,7 @@ func TestServeMCPReloads(t *testing.T) {
 	serve := func(noReload bool) (stderr *lockedBuffer, stop func()) {
 		stderr = &lockedBuffer{}
 		ctx, cancel := context.WithCancel(context.Background())
-		opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx, MCPNoReload: noReload}
+		opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx, MCPNoReload: noReload, SandboxEnv: "off"}
 		token := tokenFile(t)
 		done := make(chan error, 1)
 		go func() { done <- ServeMCP(opts, true, "127.0.0.1:0", token) }()
@@ -1152,7 +1152,7 @@ func TestServeMCPKeepsChangeDuringContextHook(t *testing.T) {
 	}
 	stderr := &lockedBuffer{}
 	ctx, cancel := context.WithCancel(context.Background())
-	opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx}
+	opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx, SandboxEnv: "off"}
 	token := tokenFile(t)
 	done := make(chan error, 1)
 	go func() { done <- ServeMCP(opts, true, "127.0.0.1:0", token) }()

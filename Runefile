@@ -16,6 +16,11 @@ lint:
 test:
     docker-compose run --rm test go test ./...
 
+# Run the tests that start a real sandbox, in the privileged Docker service.
+test-sandbox:
+    docker-compose run --rm test-sandbox go test ./internal/sandbox/...
+    docker-compose run --rm test-sandbox go test ./test/integration/... -run Sandbox
+
 # Run the test suite with the race detector inside Docker.
 test-race:
     docker-compose run --rm test go test -race ./...

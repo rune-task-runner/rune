@@ -72,6 +72,8 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 			// an agent runs, and a server's environment is not (spec 052).
 			opts.AuditDir = os.Getenv("RUNE_AUDIT_DIR")
 			opts.AuditRetention = os.Getenv("RUNE_AUDIT_RETENTION_DAYS")
+			// The same holds for the sandbox's mode (spec 053).
+			opts.SandboxEnv = os.Getenv("RUNE_SANDBOX")
 			return nil
 		},
 		// This fires only when no subcommand matched the first positional:

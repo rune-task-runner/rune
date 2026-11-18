@@ -20,6 +20,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/audit"
 	"github.com/rune-task-runner/rune/internal/config"
 	"github.com/rune-task-runner/rune/internal/parser"
+	"github.com/rune-task-runner/rune/internal/sandbox"
 	"github.com/rune-task-runner/rune/mcpserver"
 )
 
@@ -434,6 +435,10 @@ func rowOf(a audit.Action, loc *time.Location, layout string) logRow {
 	}
 	if len(notes) > 0 {
 		row.details = append(row.details, strings.Join(notes, "; "))
+	}
+	// Only a call that ran a task: a refusal ran nothing, sandboxed or not.
+	if a.Sandbox != nil && a.Sandbox.Mode == string(sandbox.ModeOff) && a.ExitCode != nil {
+		row.details = append(row.details, "ran without a sandbox (the server was started with the sandbox off)")
 	}
 	if a.Parent != "" {
 		row.details = append(row.details, "parent "+printableLine(a.Parent))
