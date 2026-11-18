@@ -1,0 +1,6 @@
+Run x8. Codex CLI 0.169.0, codex exec, request captured by capture.py. Model named in the request: gpt-6.2-astra.
+.codex/config.toml: the file `rune agent init codex` wrote.
+
+Tools in the request (tools.py):
+top-level: list_mcp_resources, list_mcp_resource_templates, read_mcp_resource, request_user_input, request_plugin_install, view_image, mcp__rune.build, mcp__rune.clean, mcp__rune.docs_check, mcp__rune.fetch, mcp__rune.grow, mcp__rune.slow, mcp__rune.status, mcp__rune.tools__lint, get_goal, create_goal, update_goal, web_search, [412 tools of other MCP servers of the account, cut]
+nested in exec: (none listed)

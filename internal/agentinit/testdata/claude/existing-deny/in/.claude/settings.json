@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm *)",
+      "WebFetch"
+    ],
+    "allow": [
+      "Read"
+    ]
+  }
+}

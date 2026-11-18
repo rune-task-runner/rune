@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm *)",
+      "WebFetch",
+      "Bash",
+      "PowerShell",
+      "Monitor",
+      "Workflow",
+      "CronCreate",
+      "RemoteTrigger"
+    ],
+    "allow": [
+      "Read",
+      "mcp__rune"
+    ]
+  }
+}

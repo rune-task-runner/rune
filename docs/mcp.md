@@ -17,6 +17,9 @@ rune mcp
 
 Most local agent tooling launches the server this way and talks to it over stdin/stdout.
 [Client compatibility](#client-compatibility) has the configuration file for each client.
+`rune agent init claude`, `codex` or `vscode` writes that file for you, and removes the
+client's own shell where the client can do without it; see
+[Set up an agent client](how-to/agent-setup.md).
 
 **Serving a Runefile from another directory:**
 
@@ -1693,9 +1696,42 @@ agent calls through `rune mcp` runs its agent program inside the sandbox, and ge
 endpoint.
 
 The agent a task launches keeps the tools its own configuration gives it, a shell among
-them. Rune does not restrict them.
-[Rune-only agent mode](design/rune-only-agent-mode.md#the-agent-executor) shows an
-`agent_cmd` that does.
+them, and it does not have Rune's tools unless its configuration names the endpoint. Rune
+passes the endpoint to the agent program in two environment variables:
+
+| Variable | Value |
+|----------|-------|
+| `RUNE_MCP_URL` | The address of the endpoint, on loopback. |
+| `RUNE_MCP_TOKEN` | The bearer token the endpoint asks for. It is made for this run. |
+
+Rune does not register the endpoint with the agent and does not touch the agent's tools. An
+`agent_cmd` does both. For Claude Code, this one starts the agent without its tools that run
+commands and with the endpoint as its only server:
+
+```rune
+set agent_cmd := ["claude", "--restricted", "--strict-mcp-config", "--mcp-config", "agent-mcp.json", "--allowedTools", "mcp__rune", "-p"]
+```
+
+with this `agent-mcp.json` beside the Runefile:
+
+```json
+{
+  "mcpServers": {
+    "rune": {
+      "type": "http",
+      "url": "${RUNE_MCP_URL}",
+      "headers": { "Authorization": "Bearer ${RUNE_MCP_TOKEN}" }
+    }
+  }
+}
+```
+
+Started that way, the agent of a task reported no shell tool and called a task of the
+Runefile, where the plain `["claude", "-p"]` gave it a shell and no Rune tool. Both were
+seen with Claude Code 2.1.325;
+[Rune-only agent mode](design/rune-only-agent-mode.md#the-agent-executor) has the runs. The
+files that [`rune agent init`](how-to/agent-setup.md) writes are for the sessions you start
+in the project, not for the agent of an `agent` task.
 
 ## Client compatibility
 
@@ -1715,6 +1751,10 @@ Every cell names its evidence:
 
 Only Claude Code and Codex CLI were run. Cursor, VS Code and Zed were not tested: every
 cell in their columns comes from reading, and none of them has a recording.
+
+The blocks in the client sections below register the server and nothing more: the client
+keeps its own shell. [`rune agent init`](how-to/agent-setup.md) writes the registration and
+the settings that remove the shell, for Claude Code, Codex CLI and VS Code.
 
 | | Claude Code | Codex CLI | Cursor | VS Code, Copilot agent mode | Zed |
 |---|---|---|---|---|---|
@@ -2003,6 +2043,8 @@ Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
 - [agent-driven example](examples/agent-driven/README.md) — a runnable agent task + gating
 - [CLI reference](cli.md): `rune mcp` and `rune serve` flags, and `rune log`
 - [Runefile language guide](runefile.md) — `[private]`, `[confirm]`, `[network]`, executors
+- [Set up an agent client](how-to/agent-setup.md): `rune agent init`, which registers the
+  server with a client and removes the client's shell
 - [Rune-only agent mode](design/rune-only-agent-mode.md): a design note on removing a
   client's shell, and what that does not prevent
 - [Guides](how-to/README.md) — the rest of the capability deep dives

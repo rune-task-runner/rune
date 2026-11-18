@@ -1,0 +1,5 @@
+{
+  "permissions": {
+    "deny": ["mcp__rune__deploy"]
+  }
+}

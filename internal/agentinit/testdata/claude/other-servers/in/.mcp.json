@@ -1,0 +1,11 @@
+{
+    "$schema": "https://example.com/mcp.schema.json",
+    "mcpServers": {
+        "docs": {
+            "type": "http",
+            "url": "https://docs.example.com/mcp"
+        },
+        "db": { "command": "db-mcp", "args": ["--read-only"], "env": { "DB": "dev" } }
+    },
+    "unknownKey": [1, 2, {"deep": null}]
+}

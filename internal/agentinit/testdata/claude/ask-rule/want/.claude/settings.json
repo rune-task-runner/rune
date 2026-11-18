@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "ask": ["mcp__rune"],
+    "deny": ["Bash", "PowerShell", "Monitor", "Workflow", "CronCreate", "RemoteTrigger"],
+    "allow": ["mcp__rune"]
+  }
+}

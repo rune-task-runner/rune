@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "deny": ["Bash", "Monitor"],
+    "allow": ["mcp__rune", "Edit"]
+  }
+}

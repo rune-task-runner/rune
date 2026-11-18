@@ -1,0 +1,1 @@
+conflict: .claude/settings.json:3:26: permissions.deny holds mcp__rune, which denies every Rune tool. rune agent init never removes a deny rule

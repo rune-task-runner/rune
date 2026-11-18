@@ -1,0 +1,1 @@
+conflict: .mcp.json:6:15: mcpServers.rune.args is ["mcp"]; rune agent init writes ["mcp", "--file", "/work/demo/Runefile", "--no-reload"]. Edit the file, or run again with --force

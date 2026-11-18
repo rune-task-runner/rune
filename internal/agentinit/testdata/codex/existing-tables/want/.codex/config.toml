@@ -1,0 +1,11 @@
+[agents]
+max_threads = 2
+enabled = false
+
+[mcp_servers.rune]
+tool_timeout_sec = 600
+command = "rune"
+args = ["mcp", "--file", "/work/demo/Runefile", "--no-reload"]
+
+[features]
+shell_tool = false

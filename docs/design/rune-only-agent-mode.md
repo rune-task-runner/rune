@@ -2,9 +2,9 @@
 
 > A design note. It records research done on 2026-11-16 for
 > [issue #46](https://github.com/rune-task-runner/rune/issues/46) and the decision that
-> follows from it. Nothing here is a feature of Rune yet: the command it describes is
-> [issue #53](https://github.com/rune-task-runner/rune/issues/53). To use Rune with an
-> agent today, read [AI agents (MCP)](../mcp.md).
+> follows from it. The command it decides on exists now: `rune agent init`, described in
+> [Set up an agent client](../how-to/agent-setup.md). The note is kept as the record of why
+> the command does what it does, and of what it cannot do.
 
 ## The problem
 
@@ -81,7 +81,7 @@ Four approaches were weighed. One is chosen.
 
 | Approach | Status | Reason |
 |---|---|---|
-| **Write the configuration.** A command writes project-scoped client files and shows the change first. This is issue #53's `rune agent init <client>`. | **Chosen** | In both clients that can remove their shell, the control is a setting a project file can carry. A project file covers every session started in the project and is reviewed like code. A command that merges and shows a diff does not leave the merge to the user. |
+| **Write the configuration.** A command writes project-scoped client files and shows the change first. This is `rune agent init <client>`, built for issue #53. | **Chosen** | In both clients that can remove their shell, the control is a setting a project file can carry. A project file covers every session started in the project and is reviewed like code. A command that merges and shows a diff does not leave the merge to the user. |
 | **Print the configuration.** A command prints a block to merge by hand. This is issue #46's `rune agent-config <client>`. | Rejected as its own command, kept as the dry run of the chosen one | Merging by hand into a JSON file that already has `deny` rules, or a TOML file with comments, is where it goes wrong. A command that only prints cannot say what the outcome is, because it does not know what the file will hold. |
 | **Redirect with a hook.** A client hook turns a shell command into the matching Rune tool call. | Rejected as the restriction | No client's hook can replace a call with a call to another tool. It can refuse the call. See [Hooks](#hooks). |
 | **Launch the agent.** Rune starts the client with options that remove its shell, as the `(agent)` executor already starts agents. | Deferred | Command-line options outrank project files in both installed clients and need no trust step. But this covers only clients started from a command line, and only sessions started through Rune. The launch lines are in this note; a launcher command is left to a later issue. See [The agent executor](#the-agent-executor). |
@@ -494,9 +494,9 @@ What the chosen approach means for the executor:
   its shell, and ignores the `allow` rules of an untrusted workspace (observed: c2). The
   project's `.mcp.json` would then give it a second, separate `rune mcp`, with the
   operator's filters and not the executor's endpoint.
-- **The executor is left as it is.** This note changes no behavior. That `RUNE_MCP_URL`
-  and `RUNE_MCP_TOKEN` exist is written nowhere in the user documentation, and the lines
-  above belong there.
+- **The executor is left as it is.** This note changes no behavior. `RUNE_MCP_URL` and
+  `RUNE_MCP_TOKEN`, and the lines above, are in the user documentation since the command
+  was built: see [Agent task bodies](../mcp.md#agent-task-bodies).
 - **A launcher is the natural next step**, and it is the deferred approach of the
   [decision](#decision): Rune already builds this command line once, for its own agent.
 
@@ -607,3 +607,17 @@ short:
   session.
 - **Prove it before claiming it.** A client and version is listed as Rune-only when its own
   tool list has been seen to hold Rune's tools and no command-running tool.
+
+`rune agent init` does each of these, and
+[Set up an agent client](../how-to/agent-setup.md) describes it. Three points turned out
+narrower than the list:
+
+- VS Code's files are written, and the outcome is reported as "Registered only" until a VS
+  Code version has been checked. Nothing about it has been run yet.
+- `--no-reload` is registered for every client, so that the `.mcp.json` Claude Code and VS
+  Code share is the same for both.
+- The command registers no `--allow-destructive`, so Rune itself refuses a `[confirm]` task
+  or asks the person, and no `ask` rule is written.
+
+The versions checked since this note, Claude Code 2.1.326 and Codex CLI 0.169.0, have their
+runs in [the observations of spec 055](../../specs/055-agent-init/observations/README.md).

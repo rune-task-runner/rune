@@ -1,0 +1,7 @@
+{
+    "model": "sonnet",
+    "hooks": {},
+    "permissions": {
+        "additionalDirectories": ["../shared"]
+    }
+}

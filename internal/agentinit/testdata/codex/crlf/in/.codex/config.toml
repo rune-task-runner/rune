@@ -1,0 +1,3 @@
+# A comment.
+[features]
+web_search = false

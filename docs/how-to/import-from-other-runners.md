@@ -162,7 +162,7 @@ These are not repeated in the report:
 | npm | `npm run build -- args` becomes `rune build args`. |
 
 For all four: a task named like a rune command (`help`, `version`, `serve`, `mcp`, `log`,
-`analyze`, `lsp`, `completion`) keeps its name and is run with `rune -- NAME`; a task that
+`agent`, `analyze`, `lsp`, `completion`) keeps its name and is run with `rune -- NAME`; a task that
 asks for confirmation and has dependencies is `review`, because Rune asks after the
 dependencies ran; and a dependency on a task the source does not define becomes a task that
 fails.

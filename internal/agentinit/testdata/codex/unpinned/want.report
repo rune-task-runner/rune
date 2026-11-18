@@ -1,0 +1,10 @@
+.codex/config.toml: created: features.shell_tool = false; agents.enabled = false; server "rune" runs: rune mcp --no-reload
+client: Codex CLI 0.167.0 (checked: 0.167.0, 0.169.0)
+outcome: Rune-only, pending 1 step
+step: trust the project: start codex in /work/demo and accept the trust question, then start a new session. Until then Codex ignores .codex/config.toml: the session has its shell and no Rune tools.
+note: the server keeps the tasks it read at start (--no-reload). After an edit to the Runefile, start a new session.
+note: [confirm] tasks are not approved by this setup. Rune refuses them, or asks you for each call.
+note: the server serves the Runefile found from the directory the client starts it in.
+note: a task an agent calls runs in Rune's sandbox, which needs bubblewrap on Linux. Where there is none, each call is refused until the server runs with --sandbox off.
+check: codex exec "Call the rune tool of one task. Then say whether you have a tool that runs a shell command, and whether you have a tool that starts a subagent."
+check: Codex prints no tool list, so the answer is the model's: a Rune task ran, and it has neither tool

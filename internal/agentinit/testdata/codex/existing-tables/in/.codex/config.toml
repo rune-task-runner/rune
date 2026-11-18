@@ -1,0 +1,7 @@
+[agents]
+max_threads = 2
+
+[mcp_servers.rune]
+tool_timeout_sec = 600
+
+[features]

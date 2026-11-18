@@ -269,11 +269,14 @@ func listValues(flag string, values []string) ([]string, error) {
 	return out, nil
 }
 
-// hasLogTask reports whether the Runefile defines a task named log, in its
-// own text or in a file it imports, which the command now shadows. A
-// Runefile that cannot be read, parsed or composed is not this command's to
-// report.
-func hasLogTask(runefile string) bool {
+// hasLogTask reports whether the Runefile defines a task named log, which
+// the command now shadows.
+func hasLogTask(runefile string) bool { return hasTask(runefile, "log") }
+
+// hasTask reports whether the Runefile defines a task of that name, in its
+// own text or in a file it imports. A Runefile that cannot be read, parsed
+// or composed is not the caller's to report.
+func hasTask(runefile, name string) bool {
 	source, err := os.ReadFile(runefile)
 	if err != nil {
 		return false
@@ -283,7 +286,7 @@ func hasLogTask(runefile string) bool {
 		return false
 	}
 	config.Compose(file, newSourceProvider(runefile, source))
-	return slices.ContainsFunc(file.Tasks, func(t *ast.Task) bool { return t.Name == "log" })
+	return slices.ContainsFunc(file.Tasks, func(t *ast.Task) bool { return t.Name == name })
 }
 
 func damageWarning(d audit.Damage) string {
