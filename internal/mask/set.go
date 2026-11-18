@@ -167,6 +167,15 @@ func isSecretName(name string, declared, exempt map[string]struct{}) bool {
 	if _, ok := builtinUnmasked[upper]; ok {
 		return false
 	}
+	return SensitiveName(upper)
+}
+
+// SensitiveName reports whether name matches one of the built-in
+// sensitive-name patterns, ignoring case. It is the pattern rule alone, for
+// names that are not environment variables, such as task parameters: the
+// environment's exemptions do not apply there.
+func SensitiveName(name string) bool {
+	upper := strings.ToUpper(name)
 	for _, p := range namePatterns {
 		if strings.Contains(upper, p) {
 			return true

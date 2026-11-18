@@ -68,6 +68,7 @@ If you've used `make` or `just`, Rune will feel familiar — with a few delibera
   `[agent-allow]` limits the values an agent may pass,
   `[applies]` runs a task once, with the plan a person approved,
   only `[readonly]` tasks claim to be read-only,
+  every call is recorded in an audit log that `rune log` reads,
   and secrets come from the environment only, never the Runefile.
 - **Multi-language bodies.** Write task bodies in shell, Python, Node, or drive an AI agent.
 - **First-class editor support.** `rune lsp` is a built-in language server (LSP 3.17): live

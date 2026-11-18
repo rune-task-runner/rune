@@ -271,6 +271,10 @@ type Options struct {
 	// server then states the tools capability with listChanged from the
 	// start, even with no tool.
 	Reloadable bool
+	// Audit, when set, is told about every request the server handles. A
+	// tool call is reported before anything of it runs, and again when it
+	// ends (spec 052). Nil records nothing.
+	Audit Auditor
 }
 
 // Server wraps an mcp.Server built from a Runefile's tasks.
@@ -289,6 +293,13 @@ type Server struct {
 	// by swapMu.
 	registered   map[string][]byte
 	instructions atomic.Pointer[string]
+
+	// instance tells this server's sessions from those of another process
+	// in the audit records. authFailures bounds the reports of refused
+	// bearer tokens, on the clock now, which tests replace.
+	instance     string
+	authFailures authLimiter
+	now          func() time.Time
 }
 
 // New builds an MCP server exposing engine's tasks as tools, except those
@@ -301,6 +312,8 @@ func New(engine Engine, opts Options) *Server {
 		opts:       opts,
 		granted:    make(map[string]bool, len(opts.AllowDestructive)),
 		registered: map[string][]byte{},
+		instance:   newAuditID(),
+		now:        time.Now,
 	}
 	for _, name := range opts.AllowDestructive {
 		srv.granted[name] = true

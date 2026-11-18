@@ -67,8 +67,9 @@ func TestSubcommandHelpGroupedAndStyled(t *testing.T) {
 		"analyze":    "Nothing is executed",
 		"lsp":        "language server",
 		"completion": "completion script",
+		"log":        "audit log of this project",
 	}
-	for _, name := range []string{"serve", "version", "analyze", "lsp", "completion"} {
+	for _, name := range []string{"serve", "version", "analyze", "lsp", "completion", "log"} {
 		t.Run(name, func(t *testing.T) {
 			// styledVsPlain covers exit parity, plain purity, and strip-equality
 			// across both streams; the checks below add the help-specific shape.

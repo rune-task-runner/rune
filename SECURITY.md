@@ -41,6 +41,14 @@ by default (see [docs/mcp.md](docs/mcp.md)):
   runs a task with the plan that the `[plan]` task `plan` made and Rune stored, identified by
   its SHA-256 digest, only after a person approved that plan and only once, and a grant with
   `--allow-destructive` approves no plan.
+- **Agent actions are recorded before they run.** Every MCP server writes the start of a
+  tool call to an audit log outside the project before anything of the call runs, refuses
+  the call when it cannot, and records refused and invalid calls too. Secrets are masked,
+  values of secret-named parameters are never stored, and tokens, headers and task output
+  never reach a record. The log is evidence on the operator's machine, readable by the
+  owner only. It is not signed: a process that runs as the same user can change it. Ship
+  the records elsewhere for retention you control (see
+  [the audit log](docs/mcp.md#the-audit-log)).
 - **Remote MCP endpoints are opt-in**, bound to loopback unless the operator names another
   address, and token-gated. The HTTP transport has no TLS: on an address that is not loopback
   the token is sent in cleartext, and the server prints a warning when it starts.

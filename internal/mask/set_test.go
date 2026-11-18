@@ -170,3 +170,19 @@ func TestMaskString_ManyOccurrences(t *testing.T) {
 		t.Errorf("MaskString = %q, want %q", got, want)
 	}
 }
+
+func TestSensitiveName(t *testing.T) {
+	for _, name := range []string{
+		"token", "API_TOKEN", "password", "passwd", "apiKey", "api_key",
+		"private_key", "access_key", "credential", "authorization", "author",
+	} {
+		if !SensitiveName(name) {
+			t.Errorf("SensitiveName(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"env", "target", "name", ""} {
+		if SensitiveName(name) {
+			t.Errorf("SensitiveName(%q) = true, want false", name)
+		}
+	}
+}

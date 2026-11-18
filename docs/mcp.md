@@ -495,6 +495,9 @@ Exposing tasks to an agent grants execution capability, so Rune is conservative 
   terminal user sees — so credentials never enter an agent's chat history or memory. This
   is always on, with no agent-facing off switch; see
   [secret masking](how-to/secret-masking.md).
+- **Every call is recorded before it runs.** The server writes the start of a tool call to
+  the [audit log](#the-audit-log) before anything of the call runs, and refuses the call
+  when it cannot. Refused and invalid calls are recorded too. `rune log` reads the log.
 - **Vendor-neutral.** The agent/LLM layer sits behind a provider interface; no single
   vendor is hard-coded.
 
@@ -1098,6 +1101,8 @@ It links a plan's creation, each approval request and its answer, and each apply
 - A person who could not be asked is recorded as `approval-requested` followed by
   `approval-not-given` with the reason.
 - When a line cannot be written, Rune prints a warning and goes on.
+- A line written during an agent's tool call also carries `invocation`, the id of that call
+  in [the audit log](#the-audit-log). A line written from the command line has none.
 
 ### Recovery
 
@@ -1186,6 +1191,247 @@ integration would have to bind the ordered migration bundle and its checksums, t
 and its options, the database identity and the schema-history baseline, and validate them
 under the runner's locking rules. Checksums alone do not freeze the target database.
 
+## The audit log
+
+Every Rune MCP server records what agents ask of it: `rune mcp`, `rune serve` and the
+endpoint an `(agent)` task opens for its agent. The record outlives the client's
+conversation. `rune log` reads it.
+
+```text
+$ rune log
+Agent actions on 2026-11-18 (local, UTC+02:00) for /repo/Runefile
+
+10:04:11  completed   plan env="prod"       exit 0  12.4s  claude-code 2.1.0  3fa9c2d1e07b5a44
+          plan 7f3c9a1e52b84d06 sha256:9b1f8c2e0d41 stored
+10:05:02  completed   apply env="prod"      exit 0  22.1s  claude-code 2.1.0  b81e04f7a2c9d310
+          approved at the client; plan 7f3c9a1e52b84d06 sha256:9b1f8c2e0d41
+10:07:40  refused     clean                 -       0.0s   claude-code 2.1.0  5d20e1b9c4a7f863
+          policy: task "clean" is destructive; to permit it, add clean to --allow-destructive and restart the server
+10:08:15  failed      test pkg="./cli"      exit 1  48.0s  claude-code 2.1.0  0c7a91e3b5d2f648
+10:09:00  incomplete  deploy env="staging"  -       -      codex 0.9.2        e4b6a8d0127c95f3
+          no completion was recorded: the call is still running or the server stopped
+```
+
+### What is recorded
+
+A tool call is recorded twice: when it arrives, before anything of it runs, and when it
+ends. Both records carry the same invocation id. A call that was refused, named a tool that
+does not exist or had invalid arguments is recorded like one that ran, so the log holds the
+attempts as well as the runs.
+
+| Recorded | When |
+|---|---|
+| The invocation id, the session id and the UTC start time | At the start |
+| The tool name, and the task it names | At the start |
+| The arguments as the agent sent them | At the start |
+| The client name and version, the transport and how the session was authenticated | At the start |
+| The Runefile path, the digests of the Runefile and of the configuration, and the git state | At the start |
+| Whether a sandbox was enforced. It never is today, and the record says so | At the start |
+| The outcome, the UTC end time and the duration | At the end |
+| The exit code, when a task ran | At the end |
+| The arguments the task ran with, defaults included | At the end |
+| The kind and text of the error, when no task ran | At the end |
+| The approval decision and the tasks it covered | At the end |
+| The tasks the operator's `--allow-destructive` allowed | At the end |
+| The id and digest of the plan the call stored or applied | At the end |
+
+A request that is not a tool call, such as `initialize` or `tools/list`, gets one record
+with its method, session, client and duration, and nothing of its content. A request
+refused for its bearer token gets one record with the time and the remote address. At most
+10 of those are written per minute, and the next one says how many were left out.
+
+The run of an `(agent)` task that opens an endpoint is recorded too, with its start, end
+and exit code. Each call the agent makes through the endpoint names that run as its
+parent.
+
+| Outcome | Meaning | Exit code |
+|---|---|---|
+| `completed` | The task ran and exited 0 | 0 |
+| `failed` | The task ran and exited with another code | The code |
+| `refused` | A policy, a missing grant or an approval that was not given stopped the call | None |
+| `invalid-arguments` | The arguments did not fit the task | None |
+| `unknown-tool` | No task has the name | None |
+| `cancelled` | The call was cancelled | Only if a task ran |
+| `timed-out` | An approval request got no answer in time, or the call's deadline passed | Only if a task ran |
+| `error` | Something else stopped the call | None |
+| `incomplete` | There is a start and no end: the call is still running, or the server stopped | None |
+
+A refused call never has an exit code, in the files or in any output. When no task ran, the
+record names the kind of error: `protocol`, `validation`, `policy`, `approval` or `internal`.
+
+The git state is `commit` with the commit id and whether the tree was dirty, `unborn` for a
+repository with no commit yet, `none` outside a repository, or `unavailable` when git could
+not be asked. A dirty flag that git did not give is left out. It is never written as clean.
+
+The client name and version are what the client sent in the handshake. They say which
+program asked, not which person. Rune records no person: an approval is recorded as given
+at the client, and the bearer token of the HTTP transport is one shared secret that
+identifies nobody.
+
+### Reading the log
+
+`rune log` lists the tool calls, agent runs and authentication failures of the project it
+is run in, oldest first. With no flags it lists today's.
+
+| Flag | Meaning |
+|---|---|
+| `--date 2026-11-17` | One day |
+| `--since <when>`, `--until <when>` | A range. Each takes a day, an RFC 3339 time, or a duration counted back from now, such as `2h` or `7d`. A day given to `--until` includes that day |
+| `--tz <zone>` | The display time zone: an IANA name such as `Europe/Kyiv`, `UTC`, or `local` |
+| `--task <name>` | Calls of these tasks or tools |
+| `--outcome <outcome>` | Actions with these outcomes |
+| `--client <name>` | Actions of these clients, ignoring case |
+| `--session <id>` | Actions of these sessions. A prefix of the id is enough |
+| `--all` | Also the requests that are not tool calls |
+| `--json` | One JSON object per action |
+| `--dir` | Print the directory that holds the project's log files |
+| `-f <Runefile>` | Read the log of this Runefile, as `rune mcp -f` serves it |
+
+The list flags take comma-separated values and can be repeated. Values of one flag are
+alternatives, and different flags must all match.
+
+**What "today" means.** Stored times are UTC. `rune log` reads "today" and every day you
+name in the display time zone, which is the zone of the machine it runs on unless `--tz`
+names another. The first line of the listing names the zone and its offset. A call that
+started at 23:30 UTC on the 16th is listed for the 17th in `Europe/Kyiv`, and for the 16th
+with `--tz UTC`.
+
+The command exits 0 when it listed actions or found none, 2 for a wrong flag or a missing
+Runefile, and 1 when the log cannot be read. It runs no task and writes nothing.
+
+`log` is a built-in command, so a Runefile task named `log` is run with `rune -- log`.
+`rune log` prints a note when the Runefile has such a task. The task is still an MCP tool
+named `log`.
+
+### JSON output
+
+`rune log --json` prints one object per action on standard output and nothing else there.
+The times are UTC, whatever `--tz` says.
+
+```json
+{"schemaVersion":1,"type":"call","id":"b81e04f7a2c9d310","start":"2026-11-18T08:05:02.114Z","end":"2026-11-18T08:05:24.214Z","durationMs":22100,"outcome":"completed","exitCode":0,"session":"5f0e7a11c3d2b694","transport":"stdio","auth":"process","client":{"name":"claude-code","version":"2.1.0","reported":true},"tool":"apply","task":"apply","arguments":{"supplied":{"env":"prod"},"effective":{"env":"prod"}},"approval":{"asked":true,"decision":"approved","tasks":["apply"]},"plan":{"role":"applied","id":"7f3c9a1e52b84d06","digest":"sha256:9b1f..."},"sandbox":{"enforced":false},"project":{"runefile":"/repo/Runefile","definitionDigest":"sha256:41aa...","configDigest":"sha256:77c0...","git":{"state":"commit","commit":"07afc00...","dirty":false}}}
+```
+
+| Field | Meaning |
+|---|---|
+| `schemaVersion` | `1` |
+| `type` | `call`, `agent-run`, `request` or `auth-failure` |
+| `id` | The invocation id: 16 hex digits |
+| `start`, `end` | UTC times. `end` is absent for an incomplete action |
+| `durationMs` | Whole milliseconds, measured on a monotonic clock |
+| `outcome` | As in the table above. A request has `ok` or `error` |
+| `exitCode` | Only when a task ran |
+| `session` | The session id. It is derived by Rune and is not the protocol's own session id |
+| `parent` | The id of the agent run a call was made in, or of the call an agent run was started in |
+| `transport` | `stdio`, `http` or `agent-endpoint` |
+| `auth` | `process` for stdio, `bearer-token` for HTTP |
+| `client` | `name` and `version` as the client reported them, and `reported: true` |
+| `tool`, `task` | The tool name the call asked for, and the task it names |
+| `arguments.supplied` | The arguments as received |
+| `arguments.effective` | The arguments the task ran with. A variadic parameter is an array |
+| `error` | `kind` and `message`, when no task ran |
+| `approval` | `asked`, `decision` and `tasks` |
+| `grants` | The destructive tasks the operator's grant allowed for this call |
+| `plan` | `role` (`stored` or `applied`), `id` and `digest` |
+| `sandbox` | `enforced`, always `false` today |
+| `project` | `runefile`, `definitionDigest`, `configDigest` and `git` |
+| `method` | The method of a request |
+| `remote`, `suppressed` | The address of an authentication failure, and how many failures were left out before it |
+
+The approval decisions are `approved`, `declined`, `dismissed`, `not-given`, `timed-out`,
+`no-answer`, `cancelled`, `runefile-changed` and `cannot-ask`.
+
+The contract is stable within `schemaVersion` 1: fields may be added, and none is removed
+or given another meaning. New outcome, kind and decision values may appear, so a script
+must not read an unknown value as success. A field with no value is left out.
+
+### Where the log is stored
+
+The log is outside the project, so a task that writes in its working directory does not
+reach it by a relative path, and it cannot be committed or cleaned by accident.
+
+| Order | Base directory |
+|---|---|
+| 1 | `$RUNE_AUDIT_DIR`, when set. It must be an absolute path |
+| 2 | `$XDG_STATE_HOME/rune/audit`, when `XDG_STATE_HOME` is set to an absolute path. A relative one is ignored |
+| 3 | `%LocalAppData%/rune/audit` on Windows |
+| 4 | `~/.local/state/rune/audit` |
+
+Each project has a directory of its own under the base, named by the first 16 hex digits
+of the SHA-256 of its Runefile's resolved path. `rune log --dir` prints it. Inside are one
+file per UTC day, `2026-11-18.jsonl`, and `project.json`, which names the Runefile. A
+record is in the file of the day its call started on, so every day file is complete by
+itself.
+
+- **Modes.** Directories are created with mode `0700` and files with `0600`. On Windows,
+  where file modes do not restrict access, the directory has the protection of your user
+  profile.
+- **A server refuses to start** when the log directory is inside the Runefile's directory
+  or the tasks' working directory, is a symbolic link, or belongs to another user.
+- **Retention.** A day file is removed 90 days after its day, when a server starts and when
+  it first writes on a new day. `RUNE_AUDIT_RETENTION_DAYS` changes the period, and `0`
+  keeps every file. A file is removed whole. No record is ever rewritten.
+- **The variables are the server's.** They are read from the environment the server was
+  started in, not from the Runefile, which an agent's tasks can edit. Give `rune log` the
+  same `RUNE_AUDIT_DIR` to read the log you moved.
+
+### When a record cannot be written
+
+| What could not be written | What happens |
+|---|---|
+| The start of a tool call | The call is refused and nothing runs. The result is an error that names the log directory and `RUNE_AUDIT_DIR`, and the server prints the same on standard error |
+| The end of a tool call | The agent gets the task's own result, with the same exit code and error flag, plus one text block that says the completion was not recorded. The server prints a warning. The task is not run again, and the call reads as `incomplete` |
+| Any other record | The request is served. The server prints one warning until a write succeeds again |
+| The run of an `(agent)` task | The agent runs without its endpoint, and Rune prints a warning |
+| An old day file that could not be removed | The server prints a warning |
+
+There is no switch that turns the log off. A host with a read-only home directory sets
+`RUNE_AUDIT_DIR` to a directory the server can write.
+
+### Secrets
+
+- **Masked like task output.** Every argument name and value, error text and client name
+  passes the [secret masking](how-to/secret-masking.md) of the Runefile the call ran
+  against. A secret reads `***`.
+- **Secret-named parameters are never stored.** A value whose name contains `token`,
+  `secret`, `password`, `passwd`, `apikey`, `api_key`, `private_key`, `access_key`,
+  `credential` or `auth`, ignoring case, is stored as `***` whatever it is. The rule errs
+  on the side of hiding: a parameter named `author` is hidden too.
+- **Bounded.** A value longer than 1 KiB is cut and ends with `[N bytes cut]`. A record
+  lists at most 64 names of an object and 64 elements of an array, and counts the rest. A
+  record is at most 64 KiB.
+- **Never stored.** Bearer tokens, request headers, the protocol's session id, environment
+  variables, task output, fix suggestions, plan and summary bytes, and the bodies of
+  protocol messages.
+
+### Parents and `RUNE_INVOCATION_ID`
+
+The tasks of a call run with `RUNE_INVOCATION_ID` set to the call's invocation id. A task
+can write it into its own logs to tie them to the record.
+
+When a task of a call starts `rune` on an `(agent)` task, that agent run names the call as
+its parent, and the calls its agent makes name the run. The variable is how the id crosses
+the process boundary, so a task body can overwrite it: read a parent as attribution, like a
+client name.
+
+The plan journal of [Applying a reviewed plan](#retention-and-the-journal) carries the same
+id in its `invocation` field, for every event a tool call caused.
+
+### What the log proves, and how to keep it elsewhere
+
+The log is operational evidence on your machine. Its files belong to your user, so a
+process that runs as you can read and change them: an agent that has its own shell, or a
+task body that writes to an absolute path. Rune does not sign the records. Until a sandbox
+exists, treat the log as a record of what happened, not as proof against the party that
+could edit it.
+
+For retention you control, ship the records off the machine:
+
+- Point `RUNE_AUDIT_DIR` at a directory your log shipper collects. The files are plain
+  JSON lines and are only ever appended to.
+- Or export on a schedule with `rune log --json --since 24h --all` and send the output to
+  your storage.
+
 ## Agent task bodies
 
 A task can itself be driven by an AI agent using the `agent` executor, which runs an
@@ -1202,6 +1448,10 @@ The endpoint an `agent` task opens for its own agent never lets that agent run a
 destructive task, and never asks for approval, whatever that agent's client states.
 Neither `--allow-destructive` nor `--yes` changes that. `--allow` and
 `--deny` do not reach that endpoint either: they apply only to `rune serve` and `rune mcp`.
+
+The run of an `agent` task and every call its agent makes through that endpoint are in
+[the audit log](#the-audit-log), with the run as the parent of the calls. When the run
+cannot be recorded, the agent runs without the endpoint and Rune prints a warning.
 
 The agent a task launches keeps the tools its own configuration gives it, a shell among
 them. Rune does not restrict them.
@@ -1512,7 +1762,7 @@ Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
 ## See also
 
 - [agent-driven example](examples/agent-driven/README.md) — a runnable agent task + gating
-- [CLI reference](cli.md) — `rune mcp` / `rune serve` flags
+- [CLI reference](cli.md): `rune mcp` and `rune serve` flags, and `rune log`
 - [Runefile language guide](runefile.md) — `[private]`, `[confirm]`, `[network]`, executors
 - [Rune-only agent mode](design/rune-only-agent-mode.md): a design note on removing a
   client's shell, and what that does not prevent

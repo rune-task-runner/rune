@@ -19,6 +19,11 @@ import (
 var runeBin string
 
 func TestMain(m *testing.M) {
+	// A run of this binary as the stand-in agent of an agent task: it calls
+	// a tool and ends, and builds nothing (audit_log_mcp_test.go).
+	if os.Getenv(helperAgentVar) == "1" {
+		os.Exit(helperAgent())
+	}
 	root, err := moduleRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "integration: cannot find module root:", err)
@@ -45,6 +50,13 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	runeBin = bin
+	// Every server a test starts writes an audit log (spec 052). It goes
+	// under the build's temporary directory, never into a real home.
+	if err := os.Setenv("RUNE_AUDIT_DIR", filepath.Join(dir, "audit")); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		_ = os.RemoveAll(dir)
+		os.Exit(1)
+	}
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

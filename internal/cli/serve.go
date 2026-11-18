@@ -34,6 +34,9 @@ type loadedModule struct {
 	// planIdent is this load's part of a plan's binding (spec 051). Zero
 	// when no task makes or applies a plan.
 	planIdent planIdentity
+	// ident is the identity of this load, for the audit record of a call
+	// that runs against it (spec 052). Always set.
+	ident planIdentity
 }
 
 // loadModule resolves a Runefile statically (parse → compose → analyze) and
@@ -99,8 +102,9 @@ func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec 
 	}
 	var dotenvPairs []string
 	mod.baseEnv, dotenvPairs = buildEnv(settings, scope, root)
+	mod.ident = newPlanIdentity(file, root, settings, dotenvPairs, nil)
 	if usesPlans(mod.tasks) {
-		mod.planIdent = newPlanIdentity(file, root, settings, dotenvPairs, nil)
+		mod.planIdent = mod.ident
 	}
 	return mod, nil
 }
@@ -138,6 +142,7 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 		maskSet:   deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked),
 		goos:      runtime.GOOS,
 		planIdent: mod.planIdent,
+		ident:     mod.ident,
 		version:   opts.Version,
 		stderr:    operatorStderr(opts.Stderr),
 	}, rec, nil
@@ -207,6 +212,13 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 			addr = defaultHTTPAddr
 		}
 	}
+	// The log is opened before any Runefile code runs: a server that cannot
+	// record what agents ask of it does not start (spec 052).
+	auditWarn := newAuditWarnings(opts.Stderr, opts.themeStderr().Warning.Render("warning"))
+	auditLog, err := openAuditLog(opts, adapter.ident.runefile, auditWarn.prune, adapter.root, adapter.workDir)
+	if err != nil {
+		return err
+	}
 	warnNonDestructive(opts.Stderr, opts.themeStderr(), granted, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--allow", allow, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--deny", deny, adapter.tasks)
@@ -234,7 +246,9 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// Run the [context] hook once at server start; its masked output becomes
 	// the instructions of every session's initialize result (spec 021 FR-002).
 	instructions := adapter.gatherContext(ctx, opts.Stderr)
-	srv := mcpserver.New(adapter, serveMCPOptions(opts.Version, runCommand(opts.File, runefile), granted, allow, deny, adapter.limit(), instructions, !opts.MCPNoReload))
+	serverOpts := serveMCPOptions(opts.Version, runCommand(opts.File, runefile), granted, allow, deny, adapter.limit(), instructions, !opts.MCPNoReload)
+	serverOpts.Audit = &auditor{log: auditLog, warn: auditWarn}
+	srv := mcpserver.New(adapter, serverOpts)
 	// The counts are reported only when a filter was given, so the startup
 	// line of an unfiltered server does not change (spec 041 FR-016).
 	var exp *exposure

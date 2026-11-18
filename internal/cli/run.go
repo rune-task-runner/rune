@@ -30,6 +30,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/runtime/shell"
 	"github.com/rune-task-runner/rune/internal/style"
 	"github.com/rune-task-runner/rune/internal/token"
+	"github.com/rune-task-runner/rune/mcpserver"
 )
 
 // execute is the inner pipeline for a resolved Runefile: parse → analyze →
@@ -168,9 +169,17 @@ func execute(opts Options, runefile string, args []string) error {
 		agent:     agentRun,
 		mask:      maskerFor(set),
 		surface:   surfaceCLI,
+		// A body of an agent's call started this rune: what it records
+		// names that call as its parent (spec 052).
+		invocation: os.Getenv(invocationVar),
+		// Computed only when an agent task opens its endpoint, so an
+		// ordinary run pays nothing for it.
+		identity: sync.OnceValue(func() planIdentity {
+			return newPlanIdentity(file, root, settings, dotenvPairs, overrides)
+		}),
 	}
 	if usesPlans(tasks) {
-		eng.planIdent = newPlanIdentity(file, root, settings, dotenvPairs, overrides)
+		eng.planIdent = eng.identity()
 	}
 
 	invs, err := eng.resolveRoots(rawInvs)
@@ -277,6 +286,17 @@ type engine struct {
 	// surface names where plan events come from in the journal: surfaceMCP
 	// or surfaceCLI.
 	surface string
+
+	// invocation is the id of the agent's call this run belongs to: the
+	// call itself on the MCP path, the call whose body started this rune on
+	// the command line, or "" for a person's run (spec 052). audit is the
+	// record of that call on the MCP path; nil records nothing.
+	invocation string
+	audit      *mcpserver.CallAudit
+
+	// identity computes the identity of this load for the audit record of
+	// an agent run. Nil on the MCP path, where the adapter has it.
+	identity func() planIdentity
 
 	// operatorErr, when set (MCP path), receives a warning about the plan
 	// journal in place of the call's captured standard error, which a refused

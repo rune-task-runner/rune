@@ -378,11 +378,12 @@ func TestServeHasNoRootFlags(t *testing.T) {
 	}
 }
 
-// Spec 048 FR-013: only the server gained the flag.
+// Spec 048 FR-013: only the server gained the flag. Spec 052 adds `log`,
+// which reads the log of the Runefile a server was given with the same flag.
 func TestOnlyServeHasFileFlag(t *testing.T) {
 	root, serve := commandTree(t, &cli.Options{})
 	for _, cmd := range root.Commands() {
-		if cmd != serve && cmd.Flag("file") != nil {
+		if cmd != serve && cmd.Name() != "log" && cmd.Flag("file") != nil {
 			t.Errorf("%s accepts --file", cmd.Name())
 		}
 	}

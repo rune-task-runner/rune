@@ -10,6 +10,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	// The zone database is in the binary, so `rune log --tz` knows IANA
+	// names on a host that has none, such as a minimal container.
+	_ "time/tzdata"
+
 	"github.com/spf13/cobra"
 
 	"github.com/rune-task-runner/rune/internal/cli"
@@ -74,5 +78,5 @@ func run(args []string) int {
 // also makes Cobra add its `help` command automatically; `completion` is our
 // own (newCompletionCmd).
 func addCommands(root *cobra.Command, opts *cli.Options) {
-	root.AddCommand(newServeCmd(opts), newVersionCmd(opts), newCompletionCmd(), newAnalyzeCmd(opts), newLSPCmd(opts))
+	root.AddCommand(newServeCmd(opts), newLogCmd(opts), newVersionCmd(opts), newCompletionCmd(), newAnalyzeCmd(opts), newLSPCmd(opts))
 }

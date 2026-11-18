@@ -42,7 +42,12 @@ const (
 // (spec 043).
 func (s *Server) handler(tool string) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		snap := s.state.Load()
+		// A recorded call runs against the snapshot its record names. Any
+		// other call takes the current one.
+		snap := snapshotFrom(ctx)
+		if snap == nil {
+			snap = s.state.Load()
+		}
 		t, ok := snap.tasks[tool]
 		if !ok {
 			// A Replace removed the task after the SDK found the tool. The
@@ -64,7 +69,7 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 			// checks refuse is refused for that reason first (spec 051).
 			engine, ok := snap.engine.(ApprovalEngine)
 			if !ok {
-				return errorResult(s.planNobody(taskName)), nil
+				return auditFail(ctx, AuditKindPolicy, s.planNobody(taskName)), nil
 			}
 			asking = engine
 			needs = planNames(taskName, needs)
@@ -72,22 +77,23 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 			engine, ok := snap.engine.(ApprovalEngine)
 			switch {
 			case !s.opts.AskApproval || !ok:
-				return errorResult(s.refusal(t)), nil
+				return auditFail(ctx, AuditKindPolicy, s.refusal(t)), nil
 			case !formSupport(req.Session):
-				return errorResult(s.refusal(t) + s.cannotAsk(taskName, reasonNoForm)), nil
+				AuditFromContext(ctx).decided(false, AuditDecisionCannotAsk, needs)
+				return auditFail(ctx, AuditKindPolicy, s.refusal(t)+s.cannotAsk(taskName, reasonNoForm)), nil
 			}
 			asking = engine
 		}
 		decoded, err := decodeArgs(req.Params.Arguments)
 		if err != nil {
-			return errorResult("invalid arguments: " + err.Error()), nil
+			return auditFail(ctx, AuditKindValidation, "invalid arguments: "+err.Error()), nil
 		}
 		if msg := unknownArgs(taskName, decoded, names); msg != "" {
-			return errorResult(msg), nil
+			return auditFail(ctx, AuditKindValidation, msg), nil
 		}
 		args, lists, err := stringArgs(decoded, t.Params)
 		if err != nil {
-			return errorResult("invalid arguments: " + err.Error()), nil
+			return auditFail(ctx, AuditKindValidation, "invalid arguments: "+err.Error()), nil
 		}
 		var res Result
 		var runErr error
@@ -99,8 +105,10 @@ func (s *Server) handler(tool string) mcp.ToolHandler {
 			res, runErr = snap.engine.Call(ctx, taskName, args)
 		}
 		if runErr != nil {
-			return errorResult(runErr.Error()), nil
+			// The engine or the approver recorded why, where it knew.
+			return auditFail(ctx, "", runErr.Error()), nil
 		}
+		AuditFromContext(ctx).ran(res.ExitCode, s.grantsOf(t))
 		// Capped once, then rendered twice: the fields cannot hold more, or
 		// other, output than the text.
 		res = capResult(res, snap.outputLimit)

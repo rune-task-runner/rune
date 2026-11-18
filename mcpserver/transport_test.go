@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -710,5 +711,108 @@ func TestHTTPApprovalStaysOnSession(t *testing.T) {
 	}
 	if eng.runs() != 2 {
 		t.Errorf("runs = %d, want 2", eng.runs())
+	}
+}
+
+// postToken sends one request with the given Authorization header and
+// returns the status.
+func postToken(t *testing.T, addr, authorization string) int {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr, strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authorization != "" {
+		req.Header.Set("Authorization", authorization)
+	}
+	req.Header.Set("X-Client-Name", "asserted-client")
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode
+}
+
+// Spec 052 FR-011: a request refused for its bearer token leaves a minimal
+// report, with nothing the request said about itself.
+func TestAuditAuthFailure(t *testing.T) {
+	rec := newRecorder()
+	addr, stop, err := New(buildEngine(), Options{Audit: rec}).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+
+	if status := postToken(t, addr, ""); status != http.StatusUnauthorized {
+		t.Fatalf("no token: status %d", status)
+	}
+	if status := postToken(t, addr, "Bearer wrong-token-value"); status != http.StatusUnauthorized {
+		t.Fatalf("a wrong token: status %d", status)
+	}
+	failures := rec.authFailures()
+	if len(failures) != 2 {
+		t.Fatalf("%d reports, want 2", len(failures))
+	}
+	for _, f := range failures {
+		if !strings.HasPrefix(f.Remote, "127.0.0.1:") || f.Time.IsZero() || f.Suppressed != 0 {
+			t.Errorf("report %+v", f)
+		}
+		if text := fmt.Sprintf("%+v", f); strings.Contains(text, "wrong-token-value") || strings.Contains(text, "asserted-client") {
+			t.Errorf("the report holds what the request sent: %s", text)
+		}
+	}
+
+	cs := httpSession(t, addr, "secret")
+	callTool(t, cs, "build", nil)
+	call, _ := rec.only(t)
+	if call.Session.Transport != "http" || call.Session.Auth != "bearer-token" || !isHexID(call.Session.ID) {
+		t.Errorf("session %+v", call.Session)
+	}
+	if got := rec.authFailures(); len(got) != 2 {
+		t.Errorf("a request with the right token was reported: %d reports", len(got))
+	}
+}
+
+func TestAuditAuthFailureLimit(t *testing.T) {
+	rec := newRecorder()
+	srv := New(buildEngine(), Options{Audit: rec})
+	now := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
+	var mu sync.Mutex
+	srv.now = func() time.Time {
+		mu.Lock()
+		defer mu.Unlock()
+		return now
+	}
+	addr, stop, err := srv.StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	for range 30 {
+		postToken(t, addr, "Bearer nope")
+	}
+	if got := len(rec.authFailures()); got != maxAuthFailuresPerMinute {
+		t.Fatalf("%d reports in one minute, want %d", got, maxAuthFailuresPerMinute)
+	}
+	mu.Lock()
+	now = now.Add(time.Minute)
+	mu.Unlock()
+	postToken(t, addr, "Bearer nope")
+	failures := rec.authFailures()
+	if len(failures) != 11 || failures[10].Suppressed != 20 {
+		t.Fatalf("%d reports, the last left out %d, want 11 and 20", len(failures), failures[len(failures)-1].Suppressed)
+	}
+}
+
+func TestAuthFailureWithoutAuditor(t *testing.T) {
+	addr, stop, err := New(buildEngine(), Options{}).StartHTTP(HTTPConfig{Addr: "127.0.0.1:0", Token: "secret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(stop)
+	if status := postToken(t, addr, "Bearer nope"); status != http.StatusUnauthorized {
+		t.Fatalf("status %d", status)
 	}
 }
