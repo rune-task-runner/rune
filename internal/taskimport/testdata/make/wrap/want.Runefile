@@ -1,0 +1,12 @@
+# Imported from Makefile by rune import.
+
+all: gen dist-app
+    echo done
+
+# Runs "make gen" (wrapper, needs make). Generate with the tool chain.
+gen *args:
+    make -f Makefile gen {{quote_each(args)}}
+
+# Runs "make dist/app" (wrapper, needs make).
+dist-app *args:
+    make -f Makefile dist/app {{quote_each(args)}}

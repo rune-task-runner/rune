@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "ci": "npm run lint && npm run test",
+    "lint": "eslint .",
+    "test": "npx jest",
+    "prepare": "husky",
+    "preprebuild": "echo first",
+    "prebuild": "echo second",
+    "build": "echo third"
+  }
+}

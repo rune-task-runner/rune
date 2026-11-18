@@ -1,0 +1,65 @@
+version: '3'
+
+silent: false
+
+vars:
+  OUT: dist
+  BIN: "{{.OUT}}/app"
+  COUNT: 3
+  VERBOSE: true
+
+tasks:
+  default:
+    desc: Build and test.
+    cmds:
+      - task: build
+      - task: test
+
+  build:
+    desc: Build the binary.
+    deps: [gen, fmt]
+    cmds:
+      - go build -o {{.BIN}} ./...
+      - cmd: echo "built {{ .COUNT }} {{.VERBOSE}}"
+        silent: true
+
+  gen: go generate ./...
+
+  fmt:
+    - gofmt -l .
+    - cmd: test -z "$(gofmt -l .)"
+      ignore_error: true
+
+  test:
+    desc: Run the tests, passing extra arguments on.
+    cmds:
+      - go test {{.CLI_ARGS}} ./...
+
+  clean:
+    prompt: Remove the build output?
+    cmd: rm -rf {{.OUT}}
+
+  helper:
+    internal: true
+    silent: true
+    cmds:
+      - echo helping
+
+  where:
+    ignore_error: true
+    cmds:
+      - cd sub
+      - pwd
+
+  release:
+    cmds:
+      - task: build
+      - ./release.sh
+      - task: docs:publish
+      - task: helper
+
+  docs:publish:
+    deps:
+      - task: build
+    cmds:
+      - ./publish.sh

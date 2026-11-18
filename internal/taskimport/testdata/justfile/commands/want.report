@@ -1,0 +1,6 @@
+justfile:2: review: help: help is also a rune command: run the task with rune -- help
+justfile:5: review: serve: serve is also a rune command: run the task with rune -- serve
+justfile:9: review: deploy: the source runner asks before the dependencies run; Rune asks after them
+justfile:13: converted: clean
+justfile:16: converted: build
+summary: 2 converted, 3 review, 0 unsupported, 0 wrappers

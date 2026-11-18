@@ -1,0 +1,44 @@
+# Imported from Taskfile.yml by rune import.
+
+OUT := "dist"
+BIN := OUT + "/app"
+COUNT := "3"
+VERBOSE := "true"
+
+# Build and test.
+default: build test
+
+# Build the binary.
+[parallel]
+build: gen fmt
+    go build -o {{BIN}} ./...
+    @echo "built {{COUNT}} {{VERBOSE}}"
+
+gen:
+    go generate ./...
+
+fmt:
+    gofmt -l .
+    -test -z "$(gofmt -l .)"
+
+# Run the tests, passing extra arguments on.
+test *args:
+    go test {{quote_each(args)}} ./...
+
+[confirm("Remove the build output?")]
+clean:
+    rm -rf {{OUT}}
+
+[private]
+helper:
+    @echo helping
+
+where:
+    -(cd sub)
+    -pwd
+
+release: build && docs-publish helper
+    ./release.sh
+
+docs-publish: build
+    ./publish.sh

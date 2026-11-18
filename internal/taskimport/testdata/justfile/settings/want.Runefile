@@ -1,0 +1,8 @@
+# Imported from justfile by rune import.
+
+build:
+    echo build
+
+# Already to review.
+test: build
+    echo test

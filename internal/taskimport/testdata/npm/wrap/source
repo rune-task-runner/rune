@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "publish:all": "npm publish --registry $npm_config_registry",
+    "build": "tsc"
+  }
+}

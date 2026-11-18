@@ -1,0 +1,10 @@
+{
+  "name": "unsafe",
+  "scripts": {
+    "preinstall": "touch MARKER",
+    "install": "touch MARKER",
+    "postinstall": "touch MARKER",
+    "prepare": "touch MARKER",
+    "build": "touch MARKER"
+  }
+}

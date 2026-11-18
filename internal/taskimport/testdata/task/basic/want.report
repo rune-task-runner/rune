@@ -1,0 +1,11 @@
+Taskfile.yml:12: converted: default
+Taskfile.yml:18: converted: build
+Taskfile.yml:26: converted: gen
+Taskfile.yml:28: converted: fmt
+Taskfile.yml:33: review: test: Task gives the arguments after -- to every task; here it gets them only when run by name
+Taskfile.yml:38: converted: clean
+Taskfile.yml:42: converted: helper
+Taskfile.yml:48: converted: where
+Taskfile.yml:54: converted: release
+Taskfile.yml:61: converted: docs:publish -> docs-publish
+summary: 9 converted, 1 review, 0 unsupported, 0 wrappers

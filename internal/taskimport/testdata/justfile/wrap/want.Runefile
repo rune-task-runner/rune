@@ -1,0 +1,17 @@
+# Imported from justfile by rune import.
+
+# Runs "just tag" (wrapper, needs just). Print the version.
+tag *args:
+    just --justfile justfile tag {{quote_each(args)}}
+
+# Runs "just _stamp" (wrapper, needs just).
+[private]
+_stamp *args:
+    just --justfile justfile _stamp {{quote_each(args)}}
+
+build: _stamp missing
+    go build ./...
+
+# Not imported (justfile:12): not defined in justfile
+missing *args:
+    @echo 'rune import: "missing" (justfile:12) was not imported: not defined in justfile' >&2; exit 1

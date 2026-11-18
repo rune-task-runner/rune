@@ -1,0 +1,64 @@
+version: '3'
+
+silent: true
+
+vars:
+  GREETING: hello
+  TARGET: "{{.GREETING}}, world"
+
+tasks:
+  hello:
+    desc: Print the greeting.
+    cmds:
+      - echo "{{.TARGET}}"
+
+  where:
+    cmds:
+      - cd sub
+      - echo "${PWD##*/}"
+
+  fail:
+    cmds:
+      - echo before
+      - exit 3
+      - echo after
+
+  ignore:
+    cmds:
+      - cmd: "false"
+        ignore_error: true
+      - echo after
+
+  args:
+    cmds:
+      - printf '[%s]' {{.CLI_ARGS}}
+      - echo
+
+  all:
+    cmds:
+      - task: first
+      - echo all
+      - task: last
+
+  first:
+    cmds:
+      - echo first
+
+  last:
+    cmds:
+      - echo last
+
+  both:
+    deps: [first, last]
+    cmds:
+      - echo both
+
+  ask:
+    prompt: Continue?
+    cmds:
+      - echo asked
+
+  helper:
+    internal: true
+    cmds:
+      - echo helper

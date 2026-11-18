@@ -1,0 +1,12 @@
+justfile:7: converted: build
+justfile:13: converted: gen
+justfile:17: converted: test
+justfile:20: converted: lint
+justfile:25: converted: report
+justfile:29: converted: quiet
+justfile:33: converted: long
+justfile:42: review: deploy: the source runner asks before the dependencies run; Rune asks after them
+justfile:47: converted: test-all
+justfile:53: converted: here
+justfile:56: converted: _helper
+summary: 10 converted, 1 review, 0 unsupported, 0 wrappers

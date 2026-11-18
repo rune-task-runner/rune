@@ -1,0 +1,58 @@
+# Imported from package.json by rune import.
+
+path_sep := if os() == "windows" { ";" } else { ":" }
+
+[env("npm_lifecycle_event", "test")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+test *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    jest --ci {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "prebuild")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+prebuild *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    rm -rf dist {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "build")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+build *args: prebuild && postbuild
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    tsc -p . {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "postbuild")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+postbuild *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    cp README.md dist/ {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "test:unit")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+test-unit *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    jest unit {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "fmt")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+fmt *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    prettier --write . && echo '{{{{done}}' {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "serve")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+serve *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    node server.js {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "empty")]
+[env("npm_package_name", "demo")]
+[env("npm_package_version", "1.2.3")]
+empty *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"

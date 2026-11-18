@@ -1,0 +1,6 @@
+Taskfile.yml:4: wrapper: build: a command with the key "for"
+Taskfile.yml:10: unsupported: secret: the key "preconditions" is not converted
+Taskfile.yml:17: unsupported: start:* -> start: a wildcard task name
+Taskfile.yml:21: converted: all
+Taskfile.yml:21: unsupported: lib:lint -> lib-lint: not defined in Taskfile.yml
+summary: 1 converted, 0 review, 3 unsupported, 1 wrappers

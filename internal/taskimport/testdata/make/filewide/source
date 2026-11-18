@@ -1,0 +1,12 @@
+SHELL := bash
+.ONESHELL:
+.SHELLFLAGS := -eu -o pipefail -c
+export PATH := bin:$(PATH)
+export
+
+.PHONY: build
+build:
+	echo build
+
+check:
+	echo check

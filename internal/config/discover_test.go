@@ -83,3 +83,14 @@ func TestDiscoverAmbiguous(t *testing.T) {
 		t.Errorf("Resolve with --file = %q, %v", got, err)
 	}
 }
+
+func TestIsRunefileName(t *testing.T) {
+	for name, want := range map[string]bool{
+		"Runefile": true, "runefile": true, "RUNEFILE": true, ".runefile": true, ".Runefile": true,
+		"Runefile.bak": false, "imported.rune": false, "": false, "justfile": false,
+	} {
+		if got := IsRunefileName(name); got != want {
+			t.Errorf("IsRunefileName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}

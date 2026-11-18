@@ -1,0 +1,6 @@
+justfile:1: unsupported: set shell: settings are not converted: imported tasks run in Rune's built-in shell with Rune's defaults
+justfile:2: unsupported: set dotenv-load: settings are not converted: imported tasks run in Rune's built-in shell with Rune's defaults
+justfile:3: unsupported: set windows-shell: settings are not converted: imported tasks run in Rune's built-in shell with Rune's defaults
+justfile:8: review: build: see justfile:1; see justfile:2; see justfile:3
+justfile:12: review: test: see justfile:1; see justfile:2; see justfile:3
+summary: 0 converted, 2 review, 3 unsupported, 0 wrappers

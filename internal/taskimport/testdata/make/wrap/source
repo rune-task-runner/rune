@@ -1,0 +1,14 @@
+.PHONY: all gen
+
+all: gen dist/app
+	echo done
+
+# Generate with the tool chain.
+gen:
+	$(MAKE) -C gen
+
+dist/app: main.c
+	cc -o $@ $<
+
+%.o: %.c
+	cc -c $<

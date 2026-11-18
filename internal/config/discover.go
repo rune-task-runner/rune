@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -73,6 +74,12 @@ func Discover(startDir string) (string, error) {
 	}
 }
 
+// IsRunefileName reports whether discovery takes a file of this base name
+// for a Runefile.
+func IsRunefileName(name string) bool {
+	return slices.Contains(candidateNames, strings.ToLower(name))
+}
+
 // runefileIn returns the path of the Runefile in dir, or "" when there is
 // none.
 func runefileIn(dir string) (string, error) {
@@ -85,11 +92,8 @@ func runefileIn(dir string) (string, error) {
 		if e.IsDir() {
 			continue
 		}
-		lower := strings.ToLower(e.Name())
-		for _, cand := range candidateNames {
-			if lower == cand {
-				names = append(names, e.Name())
-			}
+		if IsRunefileName(e.Name()) {
+			names = append(names, e.Name())
 		}
 	}
 	switch len(names) {

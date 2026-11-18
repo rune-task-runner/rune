@@ -1,0 +1,37 @@
+version: 3
+
+env:
+  CGO_ENABLED: 0
+  GOFLAGS: -mod=mod
+
+tasks:
+  build:
+    summary: |
+      A longer text
+      about the build.
+    aliases: [b]
+    label: build-it
+    sources:
+      - "**/*.go"
+      - go.mod
+    generates:
+      - dist/app
+    cmds:
+      - go build -o dist/app ./...
+
+  docs:
+    dir: docs
+    env:
+      GOFLAGS: -mod=vendor
+      SITE: "https://example.com"
+    sources: ["*.md"]
+    cmds:
+      - mkdocs build
+
+  test:
+    cmds:
+      - go test {{.CLI_ARGS}}
+
+  ci:
+    cmds:
+      - task: test

@@ -24,6 +24,7 @@ var selfContainedPages = []string{
 	"docs/how-to/parallelism.md",
 	"docs/how-to/parameters.md",
 	"docs/how-to/settings-and-dotenv.md",
+	"docs/how-to/import-from-other-runners.md",
 	// Use-case walkthroughs — each shows a complete, runnable Runefile.
 	"docs/use-cases/python-project.md",
 	"docs/use-cases/node-project.md",

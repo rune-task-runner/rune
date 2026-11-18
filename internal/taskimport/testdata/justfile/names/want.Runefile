@@ -1,0 +1,16 @@
+# Imported from justfile by rune import.
+
+task-set:
+    echo set
+
+task-if-2:
+    echo if
+
+task-if:
+    echo kept
+
+_private_one:
+    echo private
+
+all: task-set task-if-2 task-if _private_one
+    echo all

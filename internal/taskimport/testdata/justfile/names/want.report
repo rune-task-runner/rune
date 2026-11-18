@@ -1,0 +1,6 @@
+justfile:1: converted: set -> task-set
+justfile:4: converted: if -> task-if-2
+justfile:7: converted: task-if
+justfile:10: converted: _private_one
+justfile:13: converted: all
+summary: 5 converted, 0 review, 0 unsupported, 0 wrappers

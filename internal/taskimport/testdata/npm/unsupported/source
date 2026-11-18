@@ -1,0 +1,13 @@
+{
+  "name": "demo",
+  "scripts": {
+    "registry": "echo $npm_config_registry",
+    "where": "cd $INIT_CWD && ls",
+    "lines": "echo one\necho two",
+    "windows": "if exist dist (rmdir /s /q dist",
+    "number": 5,
+    "nothing": null,
+    "dash": "-v",
+    "ok": "echo ok"
+  }
+}

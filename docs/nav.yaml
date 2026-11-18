@@ -32,6 +32,7 @@ groups:
       - how-to/secret-masking.md
       - how-to/imports-and-modules.md
       - how-to/os-filtering.md
+      - how-to/import-from-other-runners.md
       - path: how-to/README.md
         label: All how-to guides
 

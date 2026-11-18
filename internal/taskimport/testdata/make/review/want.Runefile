@@ -1,0 +1,14 @@
+# Imported from Makefile by rune import.
+
+all: build node_modules
+
+# Not declared phony.
+build:
+    go build ./...
+
+install: build
+    cp app /usr/local/bin
+
+# Not imported (Makefile:3): not defined in Makefile
+node_modules *args:
+    @echo 'rune import: "node_modules" (Makefile:3) was not imported: not defined in Makefile' >&2; exit 1

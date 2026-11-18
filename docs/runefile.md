@@ -552,6 +552,10 @@ import? "optional.rune"     # ignore if the file is missing
 mod tools "tools.rune"      # namespace: invoke as `rune tools::build`
 ```
 
+The `import` statement reads another Runefile. To turn a justfile, a Makefile, a Taskfile or
+npm scripts into a Runefile, use the `rune import` command: see
+[Import from another runner](how-to/import-from-other-runners.md).
+
 ## Dotenv
 
 `set dotenv := ".env"` loads the `KEY=VALUE` lines of that file into task environments

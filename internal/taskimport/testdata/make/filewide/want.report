@@ -1,0 +1,9 @@
+Makefile:1: unsupported: SHELL: special make variables are not converted: imported tasks run in Rune's built-in shell with Rune's defaults
+Makefile:2: unsupported: .ONESHELL: special targets and suffix rules are not converted
+Makefile:3: unsupported: .SHELLFLAGS: special make variables are not converted: imported tasks run in Rune's built-in shell with Rune's defaults
+Makefile:4: unsupported: export PATH := bin:$(PATH): the directive is not converted
+Makefile:4: unsupported: variable PATH: it is set by the export directive
+Makefile:5: unsupported: export: the directive is not converted
+Makefile:8: review: build: see Makefile:1; see Makefile:2; see Makefile:3; see Makefile:4; see Makefile:5
+Makefile:11: review: check: not declared .PHONY: make skips it when a file named "check" is up to date; Rune always runs it; see Makefile:1; see Makefile:2; see Makefile:3; see Makefile:4; see Makefile:5
+summary: 0 converted, 2 review, 6 unsupported, 0 wrappers

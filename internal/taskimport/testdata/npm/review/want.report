@@ -1,0 +1,8 @@
+package.json:3: review: ci: calls npm, which must still be installed
+package.json:4: converted: lint
+package.json:5: review: test: calls npx, which must still be installed
+package.json:6: review: prepare: npm also runs this script by itself; Rune runs it only by name
+package.json:7: converted: preprebuild
+package.json:8: review: prebuild: npm run prebuild also runs preprebuild; the imported task does not
+package.json:9: converted: build
+summary: 3 converted, 4 review, 0 unsupported, 0 wrappers

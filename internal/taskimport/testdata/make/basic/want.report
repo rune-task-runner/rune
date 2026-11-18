@@ -1,0 +1,8 @@
+Makefile:9: converted: all
+Makefile:12: converted: build
+Makefile:16: converted: test
+Makefile:20: converted: clean
+Makefile:25: converted: where
+Makefile:32: converted: fmt
+Makefile:37: converted: docker/push -> docker-push
+summary: 7 converted, 0 review, 0 unsupported, 0 wrappers

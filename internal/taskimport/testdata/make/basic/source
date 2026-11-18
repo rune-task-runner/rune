@@ -1,0 +1,38 @@
+# Variables
+OUT := dist
+BIN = $(OUT)/app
+NAME ?= world
+EMPTY :=
+
+.PHONY: all build test clean where fmt docker/push
+
+all: build test ## Build and test everything
+
+# Build the binary.
+build:
+	@echo "building $(BIN)"
+	go build -o $(BIN) ./...
+
+test: build
+	go test ./... | tee out.log
+	@echo "tested as $$USER for $(NAME)$(EMPTY)"
+
+clean:
+	-rm -rf $(OUT)
+	@-rm -f out.log
+	+@echo cleaned
+
+where:
+	cd sub
+	pwd
+	@if [ -d sub ]; then \
+	  echo "has sub"; \
+	fi
+
+fmt:
+	gofmt -l . \
+	  | sort
+	docker ps --format '{{.Names}}'
+
+docker/push: build
+	docker push app

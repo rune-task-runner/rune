@@ -99,3 +99,5 @@ rune --file docs/examples/getting-started/Runefile check
 - **[Runefile language guide](runefile.md)** — dependencies, parameters, caching, executors, dotenv.
 - **[CLI reference](cli.md)** — every command, flag, and exit code.
 - **[Using Rune with AI agents (MCP)](mcp.md)** — expose these same tasks to agents and IDEs.
+- **[Import from another runner](how-to/import-from-other-runners.md)**: already have a justfile,
+  a Makefile, a Taskfile or npm scripts? `rune import` writes the Runefile for you.

@@ -1,0 +1,24 @@
+# Imported from Taskfile.yml by rune import.
+
+[env("CGO_ENABLED", "0")]
+[env("GOFLAGS", "-mod=mod")]
+[cache(inputs = ["**/*.go", "go.mod"], outputs = ["dist/app"])]
+build:
+    go build -o dist/app ./...
+
+[working-directory("docs")]
+[env("CGO_ENABLED", "0")]
+[env("GOFLAGS", "-mod=vendor")]
+[env("SITE", "https://example.com")]
+[cache(inputs = ["*.md"])]
+docs:
+    mkdocs build
+
+[env("CGO_ENABLED", "0")]
+[env("GOFLAGS", "-mod=mod")]
+test *args:
+    go test {{quote_each(args)}}
+
+[env("CGO_ENABLED", "0")]
+[env("GOFLAGS", "-mod=mod")]
+ci: test

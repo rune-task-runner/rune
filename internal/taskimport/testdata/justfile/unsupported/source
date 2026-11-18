@@ -1,0 +1,69 @@
+import 'common.just'
+mod tools
+alias b := build
+
+version := `git describe --tags`
+home := env_var("HOME")
+label := "v" + version
+export TOKEN := "secret"
+ok := "fine"
+
+build:
+    echo building {{ok}}
+
+# Uses a variable that runs a command.
+tag:
+    git tag {{version}}
+
+labelled:
+    echo {{label}}
+
+upper name:
+    echo {{uppercase(name)}}
+
+script:
+    #!/usr/bin/env python3
+    print("hello")
+
+[script("bash")]
+other:
+    echo other
+
+[private]
+[positional-arguments]
+positional a:
+    echo $1
+
+default v=ok:
+    echo {{v}}
+
+exported $name:
+    echo $name
+
+needs: build missing (also-missing "x")
+    echo after
+
+args: (build home)
+    echo args
+
+open:
+    echo "unterminated
+
+dashing:
+    --version
+
+undefined:
+    echo {{nope}}
+
+[linux]
+per-os:
+    echo linux
+
+[windows]
+per-os:
+    echo windows
+
+mod := "a variable named like a keyword"
+
+uses-mod:
+    echo {{mod}}

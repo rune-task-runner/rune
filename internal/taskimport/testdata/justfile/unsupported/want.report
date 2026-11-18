@@ -1,0 +1,27 @@
+justfile:1: unsupported: import: the file is not read, so its tasks and variables are not imported
+justfile:2: unsupported: mod: the file is not read, so its tasks and variables are not imported
+justfile:3: unsupported: alias b: Rune has no aliases; run "build"
+justfile:5: unsupported: variable version: its value runs a command (backtick), which import never runs
+justfile:6: unsupported: variable home: its value calls a function or is not built from string literals, variables, + and /
+justfile:7: unsupported: variable label: it uses "version", which is not a converted variable
+justfile:8: unsupported: variable TOKEN: it is exported to the environment of every task, and no imported task has it
+justfile:11: review: build: see justfile:8
+justfile:15: unsupported: tag: it uses the variable "version" of line 5, which was not converted
+justfile:18: unsupported: labelled: it uses the variable "label" of line 7, which was not converted
+justfile:21: unsupported: upper: the interpolation {{uppercase(name)}} is not a plain variable or parameter
+justfile:24: unsupported: script: a shebang task runs as a script, which is not converted
+justfile:29: unsupported: other: the attribute [script("bash")] is not converted
+justfile:34: unsupported: positional: the attribute [positional-arguments] is not converted
+justfile:37: unsupported: default: parameter "v" has a default that is not a string literal; the interpolation {{v}} is not a plain variable or parameter
+justfile:40: unsupported: exported: parameter "$name" is exported to the environment
+justfile:43: review: needs: see justfile:8
+justfile:43: unsupported: missing: not defined in justfile
+justfile:43: unsupported: also-missing: not defined in justfile
+justfile:46: unsupported: args: the argument "home" of dependency "build" is not a string literal, a parameter or a variable
+justfile:49: unsupported: open: not a complete shell command on one line: echo "unterminated
+justfile:52: unsupported: dashing: the command starts with "-", which Rune reads as a line prefix: -version
+justfile:55: unsupported: undefined: the interpolation {{nope}} is not a plain variable or parameter
+justfile:59: unsupported: per-os: the task is defined more than once, which Rune has no counterpart for
+justfile:66: unsupported: variable mod: its name is not a valid Rune name
+justfile:68: unsupported: uses-mod: it uses the variable "mod" of line 66, which was not converted
+summary: 0 converted, 2 review, 24 unsupported, 0 wrappers
