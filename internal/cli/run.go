@@ -59,7 +59,11 @@ func execute(opts Options, runefile string, args []string) error {
 	}
 
 	file, diags := parser.Parse(runefile, string(source))
-	srcProvider := newSourceProvider(runefile, source)
+	// The files of the load are kept for an (agent) task: the tasks its agent
+	// calls may not change them (spec 053).
+	rec := &pathRecorder{}
+	rec.addRead(runefile)
+	srcProvider := rec.wrap(newSourceProvider(runefile, source))
 
 	// Enforce the root Runefile's minimum_version before imports/analysis/execution
 	// (FR-004). Reading the root file's own settings pre-compose is what keeps a
@@ -177,6 +181,8 @@ func execute(opts Options, runefile string, args []string) error {
 		identity: sync.OnceValue(func() planIdentity {
 			return newPlanIdentity(file, root, settings, dotenvPairs, overrides)
 		}),
+		loaded:  rec.found(),
+		missing: rec.notFound(),
 	}
 	if usesPlans(tasks) {
 		eng.planIdent = eng.identity()
@@ -316,6 +322,20 @@ type engine struct {
 	// planMaxArtifact and planMaxSummary lower the store's size limits in
 	// tests. Zero means the store's own.
 	planMaxArtifact, planMaxSummary int64
+
+	// sandbox, when set, confines every body of this run: the engine of an
+	// agent's call on a server that enforces (spec 053). Nil runs bodies in
+	// this process, as a person's run does.
+	sandbox *bodySandbox
+
+	// endpointSandbox replaces the host's sandbox for the endpoint of an
+	// (agent) task. Nil means the host's; tests set it.
+	endpointSandbox *sandboxState
+
+	// loaded and missing are the files this load read, and those it looked
+	// for and did not find. Set on the command line, for the endpoint an
+	// (agent) task opens.
+	loaded, missing []string
 
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
@@ -618,11 +638,49 @@ func (e *engine) runBodyTo(task *ast.Task, params eval.Args, stdout io.Writer, e
 
 	sel := rt.Select(task, e.settings)
 	var err error
+	if e.sandbox != nil {
+		err = e.runConfined(task, sel, lines, dir, env, stdout)
+		var (
+			notStarted *sandboxStartError
+			died       *sandboxWorkerError
+		)
+		switch {
+		case errors.As(err, &notStarted):
+			// Printed here, into the call's output, so that the agent reads
+			// why nothing ran. A silent failure has no banner of its own.
+			printErrorBanner(e.opts, e.theme, notStarted.Error())
+			return &TaskFailure{Err: &bodyNotRunError{err: notStarted}, Silent: true}
+		case errors.As(err, &died):
+			printErrorBanner(e.opts, e.theme, died.Error())
+			return &TaskFailure{Err: died, Silent: true}
+		case err != nil && e.ctx.Err() == nil:
+			fmt.Fprintln(e.opts.Stderr, hintLine(task.Name, task.Attr(ast.AttrNetwork) != nil, e.sandbox.workspace))
+		}
+	} else {
+		err = e.runExecutor(task, sel, lines, dir, env, stdout)
+	}
+	var usage *UsageError
+	if errors.As(err, &usage) {
+		return err
+	}
+
+	// [no-exit-message] suppresses the trailing error banner (not the exit code).
+	if err != nil && task.Attr(ast.AttrNoExitMessage) != nil {
+		return &TaskFailure{Err: err, Silent: true}
+	}
+	if err == nil && task.Attr(ast.AttrPlan) != nil {
+		return e.capturePlan(task, params)
+	}
+	return err
+}
+
+// runExecutor runs a body in this process with the executor selected for it.
+func (e *engine) runExecutor(task *ast.Task, sel rt.Selection, lines []shell.Line, dir string, env []string, stdout io.Writer) error {
 	switch sel.Kind {
 	case rt.KindAgent:
-		err = e.executeAgent(task, lines, dir, env)
+		return e.executeAgent(task, lines, dir, env)
 	case rt.KindShell:
-		err = shell.Run(e.ctx, task.Name, lines, shell.Options{
+		return shell.Run(e.ctx, task.Name, lines, shell.Options{
 			Stdin:     e.opts.Stdin,
 			Stdout:    stdout,
 			Stderr:    e.opts.Stderr,
@@ -637,25 +695,15 @@ func (e *engine) runBodyTo(task *ast.Task, params eval.Args, stdout io.Writer, e
 		if len(task.Body) > 0 {
 			span = task.Body[0].Sp
 		}
-		err = interp.Run(e.ctx, task.Name, script, sel.Command, span, interp.Options{
+		return interp.Run(e.ctx, task.Name, script, sel.Command, span, interp.Options{
 			Stdin:  e.opts.Stdin,
 			Stdout: stdout,
 			Stderr: e.opts.Stderr,
 			Dir:    dir,
 			Env:    env,
 		})
-	default:
-		return &UsageError{Err: errorf("executor %q is not supported yet", sel.Display)}
 	}
-
-	// [no-exit-message] suppresses the trailing error banner (not the exit code).
-	if err != nil && task.Attr(ast.AttrNoExitMessage) != nil {
-		return &TaskFailure{Err: err, Silent: true}
-	}
-	if err == nil && task.Attr(ast.AttrPlan) != nil {
-		return e.capturePlan(task, params)
-	}
-	return err
+	return &UsageError{Err: errorf("executor %q is not supported yet", sel.Display)}
 }
 
 // taskDir resolves the working directory for a task, honoring [no-cd] (run in

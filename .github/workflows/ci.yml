@@ -26,10 +26,24 @@ jobs:
           check-latest: true
       - name: Build
         run: go build ./...
+      # The tasks an agent calls run in a sandbox, which is bubblewrap on Linux
+      # (spec 053). The tests that start a real one need the program and the
+      # right to create user namespaces, which Ubuntu withholds by default.
+      - name: Install the sandbox backend
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Test (race)
         run: go test -race ./...
         env:
           CGO_ENABLED: "1"
+          # On Linux a sandbox test that would skip fails the job instead:
+          # a skip there would hide a broken sandbox. Their fixtures must
+          # not be under /tmp, which the sandbox replaces.
+          RUNE_TEST_SANDBOX: ${{ runner.os == 'Linux' && 'require' || '' }}
+          RUNE_TEST_SANDBOX_DIR: ${{ runner.os == 'Linux' && format('{0}/rune-sandbox', runner.temp) || '' }}
 
   lint:
     name: lint

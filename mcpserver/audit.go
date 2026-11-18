@@ -44,8 +44,11 @@ const (
 	AuditKindProtocol   = "protocol"
 	AuditKindValidation = "validation"
 	AuditKindPolicy     = "policy"
-	AuditKindApproval   = "approval"
-	AuditKindInternal   = "internal"
+	// AuditKindSandbox is recorded by an engine that refuses a call because
+	// no sandbox can confine it (spec 053).
+	AuditKindSandbox  = "sandbox"
+	AuditKindApproval = "approval"
+	AuditKindInternal = "internal"
 )
 
 // The roles of a plan in a call.
@@ -387,7 +390,7 @@ func (c *CallAudit) end(ctx context.Context, start time.Time, callErr error) Aud
 		e.Outcome = AuditUnknownTool
 	case c.kind == AuditKindValidation:
 		e.Outcome = AuditInvalidArguments
-	case c.kind == AuditKindPolicy:
+	case c.kind == AuditKindPolicy, c.kind == AuditKindSandbox:
 		e.Outcome = AuditRefused
 	case c.kind == AuditKindApproval:
 		e.Outcome = AuditRefused

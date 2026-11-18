@@ -18,6 +18,7 @@ func newServeCmd(opts *cli.Options) *cobra.Command {
 		tokenFile   string
 		mcpFlag     bool
 		outputLimit string
+		sandboxMode string
 	)
 
 	cmd := &cobra.Command{
@@ -63,6 +64,14 @@ Use --output-limit to change the size, written as bytes or with a KiB or MiB
 unit, from 1KiB to 1024MiB. A Runefile can set the same with
 'set mcp_output_limit := "256KiB"'; the flag wins.
 
+The tasks agents call run in a sandbox: a task has no network unless it is
+marked [network], and it writes only inside the project. The sandbox needs
+bubblewrap on Linux. Where it cannot work, on another system or on a host
+without bubblewrap, every task call is refused. Use --sandbox off, or set
+RUNE_SANDBOX=off, to run tasks without a sandbox: the server says so when it
+starts, and every record in the audit log says so. The flag wins over the
+variable.
+
 The server follows the Runefile while it runs. When the Runefile, or a file
 it imports or loads as a module, changes, the server loads it again and
 tells connected agents that the tool list changed. A change that leaves the
@@ -77,6 +86,7 @@ start.`,
   rune mcp --deny deploy                              # expose everything except 'deploy'
   rune mcp --output-limit 256KiB                      # return up to 256KiB of each stream
   rune mcp --no-reload                                # ignore Runefile changes while running
+  rune mcp --sandbox off                              # run the tasks agents call without a sandbox
   rune serve --http --addr 127.0.0.1:7777 --token-file ./tok   # HTTP transport`,
 		// A task list is one comma-separated value. Without this, the names
 		// after a space would be dropped and the tasks left exposed.
@@ -91,6 +101,7 @@ start.`,
 				return err
 			}
 			opts.MCPOutputLimit = givenFlag(cmd, "output-limit", outputLimit)
+			opts.MCPSandbox = givenFlag(cmd, "sandbox", sandboxMode)
 			_ = mcpFlag // MCP is the only protocol; --mcp is accepted for clarity.
 			return cli.ServeMCP(*opts, useHTTP, addr, tokenFile)
 		},
@@ -111,6 +122,7 @@ start.`,
 	f.StringArrayVar(&opts.MCPDeny, "deny", nil, "hide these tasks from agents (comma-separated, repeatable)")
 	f.BoolVar(&opts.MCPNoReload, "no-reload", false, "keep the tasks read at start; do not reload when the Runefile changes")
 	f.StringVar(&outputLimit, "output-limit", "", "cap each of stdout and stderr in a tool result (default 64KiB; such as 256KiB or 1MiB)")
+	f.StringVar(&sandboxMode, "sandbox", "", "confine the tasks agents call: enforce (default) or off")
 
 	return cmd
 }

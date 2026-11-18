@@ -10,7 +10,6 @@ import (
 	"io"
 	"maps"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -26,6 +25,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/planstore"
 	"github.com/rune-task-runner/rune/internal/runtime/scheduler"
+	"github.com/rune-task-runner/rune/internal/sandbox"
 	"github.com/rune-task-runner/rune/mcpserver"
 )
 
@@ -209,11 +209,16 @@ func toolIdentity(name, cwd string, env []string) (path, digest string, err erro
 // workspace when a plan is recorded, and they are what the task makes, not a
 // change to the tree.
 func gitInfo(ctx context.Context, dir string, ignore ...string) (commit string, dirty *bool) {
+	return gitInfoWith(ctx, dir, plainGit, ignore...)
+}
+
+// gitInfoWith is gitInfo with the command the caller builds git with.
+func gitInfoWith(ctx context.Context, dir string, command gitCommandFunc, ignore ...string) (commit string, dirty *bool) {
 	run := func(args ...string) (string, bool) {
 		ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 		defer cancel()
 		// core.fsmonitor can name a program, and a status call would start it.
-		cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)...)
+		cmd := command(ctx, dir, append([]string{"-c", "core.fsmonitor=false"}, args...)...)
 		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
 		out, err := cmd.Output()
 		return strings.TrimSpace(string(out)), err == nil
@@ -467,6 +472,10 @@ func (e *engine) git(dir string, ignore ...string) (string, *bool) {
 	if e.gitInfo != nil {
 		return e.gitInfo(e.ctx, dir)
 	}
+	if e.sandbox != nil {
+		// A confined call asks git inside a sandbox as well (spec 053).
+		return gitInfoWith(e.ctx, dir, e.sandbox.state.gitRunner(), ignore...)
+	}
 	return gitInfo(e.ctx, dir, ignore...)
 }
 
@@ -689,8 +698,14 @@ func (e *engine) planEnv(task *ast.Task, args eval.Args) []string {
 	if a == nil || a.task != task.Name || a.argsKey != args.Key() {
 		return nil
 	}
+	path := a.claim.Path
+	if e.sandbox != nil {
+		// A confined body sees the project at its real path. A path through
+		// a link that lies in a directory the sandbox replaces is not there.
+		path = sandbox.Resolve(path)
+	}
 	return []string{
-		ast.PlanFileVar + "=" + a.claim.Path,
+		ast.PlanFileVar + "=" + path,
 		ast.PlanIDVar + "=" + a.ticket.rec.ID,
 		ast.PlanDigestVar + "=sha256:" + a.ticket.rec.Artifact.SHA256,
 	}

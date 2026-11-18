@@ -357,7 +357,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [group("build")]                # group label in listings
 [linux]  [macos]  [windows]  [unix]   # restrict to an OS (see below)
 [no-cd]                         # don't change into the Runefile's directory
-[network]                       # marks the task as network-using (MCP openWorldHint)
+[network]                       # gives the task the network when an agent calls it (and sets MCP openWorldHint)
 [readonly]                      # claims the task changes nothing (MCP readOnlyHint)
 [no-exit-message]               # suppress the trailing error banner on failure
 [context]                       # project-health hook: output is injected into agent context
@@ -383,6 +383,11 @@ or the person approves the call in the client; see
 runs a `[confirm]` or `[network]` task through a dependency or hook advertises the same MCP
 hint, and over MCP a call that can run an ungranted `[confirm]` task runs nothing until it
 is approved.
+
+`[network]` matters when an agent calls the task. Over MCP a task runs in
+[a sandbox](mcp.md#the-sandbox): without `[network]` it has no network at all, and with it
+the task's own body has the host's network. A dependency or a hook needs its own
+`[network]`. On the command line the attribute changes nothing.
 
 `[readonly]` is the author's claim that a task changes nothing, and Rune does not check the
 body. It changes nothing on the command line: the task runs and lists as it would without

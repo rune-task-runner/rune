@@ -14,5 +14,12 @@
 ARG GO_VERSION=1.27
 
 FROM golang:${GO_VERSION}-bookworm
+# bubblewrap is the sandbox backend for the tasks an agent runs (spec 053). The
+# sandbox tests start it for real: in the privileged test-sandbox service it
+# works, and in the default test service it is present and cannot start, which
+# is a state the refusal tests need.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 ENV CGO_ENABLED=0

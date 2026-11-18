@@ -109,3 +109,25 @@ func TestNewID(t *testing.T) {
 		seen[id] = true
 	}
 }
+
+// The sandbox object states the backend and the mode when a server has them
+// (spec 053), and stays as it was for a record that has neither.
+func TestSandboxFields(t *testing.T) {
+	for _, c := range []struct {
+		sandbox Sandbox
+		want    string
+	}{
+		{Sandbox{}, `"sandbox":{"enforced":false}`},
+		{Sandbox{Mode: "off"}, `"sandbox":{"enforced":false,"mode":"off"}`},
+		{Sandbox{Mode: "enforce"}, `"sandbox":{"enforced":false,"mode":"enforce"}`},
+		{Sandbox{Enforced: true, Backend: "bubblewrap", Mode: "enforce"}, `"sandbox":{"enforced":true,"backend":"bubblewrap","mode":"enforce"}`},
+	} {
+		line, err := Record{Type: TypeCall, Phase: PhaseStart, ID: "0123456789abcdef", Time: time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC), Sandbox: &c.sandbox}.Encode()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(line), c.want) {
+			t.Errorf("line lacks %s: %s", c.want, line)
+		}
+	}
+}

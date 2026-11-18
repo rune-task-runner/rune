@@ -205,16 +205,16 @@ func TestAllowlistMCP_StartupLine(t *testing.T) {
 		flags []string
 		want  string
 	}{
-		{nil, "rune MCP server on stdio\n"},
-		{[]string{"--allow", "build,test"}, "rune MCP server on stdio (2 of 7 tasks exposed)\n"},
-		{[]string{"--deny", "deploy"}, "rune MCP server on stdio (6 of 7 tasks exposed)\n"},
+		{nil, offLine("stdio", "")},
+		{[]string{"--allow", "build,test"}, offLine("stdio", "2 of 7 tasks exposed")},
+		{[]string{"--deny", "deploy"}, offLine("stdio", "6 of 7 tasks exposed")},
 		{
 			[]string{"--allow", "build", "--allow-destructive", "clean"},
-			"rune MCP server on stdio (1 of 7 tasks exposed; destructive tasks allowed: clean)\n",
+			offLine("stdio", "1 of 7 tasks exposed; destructive tasks allowed: clean"),
 		},
 	}
 	for _, c := range cases {
-		if got := serveStderr(t, dir, c.flags...); got != c.want {
+		if got := serveStderr(t, dir, c.flags...); got != offStderr(c.want) {
 			t.Errorf("%q: stderr = %q, want %q", c.flags, got, c.want)
 		}
 	}
@@ -364,23 +364,23 @@ func TestAllowlistMCP_Warnings(t *testing.T) {
 			"private name in --allow",
 			[]string{"--allow", "_setup"},
 			"warning: --allow _setup has no effect: task \"_setup\" is never exposed to agents\n" +
-				noTasks + "rune MCP server on stdio (0 of 7 tasks exposed)\n",
+				noTasks + offLine("stdio", "0 of 7 tasks exposed"),
 		},
 		{
 			"context hook in --deny",
 			[]string{"--deny", "health"},
 			"warning: --deny health has no effect: task \"health\" is never exposed to agents\n" +
-				"rune MCP server on stdio (7 of 7 tasks exposed)\n",
+				offLine("stdio", "7 of 7 tasks exposed"),
 		},
 		{
 			"allow and deny cancel out",
 			[]string{"--allow", "build", "--deny", "build"},
-			noTasks + "rune MCP server on stdio (0 of 7 tasks exposed)\n",
+			noTasks + offLine("stdio", "0 of 7 tasks exposed"),
 		},
 	}
 	for _, c := range cases {
 		dir := writeRunefile(t, allowlistRunefile)
-		if got := serveStderr(t, dir, c.flags...); got != c.want {
+		if got := serveStderr(t, dir, c.flags...); got != offStderr(c.want) {
 			t.Errorf("%s: stderr = %q, want %q", c.name, got, c.want)
 		}
 		if !exists(t, dir, "context.done") {
@@ -397,8 +397,8 @@ func TestAllowlistMCP_Warnings(t *testing.T) {
 // that points at them stays quiet.
 func TestAllowlistMCP_NothingExposableDoesNotBlameFilters(t *testing.T) {
 	dir := writeRunefile(t, "_setup:\n    @echo s\n\n# Project health.\n[context]\nhealth:\n    @echo ok\n")
-	want := "warning: --deny health has no effect: task \"health\" is never exposed to agents\n" +
-		"rune MCP server on stdio (0 of 0 tasks exposed)\n"
+	want := offStderr("warning: --deny health has no effect: task \"health\" is never exposed to agents\n" +
+		offLine("stdio", "0 of 0 tasks exposed"))
 	if got := serveStderr(t, dir, "--deny", "health"); got != want {
 		t.Errorf("stderr = %q, want %q", got, want)
 	}

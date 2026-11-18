@@ -857,3 +857,39 @@ func TestListValues(t *testing.T) {
 		t.Errorf("no values: %v, %v", got, err)
 	}
 }
+
+// Spec 053: a call that ran a task on a server started unsandboxed says so.
+// A call that ran nothing does not: nothing ran, sandboxed or not.
+func TestLogUnsandboxedLine(t *testing.T) {
+	at := time.Date(2026, 11, 18, 8, 7, 40, 0, time.UTC)
+	const line = "ran without a sandbox (the server was started with the sandbox off)"
+	call := func(sandbox *audit.Sandbox, exit *int, err *audit.Error) audit.Action {
+		outcome := "completed"
+		if err != nil {
+			outcome = "refused"
+		}
+		return audit.Action{Type: audit.TypeCall, ID: "1", Start: at, Outcome: outcome, Task: "build", ExitCode: exit, Sandbox: sandbox, Error: err}
+	}
+	refusal := &audit.Error{Kind: "sandbox", Message: `task "build" was not run: the sandbox is unavailable: bubblewrap (bwrap) was not found on the PATH.`}
+	cases := []struct {
+		name   string
+		action audit.Action
+		want   []string
+	}{
+		{"off and ran", call(&audit.Sandbox{Mode: "off"}, new(0), nil), []string{line}},
+		{"off and failed", call(&audit.Sandbox{Mode: "off"}, new(3), nil), []string{line}},
+		{"off and refused", call(&audit.Sandbox{Mode: "off"}, nil, &audit.Error{Kind: "policy", Message: "no"}), []string{"policy: no"}},
+		{"enforced", call(&audit.Sandbox{Enforced: true, Backend: "bubblewrap", Mode: "enforce"}, new(0), nil), nil},
+		{"a record from before the sandbox", call(&audit.Sandbox{}, new(0), nil), nil},
+		{"no sandbox object", call(nil, new(0), nil), nil},
+		{"refused for the sandbox", call(&audit.Sandbox{Mode: "enforce"}, nil, refusal), []string{`sandbox: task "build" was not run: the sandbox is unavailable: bubblewrap (bwrap) was not found on the PATH.`}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			row := rowOf(c.action, time.UTC, logTimeLayout)
+			if strings.Join(row.details, "|") != strings.Join(c.want, "|") {
+				t.Errorf("details\n got %q\nwant %q", row.details, c.want)
+			}
+		})
+	}
+}

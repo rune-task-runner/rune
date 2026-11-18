@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -219,7 +220,7 @@ func TestStartupLine(t *testing.T) {
 		{false, "", &exposure{exposed: 0, exposable: 14}, nil, "rune MCP server on stdio (0 of 14 tasks exposed)"},
 	}
 	for _, c := range cases {
-		if got := startupLine(c.http, c.addr, c.exp, c.granted); got != c.want {
+		if got := startupLine(c.http, c.addr, c.exp, c.granted, ""); got != c.want {
 			t.Errorf("startupLine(%v, %q, %v, %q) = %q, want %q", c.http, c.addr, c.exp, c.granted, got, c.want)
 		}
 	}
@@ -407,12 +408,12 @@ func TestServeMCPDefaultAddrIsQuiet(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var stderr bytes.Buffer
-	err := ServeMCP(Options{Cwd: dir, Stderr: &stderr, Ctx: ctx, MCPNoReload: true}, true, "", tokenFile(t))
+	err := ServeMCP(Options{Cwd: dir, Stderr: &stderr, Ctx: ctx, MCPNoReload: true, SandboxEnv: "off"}, true, "", tokenFile(t))
 	if err == nil {
 		t.Error("ServeMCP returned nil for a server that was stopped")
 	}
 	got := stderr.String()
-	if !strings.Contains(got, "rune MCP server on http://127.0.0.1:7777 (token required)\n") {
+	if !strings.Contains(got, "rune MCP server on http://127.0.0.1:7777 (token required; sandbox: off, tasks run unsandboxed)\n") {
 		t.Errorf("stderr lacks the startup line of the default address:\n%s", got)
 	}
 	if strings.Contains(got, "cleartext") {
@@ -430,7 +431,7 @@ func serveHTTPForTest(t *testing.T, addr string) (dir string, stderr *lockedBuff
 	}
 	stderr = &lockedBuffer{}
 	ctx, cancel := context.WithCancel(context.Background())
-	opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx}
+	opts := Options{Cwd: dir, Stderr: stderr, Ctx: ctx, SandboxEnv: "off"}
 	token := tokenFile(t)
 	done := make(chan error, 1)
 	go func() { done <- ServeMCP(opts, true, addr, token) }()
@@ -466,7 +467,7 @@ func TestServeMCPWarnsOnNonLoopbackBind(t *testing.T) {
 	if n := strings.Count(got, "cleartext"); n != 1 {
 		t.Errorf("stderr holds the warning %d times, want once:\n%s", n, got)
 	}
-	startup := strings.Index(got, "rune MCP server on http://0.0.0.0:0 (token required)\n")
+	startup := strings.Index(got, "rune MCP server on http://0.0.0.0:0 (token required; sandbox: off, tasks run unsandboxed)\n")
 	if startup < 0 || startup > strings.Index(got, cleartextLine) {
 		t.Errorf("want the startup line, then the warning:\n%s", got)
 	}
@@ -502,7 +503,7 @@ func TestServeMCPQuietOnLoopbackBind(t *testing.T) {
 		t.Errorf("ServeMCP = %v, want http.ErrServerClosed", err)
 	}
 	got := stderr.String()
-	if !strings.Contains(got, "rune MCP server on http://"+addr+" (token required)\n") {
+	if !strings.Contains(got, "rune MCP server on http://"+addr+" (token required; sandbox: off, tasks run unsandboxed)\n") {
 		t.Errorf("stderr lacks the startup line:\n%s", got)
 	}
 	if strings.Contains(got, "cleartext") {
@@ -570,5 +571,92 @@ func TestShellWord(t *testing.T) {
 		if got := shellWord(c.path, c.goos); got != c.want {
 			t.Errorf("shellWord(%q, %q) = %q, want %q", c.path, c.goos, got, c.want)
 		}
+	}
+}
+
+// Spec 053: every server states its sandbox, last in the startup line.
+func TestStartupLineSandbox(t *testing.T) {
+	cases := []struct {
+		http    bool
+		addr    string
+		granted []string
+		part    string
+		want    string
+	}{
+		{false, "", nil, "sandbox: bubblewrap", "rune MCP server on stdio (sandbox: bubblewrap)"},
+		{true, "127.0.0.1:7777", nil, "sandbox: bubblewrap", "rune MCP server on http://127.0.0.1:7777 (token required; sandbox: bubblewrap)"},
+		{false, "", []string{"clean"}, "sandbox: off, tasks run unsandboxed", "rune MCP server on stdio (destructive tasks allowed: clean; sandbox: off, tasks run unsandboxed)"},
+		{false, "", nil, "sandbox: unavailable, calls are refused", "rune MCP server on stdio (sandbox: unavailable, calls are refused)"},
+	}
+	for _, c := range cases {
+		if got := startupLine(c.http, c.addr, nil, c.granted, c.part); got != c.want {
+			t.Errorf("startupLine = %q, want %q", got, c.want)
+		}
+	}
+}
+
+// A mode that cannot be read is a usage error before any Runefile code runs.
+func TestServeMCPSandboxMode(t *testing.T) {
+	src := "[context]\nhealth:\n    @touch context.done\n\nbuild:\n    @echo hi\n"
+	bad := "maybe"
+	cases := []struct {
+		name string
+		opts Options
+		want string
+	}{
+		{"the flag", Options{MCPSandbox: &bad, SandboxEnv: "off"}, `--sandbox: "maybe" is not a mode; use enforce or off`},
+		{"the variable", Options{SandboxEnv: "maybe"}, `RUNE_SANDBOX: "maybe" is not a mode; use enforce or off`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			opts := c.opts
+			opts.Cwd, opts.Stderr = dir, &bytes.Buffer{}
+			err := ServeMCP(opts, false, "", "")
+			var usage *UsageError
+			if !errors.As(err, &usage) || err.Error() != c.want {
+				t.Errorf("error = %v, want usage error %q", err, c.want)
+			}
+			if _, statErr := os.Stat(filepath.Join(dir, "context.done")); statErr == nil {
+				t.Error("the [context] hook ran before the usage error")
+			}
+		})
+	}
+}
+
+// A server that cannot confine starts, says so, and runs no [context] task.
+func TestServeMCPUnavailableSandbox(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hook's marker needs a POSIX touch")
+	}
+	// An empty PATH has no backend on Linux, and other systems have none.
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	src := "[context]\nhealth:\n    @: > context.done\n\nbuild:\n    @echo hi\n"
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var stderr bytes.Buffer
+	_ = ServeMCP(Options{Cwd: dir, Stderr: &stderr, Ctx: ctx, MCPNoReload: true, AuditDir: t.TempDir()}, true, "", tokenFile(t))
+	got := stderr.String()
+	for _, want := range []string{
+		"warning: sandbox: ", "Every task call will be refused.",
+		"(token required; sandbox: unavailable, calls are refused)\n",
+		"context hook \"health\" failed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Index(got, "warning: sandbox: ") > strings.Index(got, "rune MCP server on") {
+		t.Errorf("the warning came after the startup line:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "context.done")); err == nil {
+		t.Error("the [context] hook ran with no sandbox")
 	}
 }

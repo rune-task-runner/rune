@@ -108,7 +108,26 @@ docker-compose run --rm test go test ./test/docs/...       # just the docs verif
 docker-compose run --rm -e CGO_ENABLED=1 test go test -race ./...
 ```
 
-`rune test` / `rune test-race` / `rune docs-check` wrap these. If you changed docs or added an
+The tasks an agent calls run in a sandbox (bubblewrap, on Linux). The tests that start a
+real one need a container that may create namespaces, so they have a service of their own:
+
+```sh
+docker-compose run --rm test-sandbox go test ./internal/sandbox/...
+docker-compose run --rm test-sandbox go test ./test/integration/... -run Sandbox
+```
+
+In the default `test` service those tests skip, and everything around the sandbox is
+still tested with a stub. `RUNE_TEST_SANDBOX=require`, which the service and the Linux CI
+job set, turns a skip into a failure. Their fixtures live under `RUNE_TEST_SANDBOX_DIR`,
+never under `/tmp`, which the sandbox replaces. A test of one rule is named
+`TestSandboxRule...`; run with `RUNE_TEST_SANDBOX_MUTATE=off` it starts its server
+unsandboxed and must fail, which shows that it tests the rule:
+
+```sh
+docker-compose run --rm -e RUNE_TEST_SANDBOX_MUTATE=off test-sandbox go test ./test/integration/... -run SandboxRule
+```
+
+`rune test` / `rune test-race` / `rune test-sandbox` / `rune docs-check` wrap these. If you changed docs or added an
 example, `rune docs-check` is the fast check; if you don't have `rune`, run the
 `docker-compose` line directly.
 

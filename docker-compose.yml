@@ -20,6 +20,30 @@ services:
       - go-build-cache:/root/.cache/go-build
     command: ["go", "test", "./..."]
 
+  # The tests that start a real sandbox (spec 053). A default container cannot
+  # create namespaces, so this one runs privileged. Their fixtures live outside
+  # /tmp, which the sandbox replaces with a private directory.
+  #
+  #   docker compose run --rm test-sandbox go test ./internal/sandbox/...
+  #   docker compose run --rm test-sandbox go test ./test/integration/... -run Sandbox
+  #
+  test-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    working_dir: /src
+    privileged: true
+    environment:
+      CGO_ENABLED: "0"
+      GOFLAGS: "-mod=mod"
+      RUNE_TEST_SANDBOX: "require"
+      RUNE_TEST_SANDBOX_DIR: /var/lib/rune-sandbox-test
+    volumes:
+      - .:/src
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    command: ["go", "test", "./internal/sandbox/..."]
+
   # Documentation site toolchain. Node runs in a container so the site builds
   # without a host Node install, matching the test service's policy.
   website:

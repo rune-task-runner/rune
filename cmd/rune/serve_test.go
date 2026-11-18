@@ -417,3 +417,45 @@ func TestServeHelpMentionsApproval(t *testing.T) {
 		}
 	}
 }
+
+// Spec 053: --sandbox reaches the options as given, and stays nil when it is
+// left out, so that RUNE_SANDBOX can decide.
+func TestServeSandboxFlag(t *testing.T) {
+	run := func(args ...string) (*string, error) {
+		var opts cli.Options
+		cmd := newServeCmd(&opts)
+		// A value that is no mode stops the command before a server starts.
+		cmd.SetArgs(args)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		err := cmd.Execute()
+		return opts.MCPSandbox, err
+	}
+	got, err := run("--sandbox", "maybe")
+	if got == nil || *got != "maybe" {
+		t.Errorf("MCPSandbox = %v, want the value as given", got)
+	}
+	if err == nil || err.Error() != `--sandbox: "maybe" is not a mode; use enforce or off` || cli.CodeFor(err) != cli.ExitUsage {
+		t.Errorf("error = %v", err)
+	}
+	if got, _ := run("--sandbox", "off", "--sandbox", "nope"); got == nil || *got != "nope" {
+		t.Errorf("the last of two flags did not win: %v", got)
+	}
+	if got, _ := run("--output-limit", ""); got != nil {
+		t.Errorf("MCPSandbox = %v without the flag", got)
+	}
+}
+
+func TestServeHelpMentionsSandbox(t *testing.T) {
+	cmd := newServeCmd(&cli.Options{})
+	for _, want := range []string{"--sandbox off", "RUNE_SANDBOX=off", "bubblewrap", "[network]", "every task call is refused"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("Long lacks %q:\n%s", want, cmd.Long)
+		}
+	}
+	if want := "rune mcp --sandbox off"; !strings.Contains(cmd.Example, want) {
+		t.Errorf("Example lacks %q:\n%s", want, cmd.Example)
+	}
+	if f := cmd.Flags().Lookup("sandbox"); f == nil || f.Usage != "confine the tasks agents call: enforce (default) or off" {
+		t.Errorf("flag = %+v", f)
+	}
+}

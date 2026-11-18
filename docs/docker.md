@@ -135,6 +135,12 @@ or tools. That keeps it tiny and secure, but it means:
 - **`python` / `node` / `agent` executor tasks** require their runtimes, which are not
   present. They will fail with a clear error rather than crash.
 
+- **The sandbox for agent tasks has no backend in the image.** The tasks an agent calls
+  normally run in [a sandbox](mcp.md#the-sandbox), which needs bubblewrap and the right to
+  create namespaces. The image has neither, so `rune mcp` there refuses every call. The
+  container is the boundary instead: start the server with `--sandbox off`, and give the
+  container only the mounts and the network the tasks should have.
+
 If you need system tools or language runtimes, either:
 
 1. Run Rune **natively** (see the [installation guide](installation.md)), or

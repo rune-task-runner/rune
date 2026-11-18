@@ -548,13 +548,20 @@ what can still happen, why removing the shell does not stop it, and what closes 
    has a way to start without it. *What closes it*: nothing, and nothing should. Rune-only
    mode limits the agent. It is not a control over the person.
 
-7. **A task is not sandboxed.** Both installed clients run an MCP server outside their
-   sandbox: Claude Code's sandbox "covers shell commands only", and MCP servers run outside
-   it (docs); Codex starts a server as a plain process, with no sandbox (source). A command
-   that the client's shell would have run inside a sandbox runs, as a Rune task, with the
-   user's full access. A Rune-only session trades an arbitrary command in a sandbox for a
-   fixed set of commands outside one. *What closes it*: enforced sandboxing of tasks, which
-   is [issue #51](https://github.com/rune-task-runner/rune/issues/51).
+7. **A task runs outside the client's sandbox.** Both installed clients run an MCP server
+   outside their sandbox: Claude Code's sandbox "covers shell commands only", and MCP
+   servers run outside it (docs); Codex starts a server as a plain process, with no sandbox
+   (source). A command that the client's shell would have run inside the client's sandbox
+   runs, as a Rune task, outside it. *What closes it*: Rune's own
+   [sandbox](../mcp.md#the-sandbox), on Linux with bubblewrap. A task an agent calls has
+   no network unless it is marked `[network]`, writes only inside the project, and cannot
+   change the Runefile, the files it loads, `.git` or the stored plans. On macOS and
+   Windows there is no sandbox: a call is refused unless the server runs with
+   `--sandbox off`, and then this entry stands as it did. *What stays open*: a task reads
+   what the user can read; a `[network]` task has the host's whole network; and the
+   client's own configuration inside the project (entry 3) is writable by a task like the
+   rest of the project. The sandbox confines tasks, not the agent: entry 1 is about the
+   agent's own file tools, which no task sandbox reaches.
 
 8. **A project that is not trusted.** The same files give different sessions. Claude Code
    applies the `deny` rules and ignores the `allow` rules (observed: c2). Codex ignores

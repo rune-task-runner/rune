@@ -55,7 +55,7 @@ func loadModule(opts Options, runefile string, allowIgnoreVersion bool) (*loaded
 // too, so a server can wait for the file that broke it (spec 043 FR-003).
 func loadModulePaths(opts Options, runefile string, allowIgnoreVersion bool) (*loadedModule, []string, error) {
 	rec := &pathRecorder{}
-	rec.add(runefile)
+	rec.addRead(runefile)
 	mod, err := loadModuleFrom(opts, runefile, allowIgnoreVersion, rec)
 	return mod, rec.paths, err
 }
@@ -122,7 +122,7 @@ func newMCPAdapter(opts Options, runefile string) (adapter *mcpAdapter, paths []
 // watched.
 func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, error) {
 	rec := &pathRecorder{}
-	rec.add(runefile)
+	rec.addRead(runefile)
 	// On the MCP/agent path, ignoring an unmet minimum_version is an operator-only
 	// opt (disabled by default) — never the CLI --ignore-version flag.
 	mod, err := loadModuleFrom(opts, runefile, opts.MCPAllowIgnoreVersion, rec)
@@ -145,6 +145,8 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 		ident:     mod.ident,
 		version:   opts.Version,
 		stderr:    operatorStderr(opts.Stderr),
+		loaded:    rec.found(),
+		missing:   rec.notFound(),
 	}, rec, nil
 }
 
@@ -179,6 +181,10 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		return err
 	}
 	flagLimit, err := parseOutputLimitFlag(opts.MCPOutputLimit)
+	if err != nil {
+		return err
+	}
+	mode, err := sandboxModeOf(opts.MCPSandbox, opts.SandboxEnv)
 	if err != nil {
 		return err
 	}
@@ -219,10 +225,19 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if err != nil {
 		return err
 	}
+	// The sandbox is looked at before any Runefile code runs: the [context]
+	// hook below is confined like every call, or refused (spec 053).
+	confine := hostSandboxState(opts, mode, adapter.root, adapter.ident.runefile)
+	if confine.enforcing() {
+		closeInheritedOnExec()
+		_ = confine.ready(ctx)
+	}
+	warnSandbox(opts.Stderr, opts.themeStderr(), confine)
 	warnNonDestructive(opts.Stderr, opts.themeStderr(), granted, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--allow", allow, adapter.tasks)
 	warnNeverExposed(opts.Stderr, opts.themeStderr(), "--deny", deny, adapter.tasks)
 	rl := &reloader{
+		sandbox:   confine,
 		opts:      opts,
 		runefile:  runefile,
 		granted:   granted,
@@ -247,7 +262,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	// the instructions of every session's initialize result (spec 021 FR-002).
 	instructions := adapter.gatherContext(ctx, opts.Stderr)
 	serverOpts := serveMCPOptions(opts.Version, runCommand(opts.File, runefile), granted, allow, deny, adapter.limit(), instructions, !opts.MCPNoReload)
-	serverOpts.Audit = &auditor{log: auditLog, warn: auditWarn}
+	serverOpts.Audit = &auditor{log: auditLog, warn: auditWarn, sandbox: confine.auditRecord}
 	srv := mcpserver.New(adapter, serverOpts)
 	// The counts are reported only when a filter was given, so the startup
 	// line of an unfiltered server does not change (spec 041 FR-016).
@@ -261,7 +276,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 		}
 	}
 	// Server chrome is dimmed like the rest of Rune's meta output (014 C3).
-	fmt.Fprintln(opts.Stderr, opts.themeStderr().Muted.Render(startupLine(useHTTP, addr, exp, destructiveOnly(granted, adapter.tasks, adapter.goos))))
+	fmt.Fprintln(opts.Stderr, opts.themeStderr().Muted.Render(startupLine(useHTTP, addr, exp, destructiveOnly(granted, adapter.tasks, adapter.goos), confine.startupPart())))
 	if !opts.MCPNoReload {
 		rl.srv = srv
 		// The reloader stops before ServeMCP returns: it writes to
@@ -452,10 +467,20 @@ func destructiveOnly(names []string, tasks map[string]*ast.Task, goos string) []
 // would without --allow and --deny.
 type exposure struct{ exposed, exposable int }
 
+// warnSandbox tells the operator, before the startup line, that the tasks
+// agents call are not confined: the sandbox is off, or cannot work here and
+// every call will be refused. A confining server prints nothing.
+func warnSandbox(w io.Writer, theme style.Theme, s *sandboxState) {
+	if text := s.startupWarning(); text != "" {
+		fmt.Fprintf(w, "%s: %s\n", theme.Warning.Render("warning"), text)
+	}
+}
+
 // startupLine is the unstyled line the server prints on stderr when it
-// starts. With no grant and no filter it is byte-identical to before spec
-// 031. exp is nil unless --allow or --deny was given (spec 041 FR-014).
-func startupLine(useHTTP bool, addr string, exp *exposure, granted []string) string {
+// starts. exp is nil unless --allow or --deny was given (spec 041 FR-014).
+// sandbox is the state of the sandbox, which every server states (spec 053);
+// "" leaves it out.
+func startupLine(useHTTP bool, addr string, exp *exposure, granted []string, sandbox string) string {
 	line := "rune MCP server on stdio"
 	var parts []string
 	if useHTTP {
@@ -467,6 +492,9 @@ func startupLine(useHTTP bool, addr string, exp *exposure, granted []string) str
 	}
 	if len(granted) > 0 {
 		parts = append(parts, "destructive tasks allowed: "+strings.Join(granted, ", "))
+	}
+	if sandbox != "" {
+		parts = append(parts, sandbox)
 	}
 	if len(parts) == 0 {
 		return line

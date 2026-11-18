@@ -3,6 +3,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,16 +35,34 @@ func Resolve(fileFlag, startDir string) (string, error) {
 	return Discover(startDir)
 }
 
+// AmbiguousError reports a directory that holds more than one Runefile.
+// Picking one of them would let a file that was added beside the Runefile
+// take its place without anyone saying so: a task an agent ran can write
+// such a file (spec 053).
+type AmbiguousError struct {
+	Dir   string
+	Names []string
+}
+
+func (e *AmbiguousError) Error() string {
+	return fmt.Sprintf("%s holds more than one Runefile (%s); remove all but one, or name one with --file", e.Dir, strings.Join(e.Names, ", "))
+}
+
 // Discover walks startDir and its ancestors, returning the absolute path of the
 // nearest Runefile / .runefile (case-insensitive). It returns ErrNotFound if
-// none exists up to the filesystem root.
+// none exists up to the filesystem root, and an *AmbiguousError for a
+// directory that holds more than one.
 func Discover(startDir string) (string, error) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
 		return "", err
 	}
 	for {
-		if path, ok := runefileIn(dir); ok {
+		path, err := runefileIn(dir)
+		if err != nil {
+			return "", err
+		}
+		if path != "" {
 			return path, nil
 		}
 		parent := filepath.Dir(dir)
@@ -54,12 +73,14 @@ func Discover(startDir string) (string, error) {
 	}
 }
 
-// runefileIn returns the path of a Runefile in dir, if one exists.
-func runefileIn(dir string) (string, bool) {
+// runefileIn returns the path of the Runefile in dir, or "" when there is
+// none.
+func runefileIn(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return "", false
+		return "", nil
 	}
+	var names []string
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
@@ -67,9 +88,15 @@ func runefileIn(dir string) (string, bool) {
 		lower := strings.ToLower(e.Name())
 		for _, cand := range candidateNames {
 			if lower == cand {
-				return filepath.Join(dir, e.Name()), true
+				names = append(names, e.Name())
 			}
 		}
 	}
-	return "", false
+	switch len(names) {
+	case 0:
+		return "", nil
+	case 1:
+		return filepath.Join(dir, names[0]), nil
+	}
+	return "", &AmbiguousError{Dir: dir, Names: names}
 }

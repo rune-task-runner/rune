@@ -162,6 +162,17 @@ type auditor struct {
 	transport string
 	// parent is the id of the agent run whose endpoint this is, or "".
 	parent string
+	// sandbox reports how a call that starts now is confined (spec 053).
+	// Nil records that nothing was enforced, as before there was a sandbox.
+	sandbox func(context.Context) *audit.Sandbox
+}
+
+// sandboxOf is the sandbox part of a call's start record.
+func (a *auditor) sandboxOf(ctx context.Context) *audit.Sandbox {
+	if a.sandbox == nil {
+		return &audit.Sandbox{}
+	}
+	return a.sandbox(ctx)
 }
 
 var _ mcpserver.Auditor = (*auditor)(nil)
@@ -175,7 +186,7 @@ func (a *auditor) transportOf(s mcpserver.AuditSession) string {
 
 // CallStarted writes the start of a call and flushes it, so the start is on
 // the disk before anything of the call runs.
-func (a *auditor) CallStarted(_ context.Context, call mcpserver.AuditCall) error {
+func (a *auditor) CallStarted(ctx context.Context, call mcpserver.AuditCall) error {
 	rec := audit.Record{
 		Type:      audit.TypeCall,
 		Phase:     audit.PhaseStart,
@@ -189,7 +200,7 @@ func (a *auditor) CallStarted(_ context.Context, call mcpserver.AuditCall) error
 		Tool:      call.Tool,
 		Task:      call.Task,
 		Project:   auditProject(call.Identity),
-		Sandbox:   &audit.Sandbox{},
+		Sandbox:   a.sandboxOf(ctx),
 	}
 	if call.Supplied != nil {
 		rec.Arguments = &audit.Arguments{Supplied: jsonText(call.Supplied)}
@@ -361,11 +372,25 @@ func effectiveJSON(args []mcpserver.AuditArg) json.RawMessage {
 // is no repository, a repository with no commit yet, and a git that could
 // not be asked. A dirty flag git did not give is left nil, never false.
 func gitState(ctx context.Context, dir string) (state, commit string, dirty *bool) {
+	return gitStateWith(ctx, dir, plainGit)
+}
+
+// gitCommandFunc builds the command that runs `git -C dir args...`. Where
+// bodies are confined it is the sandbox's, so that git is confined too.
+type gitCommandFunc func(ctx context.Context, dir string, args ...string) *exec.Cmd
+
+// plainGit runs git as a process of this user.
+func plainGit(ctx context.Context, dir string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+}
+
+// gitStateWith is gitState with the command the caller builds git with.
+func gitStateWith(ctx context.Context, dir string, command gitCommandFunc) (state, commit string, dirty *bool) {
 	run := func(args ...string) (stdout, stderr string, err error) {
 		ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 		defer cancel()
 		// core.fsmonitor can name a program, and a status call would start it.
-		cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir, "-c", "core.fsmonitor=false"}, args...)...)
+		cmd := command(ctx, dir, append([]string{"-c", "core.fsmonitor=false"}, args...)...)
 		// The message that says "not a repository" is matched below.
 		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
 		var out, errOut bytes.Buffer
@@ -433,7 +458,8 @@ func (e *engine) startAgentRun(task string, adapter *mcpAdapter) (*agentRun, *au
 	if err := log.Append(run.start, rec, true); err != nil {
 		return nil, nil, fmt.Errorf("audit log: %w", err)
 	}
-	return run, &auditor{log: log, warn: warn, transport: auditTransportAgent, parent: run.id}, nil
+	// A nil state records, as it reports itself, that nothing is enforced.
+	return run, &auditor{log: log, warn: warn, transport: auditTransportAgent, parent: run.id, sandbox: adapter.sandbox.auditRecord}, nil
 }
 
 // finish records how the agent ended. A failure to write it is a warning:

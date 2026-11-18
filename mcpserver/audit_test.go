@@ -1171,3 +1171,16 @@ func TestRedactorOf(t *testing.T) {
 		t.Errorf("an audit engine gave %q", got)
 	}
 }
+
+// An engine that refuses a call because no sandbox can confine it records
+// its own kind, and the call ends as a refusal with no exit code (spec 053).
+func TestAuditKindSandboxIsARefusal(t *testing.T) {
+	c := &CallAudit{}
+	c.SetErrorKind(AuditKindSandbox)
+	// The first kind recorded stays.
+	c.SetErrorKind(AuditKindPolicy)
+	end := c.end(context.Background(), time.Now(), nil)
+	if end.Outcome != AuditRefused || end.ErrorKind != AuditKindSandbox || end.ExitCode != nil {
+		t.Errorf("end = %+v", end)
+	}
+}

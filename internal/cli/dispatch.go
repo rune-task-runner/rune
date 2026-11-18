@@ -63,6 +63,13 @@ type Options struct {
 	// RUNE_AUDIT_RETENTION_DAYS. Servers and `rune log` read them (spec 052).
 	AuditDir       string
 	AuditRetention string
+	// MCPSandbox is the raw --sandbox value: whether rune serve confines the
+	// tasks agents call. Nil means the flag was not given, and SandboxEnv
+	// decides. SandboxEnv is RUNE_SANDBOX, which the endpoint of an (agent)
+	// task reads as well. Neither is settable from a Runefile: a task could
+	// edit that (spec 053).
+	MCPSandbox *string
+	SandboxEnv string
 	// MCPNoReload is --no-reload: rune serve keeps the tasks it read at
 	// start and watches no file. Only ServeMCP reads it (spec 043).
 	MCPNoReload bool

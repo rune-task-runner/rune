@@ -751,3 +751,73 @@ func TestAgentEndpointNeverAsks(t *testing.T) {
 		t.Error("clean ran on the agent endpoint")
 	}
 }
+
+// reachTasks lists the called task first, then every task its run can reach
+// in the order a run reaches them (spec 053): the same walk reach reports
+// from.
+func TestReachTasks(t *testing.T) {
+	src := "all: dep && after || rescue\n    @echo all\n" +
+		"dep:\n    @echo dep\n" +
+		"after: || afterfail\n    @echo after\n" +
+		"afterfail:\n    @echo afterfail\n" +
+		"rescue: rescuedep || unchained\n    @echo rescue\n" +
+		"rescuedep:\n    @echo rescuedep\n" +
+		"unchained:\n    @echo unchained\n" +
+		"[windows]\nwin: all\n    @echo win\n" +
+		"alone: win\n    @echo alone\n"
+	a := adapterFor(t, src)
+	a.goos = "linux"
+	names := func(task string) []string {
+		var out []string
+		for _, t := range a.reachTasks(a.tasks[task]) {
+			out = append(out, t.Name)
+		}
+		return out
+	}
+	// A failure hook runs its dependencies and not its own failure hooks.
+	if got, want := names("all"), []string{"all", "dep", "after", "afterfail", "rescue", "rescuedep"}; !slices.Equal(got, want) {
+		t.Errorf("all reaches %v, want %v", got, want)
+	}
+	if got, want := names("rescue"), []string{"rescue", "rescuedep", "unchained"}; !slices.Equal(got, want) {
+		t.Errorf("rescue reaches %v, want %v", got, want)
+	}
+	// A task for another system is skipped, and so is what it would run.
+	if got, want := names("alone"), []string{"alone"}; !slices.Equal(got, want) {
+		t.Errorf("alone reaches %v, want %v", got, want)
+	}
+}
+
+// The recorder tells the files a load read from those it looked for and did
+// not find (spec 053).
+func TestPathRecorderFoundAndMissing(t *testing.T) {
+	dir := t.TempDir()
+	have := filepath.Join(dir, "have.rune")
+	if err := os.WriteFile(have, []byte("x:\n    @true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := &pathRecorder{}
+	runefile := filepath.Join(dir, "Runefile")
+	rec.addRead(runefile)
+	src := rec.wrap(func(path string) ([]byte, bool) {
+		content, err := os.ReadFile(path)
+		return content, err == nil
+	})
+	missing := filepath.Join(dir, "missing.rune")
+	for _, path := range []string{missing, have, missing, have} {
+		src(path)
+	}
+	if got, want := rec.found(), []string{runefile, have}; !slices.Equal(got, want) {
+		t.Errorf("found = %v, want %v", got, want)
+	}
+	if got, want := rec.notFound(), []string{missing}; !slices.Equal(got, want) {
+		t.Errorf("notFound = %v, want %v", got, want)
+	}
+	// A file that appears later was read after all.
+	if err := os.WriteFile(missing, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src(missing)
+	if got := rec.notFound(); len(got) != 0 {
+		t.Errorf("notFound = %v after the file was read", got)
+	}
+}

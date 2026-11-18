@@ -87,9 +87,13 @@ type Project struct {
 	Git              *Git   `json:"git,omitempty"`
 }
 
-// Sandbox states whether a sandbox was enforced for a call.
+// Sandbox states whether a sandbox was enforced for a call, which backend
+// enforced it, and the operator's mode: "enforce" or "off". A record written
+// before spec 053 has neither a backend nor a mode.
 type Sandbox struct {
-	Enforced bool `json:"enforced"`
+	Enforced bool   `json:"enforced"`
+	Backend  string `json:"backend,omitempty"`
+	Mode     string `json:"mode,omitempty"`
 }
 
 // Error says why an action ran no task.

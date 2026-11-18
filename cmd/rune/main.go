@@ -35,6 +35,10 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if code, handled := internalCommand(ctx, args); handled {
+		return code
+	}
+
 	var opts cli.Options
 
 	// The reported version is the build-stamped one in production, with a
@@ -72,6 +76,24 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, cli.BannerLine(tolerantTheme(root, os.Stderr), msg))
 	}
 	return cli.CodeFor(err)
+}
+
+// internalCommand handles the two ways Rune starts itself inside a sandbox
+// (spec 053): as the worker of one task body, and as the probe that shows a
+// sandbox starts. Both are a single argument that begins with "--", which no
+// task name does, and are checked before the command line is parsed so that
+// no task or command can take their place.
+func internalCommand(ctx context.Context, args []string) (code int, handled bool) {
+	if len(args) != 1 {
+		return 0, false
+	}
+	switch args[0] {
+	case cli.SandboxProbeArg:
+		return cli.ExitSuccess, true
+	case cli.SandboxWorkerArg:
+		return cli.SandboxWorker(ctx), true
+	}
+	return 0, false
 }
 
 // addCommands registers the built-in subcommands. Registering any subcommand

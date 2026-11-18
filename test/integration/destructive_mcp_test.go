@@ -130,7 +130,7 @@ func TestDestructiveMCP_GrantForms(t *testing.T) {
 func TestDestructiveMCP_StartupLineListsGrant(t *testing.T) {
 	dir := writeRunefile(t, destructiveRunefile)
 	_, _, stderr := toolCall(t, dir, []string{"--allow-destructive", "clean,reset"}, "build")
-	want := "rune MCP server on stdio (destructive tasks allowed: clean, reset)"
+	want := offLine("stdio", "destructive tasks allowed: clean, reset")
 	if !strings.Contains(stderr, want) {
 		t.Errorf("stderr lacks %q:\n%s", want, stderr)
 	}
@@ -303,8 +303,8 @@ func TestDestructiveMCP_BadFlagStopsServer(t *testing.T) {
 func TestDestructiveMCP_NonDestructiveGrantWarns(t *testing.T) {
 	dir := writeRunefile(t, destructiveRunefile)
 	r := runWithStdin(t, dir, "", "--color=never", "mcp", "--allow-destructive", "build")
-	want := "warning: --allow-destructive build has no effect: task \"build\" is not destructive\n" +
-		"rune MCP server on stdio\n"
+	want := offStderr("warning: --allow-destructive build has no effect: task \"build\" is not destructive\n" +
+		offLine("stdio", ""))
 	if r.stderr != want {
 		t.Errorf("stderr = %q, want %q", r.stderr, want)
 	}
