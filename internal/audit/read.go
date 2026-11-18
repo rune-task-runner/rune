@@ -63,10 +63,19 @@ type Damage struct {
 // An action is in the file of the day it started on, so the days of a range
 // of start times are exactly the files to read.
 func Read(dir string, from, to time.Time) ([]Action, []Damage, error) {
-	entries, err := os.ReadDir(dir)
+	// The directory is inspected first: Windows reports a file in its place
+	// as a path that does not exist, which would read as an empty log.
+	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("read audit log: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, nil, fmt.Errorf("read audit log: %s is not a directory", dir)
+	}
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read audit log: %w", err)
 	}

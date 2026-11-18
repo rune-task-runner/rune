@@ -215,8 +215,9 @@ func TestReadErrors(t *testing.T) {
 		if err := os.WriteFile(file, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := Read(file, time.Time{}, time.Time{}); err == nil {
-			t.Fatal("no error")
+		_, _, err := Read(file, time.Time{}, time.Time{})
+		if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+			t.Fatalf("got %v", err)
 		}
 	})
 	t.Run("a day file is a directory", func(t *testing.T) {
