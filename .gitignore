@@ -22,6 +22,8 @@ editors/vscode/*.vsix
 *.swp
 .idea/
 .vscode/
+# The fixtures of rune agent init hold the files it writes for VS Code.
+!internal/agentinit/testdata/**/.vscode/
 
 # ai
 .claude/*
