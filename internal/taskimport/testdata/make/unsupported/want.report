@@ -1,0 +1,37 @@
+Makefile:1: unsupported: include config.mk: the file is not read, so its rules and variables are not imported
+Makefile:2: unsupported: -include local.mk: the file is not read, so its rules and variables are not imported
+Makefile:3: unsupported: variable NOW: its value uses a make function, a substitution or an automatic variable: $(shell date)
+Makefile:4: unsupported: variable SRC: its value uses a make function, a substitution or an automatic variable: $(wildcard *.c)
+Makefile:5: unsupported: variable OBJ: its value uses a make function, a substitution or an automatic variable: $(SRC:.c=.o)
+Makefile:6: unsupported: variable CFLAGS: it is appended to with +=
+Makefile:7: unsupported: variable TWICE: it is set more than once (line 8)
+Makefile:9: unsupported: variable HASH: its value runs a command (!=), which import never runs
+Makefile:10: unsupported: variable a.b: its name is not a valid Rune name
+Makefile:11: unsupported: variable LATE: it uses "AFTER" before it is set
+Makefile:14: unsupported: MAKEFLAGS: special make variables are not converted
+Makefile:15: unsupported: override CC = gcc: the directive is not converted
+Makefile:15: unsupported: variable CC: it is set by the override directive
+Makefile:16: unsupported: vpath %.c src: the directive is not converted
+Makefile:18: unsupported: define banner: multi-line variables are not converted
+Makefile:22: unsupported: ifdef: conditional blocks are not evaluated: lines 22 to 26 are not imported
+Makefile:29: unsupported: .SUFFIXES: special targets and suffix rules are not converted
+Makefile:30: unsupported: .c.o: special targets and suffix rules are not converted
+Makefile:33: converted: all
+Makefile:35: unsupported: app.o -> app-o: a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp
+Makefile:38: unsupported: pattern rule %.o: Rune has no pattern rules and does not build by timestamp
+Makefile:41: unsupported: dist/app -> dist-app: a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp
+Makefile:44: unsupported: stamp: it uses the variable "NOW" of line 3, which was not converted
+Makefile:47: unsupported: recurse: it uses $(MAKE), which the Makefile does not set (an environment or built-in make variable)
+Makefile:50: unsupported: auto: it uses the automatic variable $@
+Makefile:53: unsupported: func: it uses a make function or substitution: $(notdir $(CURDIR))
+Makefile:56: unsupported: undefined: it uses the variable "CC" of line 15, which was not converted
+Makefile:59: unsupported: single: it uses the make variable $V
+Makefile:62: unsupported: multi1: a rule with several targets
+Makefile:62: unsupported: multi2: a rule with several targets
+Makefile:65: unsupported: inline: a command on the rule line after a semicolon
+Makefile:67: unsupported: order: order-only prerequisites
+Makefile:70: unsupported: twice: a double-colon rule
+Makefile:73: unsupported: dup: the target has more than one rule
+Makefile:79: unsupported: late: it uses the variable "LATE" of line 11, which was not converted
+Makefile:82: unsupported: target-specific variable: a variable set for one target is not converted
+summary: 1 converted, 0 review, 35 unsupported, 0 wrappers

@@ -1,0 +1,83 @@
+# Imported from Taskfile.yml by rune import.
+
+OK := "fine"
+
+ok:
+    echo {{OK}}
+
+# Not imported (Taskfile.yml:30): it uses the variable "NOW" of line 12, which was not converted
+stamp *args:
+    @echo 'rune import: "stamp" (Taskfile.yml:30) was not imported: it uses the variable "NOW" of line 12, which was not converted' >&2; exit 1
+
+# Not imported (Taskfile.yml:34): it uses {{.MISSING}}, which the Taskfile does not set
+undefined *args:
+    @echo 'rune import: "undefined" (Taskfile.yml:34) was not imported: it uses {{{{.MISSING}}, which the Taskfile does not set' >&2; exit 1
+
+# Not imported (Taskfile.yml:38): it uses {{.TASK}}, which the Taskfile does not set
+special *args:
+    @echo 'rune import: "special" (Taskfile.yml:38) was not imported: it uses {{{{.TASK}}, which the Taskfile does not set' >&2; exit 1
+
+# Not imported (Taskfile.yml:42): the command spans several lines: echo one
+multiline *args:
+    @echo 'rune import: "multiline" (Taskfile.yml:42) was not imported: the command spans several lines: echo one' >&2; exit 1
+
+# Not imported (Taskfile.yml:48): a command with the key "for"
+loop *args:
+    @echo 'rune import: "loop" (Taskfile.yml:48) was not imported: a command with the key "for"' >&2; exit 1
+
+# Not imported (Taskfile.yml:53): a command with the key "defer"
+deferred *args:
+    @echo 'rune import: "deferred" (Taskfile.yml:53) was not imported: a command with the key "defer"' >&2; exit 1
+
+# Not imported (Taskfile.yml:58): the key "preconditions" is not converted; the key "requires" is not converted; the key "status" is not converted; the key "platforms" is not converted
+conditions *args:
+    @echo 'rune import: "conditions" (Taskfile.yml:58) was not imported: the key "preconditions" is not converted; the key "requires" is not converted; the key "status" is not converted; the key "platforms" is not converted' >&2; exit 1
+
+# Not imported (Taskfile.yml:69): the key "vars" is not converted; it uses {{.X}}, which the Taskfile does not set
+local-vars *args:
+    @echo 'rune import: "local-vars" (Taskfile.yml:69) was not imported: the key "vars" is not converted; it uses {{{{.X}}, which the Taskfile does not set' >&2; exit 1
+
+# Not imported (Taskfile.yml:75): a task call between shell commands
+between *args:
+    @echo 'rune import: "between" (Taskfile.yml:75) was not imported: a task call between shell commands' >&2; exit 1
+
+# Not imported (Taskfile.yml:81): a task call with vars
+with-vars *args:
+    @echo 'rune import: "with-vars" (Taskfile.yml:81) was not imported: a task call with vars' >&2; exit 1
+
+# Not imported (Taskfile.yml:86): task calls at the start of cmds together with deps: Task runs the deps concurrently and the calls one at a time
+both *args:
+    @echo 'rune import: "both" (Taskfile.yml:86) was not imported: task calls at the start of cmds together with deps: Task runs the deps concurrently and the calls one at a time' >&2; exit 1
+
+# Not imported (Taskfile.yml:92): it runs "ok" more than once, and Rune runs a task once per invocation
+twice *args:
+    @echo 'rune import: "twice" (Taskfile.yml:92) was not imported: it runs "ok" more than once, and Rune runs a task once per invocation' >&2; exit 1
+
+# Not imported (Taskfile.yml:98): the prompt is not one line of plain text
+prompts *args:
+    @echo 'rune import: "prompts" (Taskfile.yml:98) was not imported: the prompt is not one line of plain text' >&2; exit 1
+
+# Not imported (Taskfile.yml:105): generates without sources
+outputs-only *args:
+    @echo 'rune import: "outputs-only" (Taskfile.yml:105) was not imported: generates without sources' >&2; exit 1
+
+# Not imported (Taskfile.yml:110): the sources are not a list of literal patterns
+excluded *args:
+    @echo 'rune import: "excluded" (Taskfile.yml:110) was not imported: the sources are not a list of literal patterns' >&2; exit 1
+
+# Not imported (Taskfile.yml:117): the value of env WHEN is not literal text; the dir is not a literal path
+dynamic-env *args:
+    @echo 'rune import: "dynamic-env" (Taskfile.yml:117) was not imported: the value of env WHEN is not literal text; the dir is not a literal path' >&2; exit 1
+
+# Not imported (Taskfile.yml:125): a wildcard task name
+start *args:
+    @echo 'rune import: "start:*" (Taskfile.yml:125) was not imported: a wildcard task name' >&2; exit 1
+
+remote-call: lib-build
+
+number:
+    5
+
+# Not imported (Taskfile.yml:129): not defined in Taskfile.yml
+lib-build *args:
+    @echo 'rune import: "lib:build" (Taskfile.yml:129) was not imported: not defined in Taskfile.yml' >&2; exit 1

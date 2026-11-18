@@ -1,0 +1,74 @@
+# Imported from justfile by rune import.
+
+ok := "fine"
+
+build:
+    echo building {{ok}}
+
+# Not imported (justfile:15): it uses the variable "version" of line 5, which was not converted
+tag *args:
+    @echo 'rune import: "tag" (justfile:15) was not imported: it uses the variable "version" of line 5, which was not converted' >&2; exit 1
+
+# Not imported (justfile:18): it uses the variable "label" of line 7, which was not converted
+labelled *args:
+    @echo 'rune import: "labelled" (justfile:18) was not imported: it uses the variable "label" of line 7, which was not converted' >&2; exit 1
+
+# Not imported (justfile:21): the interpolation {{uppercase(name)}} is not a plain variable or parameter
+upper *args:
+    @echo 'rune import: "upper" (justfile:21) was not imported: the interpolation {{{{uppercase(name)}} is not a plain variable or parameter' >&2; exit 1
+
+# Not imported (justfile:24): a shebang task runs as a script, which is not converted
+script *args:
+    @echo 'rune import: "script" (justfile:24) was not imported: a shebang task runs as a script, which is not converted' >&2; exit 1
+
+# Not imported (justfile:29): the attribute [script("bash")] is not converted
+other *args:
+    @echo 'rune import: "other" (justfile:29) was not imported: the attribute [script("bash")] is not converted' >&2; exit 1
+
+# Not imported (justfile:34): the attribute [positional-arguments] is not converted
+[private]
+positional *args:
+    @echo 'rune import: "positional" (justfile:34) was not imported: the attribute [positional-arguments] is not converted' >&2; exit 1
+
+# Not imported (justfile:37): parameter "v" has a default that is not a string literal; the interpolation {{v}} is not a plain variable or parameter
+default *args:
+    @echo 'rune import: "default" (justfile:37) was not imported: parameter "v" has a default that is not a string literal; the interpolation {{{{v}} is not a plain variable or parameter' >&2; exit 1
+
+# Not imported (justfile:40): parameter "$name" is exported to the environment
+exported *args:
+    @echo 'rune import: "exported" (justfile:40) was not imported: parameter "$name" is exported to the environment' >&2; exit 1
+
+needs: build missing (also-missing "x")
+    echo after
+
+# Not imported (justfile:46): the argument "home" of dependency "build" is not a string literal, a parameter or a variable
+args *args:
+    @echo 'rune import: "args" (justfile:46) was not imported: the argument "home" of dependency "build" is not a string literal, a parameter or a variable' >&2; exit 1
+
+# Not imported (justfile:49): not a complete shell command on one line: echo "unterminated
+open *args:
+    @echo 'rune import: "open" (justfile:49) was not imported: not a complete shell command on one line: echo "unterminated' >&2; exit 1
+
+# Not imported (justfile:52): the command starts with "-", which Rune reads as a line prefix: -version
+dashing *args:
+    @echo 'rune import: "dashing" (justfile:52) was not imported: the command starts with "-", which Rune reads as a line prefix: -version' >&2; exit 1
+
+# Not imported (justfile:55): the interpolation {{nope}} is not a plain variable or parameter
+undefined *args:
+    @echo 'rune import: "undefined" (justfile:55) was not imported: the interpolation {{{{nope}} is not a plain variable or parameter' >&2; exit 1
+
+# Not imported (justfile:59): the task is defined more than once, which Rune has no counterpart for
+per-os *args:
+    @echo 'rune import: "per-os" (justfile:59) was not imported: the task is defined more than once, which Rune has no counterpart for' >&2; exit 1
+
+# Not imported (justfile:68): it uses the variable "mod" of line 66, which was not converted
+uses-mod *args:
+    @echo 'rune import: "uses-mod" (justfile:68) was not imported: it uses the variable "mod" of line 66, which was not converted' >&2; exit 1
+
+# Not imported (justfile:43): not defined in justfile
+missing *args:
+    @echo 'rune import: "missing" (justfile:43) was not imported: not defined in justfile' >&2; exit 1
+
+# Not imported (justfile:43): not defined in justfile
+also-missing *args:
+    @echo 'rune import: "also-missing" (justfile:43) was not imported: not defined in justfile' >&2; exit 1

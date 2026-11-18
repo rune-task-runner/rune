@@ -139,7 +139,7 @@ jobs:
       # Regenerate the golden-bearing packages, then fail if anything drifted —
       # ensures committed goldens match a fresh regeneration (never hand-edited).
       - name: Regenerate goldens
-        run: go test ./internal/diag ./internal/lexer ./internal/parser ./internal/cli ./test/corpus -update
+        run: go test ./internal/diag ./internal/lexer ./internal/parser ./internal/cli ./internal/taskimport ./test/corpus -update
       - name: Check goldens are committed
         run: |
           if ! git diff --exit-code; then

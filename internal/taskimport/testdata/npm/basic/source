@@ -1,0 +1,14 @@
+{
+  "name": "demo",
+  "version": "1.2.3",
+  "scripts": {
+    "test": "jest --ci",
+    "prebuild": "rm -rf dist",
+    "build": "tsc -p .",
+    "postbuild": "cp README.md dist/",
+    "test:unit": "jest unit",
+    "fmt": "prettier --write . && echo '{{done}}'",
+    "serve": "node server.js",
+    "empty": ""
+  }
+}

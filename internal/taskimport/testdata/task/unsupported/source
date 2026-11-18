@@ -1,0 +1,133 @@
+version: "3.38"
+
+includes:
+  lib: ./lib/Taskfile.yml
+  remote: https://example.com/Taskfile.yml
+
+dotenv: [".env"]
+output: prefixed
+set: [errexit]
+
+vars:
+  NOW:
+    sh: date
+  LIST: [a, b]
+  REF:
+    ref: .LIST
+  USES_NOW: "at {{.NOW}}"
+  UPPER: "{{upper .NAME}}"
+  OK: fine
+
+env:
+  STAMP:
+    sh: date +%s
+
+tasks:
+  ok:
+    cmds:
+      - echo {{.OK}}
+
+  stamp:
+    cmds:
+      - echo {{.NOW}}
+
+  undefined:
+    cmds:
+      - echo {{.MISSING}}
+
+  special:
+    cmds:
+      - echo {{.TASK}} {{OS}}
+
+  multiline:
+    cmds:
+      - |
+        echo one
+        echo two
+
+  loop:
+    cmds:
+      - for: [a, b]
+        cmd: echo {{.ITEM}}
+
+  deferred:
+    cmds:
+      - defer: rm -f tmp
+      - touch tmp
+
+  conditions:
+    preconditions:
+      - test -f go.mod
+    requires:
+      vars: [OK]
+    status:
+      - test -f dist/app
+    platforms: [linux]
+    cmds:
+      - echo ok
+
+  local-vars:
+    vars:
+      X: 1
+    cmds:
+      - echo {{.X}}
+
+  between:
+    cmds:
+      - echo first
+      - task: ok
+      - echo last
+
+  with-vars:
+    cmds:
+      - task: ok
+        vars: {A: 1}
+
+  both:
+    deps: [ok]
+    cmds:
+      - task: stamp
+      - echo both
+
+  twice:
+    cmds:
+      - task: ok
+      - echo middle
+      - task: ok
+
+  prompts:
+    prompt:
+      - First?
+      - Second?
+    cmds:
+      - echo yes
+
+  outputs-only:
+    generates: [dist/app]
+    cmds:
+      - echo build
+
+  excluded:
+    sources:
+      - "*.go"
+      - exclude: "*_test.go"
+    cmds:
+      - echo build
+
+  dynamic-env:
+    env:
+      WHEN:
+        sh: date
+    dir: "{{.OK}}/sub"
+    cmds:
+      - echo env
+
+  start:*:
+    cmds:
+      - echo start
+
+  remote-call:
+    cmds:
+      - task: lib:build
+
+  number: 5

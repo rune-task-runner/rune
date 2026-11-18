@@ -1,0 +1,13 @@
+version := `git describe`
+
+# Print the version.
+tag: build
+    echo {{version}}
+
+[private]
+_stamp:
+    #!/bin/sh
+    date > stamp
+
+build: _stamp missing
+    go build ./...

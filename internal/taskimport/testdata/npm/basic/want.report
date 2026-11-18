@@ -1,0 +1,9 @@
+package.json:5: converted: test
+package.json:6: converted: prebuild
+package.json:7: converted: build
+package.json:8: converted: postbuild
+package.json:9: converted: test:unit -> test-unit
+package.json:10: converted: fmt
+package.json:11: review: serve: serve is also a rune command: run the task with rune -- serve
+package.json:12: converted: empty
+summary: 7 converted, 1 review, 0 unsupported, 0 wrappers

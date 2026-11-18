@@ -1,0 +1,82 @@
+include config.mk
+-include local.mk
+NOW := $(shell date)
+SRC = $(wildcard *.c)
+OBJ = $(SRC:.c=.o)
+CFLAGS += -Wall
+TWICE = a
+TWICE = b
+HASH != git rev-parse HEAD
+a.b = dotted
+LATE := $(AFTER)
+AFTER = x
+.DEFAULT_GOAL := all
+MAKEFLAGS += --no-builtin-rules
+override CC = gcc
+vpath %.c src
+
+define banner
+echo banner
+endef
+
+ifdef DEBUG
+OPT = -g
+debug:
+	echo debug
+endif
+
+.PHONY: all stamp recurse auto func undefined single multi1 multi2 inline order twice dup late
+.SUFFIXES:
+.c.o:
+	cc -c $<
+
+all: app.o stamp
+
+app.o: app.c
+	cc -c -o $@ $<
+
+%.o: %.c
+	cc -c -o $@ $<
+
+dist/app: app.o
+	cc -o dist/app app.o
+
+stamp:
+	echo $(NOW)
+
+recurse:
+	$(MAKE) -C sub
+
+auto:
+	echo $@
+
+func:
+	echo $(notdir $(CURDIR))
+
+undefined:
+	echo $(CC)
+
+single:
+	echo $V
+
+multi1 multi2:
+	echo multi
+
+inline: ; echo inline
+
+order: | all
+	echo order
+
+twice::
+	echo twice
+
+dup:
+	echo one
+
+dup:
+	echo two
+
+late:
+	echo $(LATE) $(TWICE)
+
+all: CFLAGS = -O2

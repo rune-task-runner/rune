@@ -1,0 +1,37 @@
+# Imported from package.json by rune import.
+
+path_sep := if os() == "windows" { ";" } else { ":" }
+
+# Not imported (package.json:4): it uses $npm_config_registry, which only npm sets
+registry *args:
+    @echo 'rune import: "registry" (package.json:4) was not imported: it uses $npm_config_registry, which only npm sets' >&2; exit 1
+
+# Not imported (package.json:5): it uses $INIT_CWD, which only npm sets
+where *args:
+    @echo 'rune import: "where" (package.json:5) was not imported: it uses $INIT_CWD, which only npm sets' >&2; exit 1
+
+# Not imported (package.json:6): the command spans several lines: echo one
+lines *args:
+    @echo 'rune import: "lines" (package.json:6) was not imported: the command spans several lines: echo one' >&2; exit 1
+
+# Not imported (package.json:7): not a complete shell command on one line: if exist dist (rmdir /s /q dist
+windows *args:
+    @echo 'rune import: "windows" (package.json:7) was not imported: not a complete shell command on one line: if exist dist (rmdir /s /q dist' >&2; exit 1
+
+# Not imported (package.json:8): the script is not text
+number *args:
+    @echo 'rune import: "number" (package.json:8) was not imported: the script is not text' >&2; exit 1
+
+# Not imported (package.json:9): the script is not text
+nothing *args:
+    @echo 'rune import: "nothing" (package.json:9) was not imported: the script is not text' >&2; exit 1
+
+# Not imported (package.json:10): the command starts with "-", which Rune reads as a line prefix: -v
+dash *args:
+    @echo 'rune import: "dash" (package.json:10) was not imported: the command starts with "-", which Rune reads as a line prefix: -v' >&2; exit 1
+
+[env("npm_lifecycle_event", "ok")]
+[env("npm_package_name", "demo")]
+ok *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    echo ok {{quote_each(args)}}

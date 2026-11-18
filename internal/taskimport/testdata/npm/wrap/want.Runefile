@@ -1,0 +1,12 @@
+# Imported from package.json by rune import.
+
+path_sep := if os() == "windows" { ";" } else { ":" }
+
+# Runs "npm run publish:all" (wrapper, needs npm).
+publish-all *args:
+    npm run publish:all -- {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "build")]
+build *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    tsc {{quote_each(args)}}

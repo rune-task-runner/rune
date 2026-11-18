@@ -1,0 +1,58 @@
+# Imported from justfile by rune import.
+
+out := "dist"
+bin := out + "/" + "app"
+greeting := "hello, " + "world"
+
+# Build the app.
+build target="debug": gen
+    @echo "building {{target}} into {{bin}}"
+    go build -o {{bin}} ./...
+
+# Generate code.
+[private]
+gen:
+    go generate ./...
+
+# Run the tests of the given packages.
+test +packages: build && (report "tests done")
+    go test {{packages}}
+
+lint *paths:
+    -golangci-lint run {{ paths }}
+    @-echo "lint finished"
+
+# Print a message.
+report message="ok":
+    @echo "{{message}}: {{greeting}}"
+
+# A quiet recipe prints only the lines marked with @.
+quiet:
+    @echo "not printed"
+    echo "printed"
+
+long:
+    echo one two three
+
+# Deploy to an environment.
+[confirm("Deploy now?")]
+[group("ops")]
+[no-exit-message]
+[working-directory("deploy")]
+deploy env: (build "release") test-all
+    ./deploy.sh {{env}}
+
+[linux]
+[macos]
+[doc("Runs everything")]
+test-all: (test "./...")
+
+[no-cd]
+[windows]
+[unix]
+[confirm]
+here:
+    pwd
+
+_helper:
+    echo '{{{{ not an interpolation }}'

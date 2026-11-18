@@ -1,0 +1,5 @@
+Makefile:3: converted: all
+Makefile:7: wrapper: gen: it uses $(MAKE), which the Makefile does not set (an environment or built-in make variable)
+Makefile:10: wrapper: dist/app -> dist-app: a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp
+Makefile:13: unsupported: pattern rule %.o: Rune has no pattern rules and does not build by timestamp
+summary: 1 converted, 0 review, 1 unsupported, 2 wrappers

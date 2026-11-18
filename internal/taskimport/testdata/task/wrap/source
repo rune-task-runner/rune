@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build for every platform.
+    cmds:
+      - for: [linux, darwin]
+        cmd: GOOS={{.ITEM}} go build ./...
+
+  secret:
+    internal: true
+    preconditions:
+      - test -f key
+    cmds:
+      - echo secret
+
+  start:*:
+    cmds:
+      - echo start
+
+  all:
+    cmds:
+      - task: build
+      - task: secret
+      - task: lib:lint

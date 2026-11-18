@@ -1,0 +1,5 @@
+Makefile:3: converted: all
+Makefile:3: unsupported: node_modules: not defined in Makefile
+Makefile:6: review: build: not declared .PHONY: make skips it when a file named "build" is up to date; Rune always runs it
+Makefile:9: review: install: not declared .PHONY: make skips it when a file named "install" is up to date; Rune always runs it
+summary: 1 converted, 2 review, 1 unsupported, 0 wrappers

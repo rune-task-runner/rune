@@ -1,0 +1,20 @@
+# Imported from justfile by rune import.
+
+where:
+    (cd sub)
+    pwd
+
+env:
+    (export GREETING=hello)
+    @echo "greeting: $GREETING"
+    (FOO=bar)
+    echo "$FOO"
+
+last:
+    echo first
+    cd sub
+
+block:
+    (if true; then cd sub; fi)
+    (cd sub && pwd)
+    pwd

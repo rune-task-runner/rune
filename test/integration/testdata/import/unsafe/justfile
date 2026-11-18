@@ -1,0 +1,6 @@
+stamp := `touch MARKER`
+import 'missing.just'
+
+build:
+    touch MARKER
+    echo {{stamp}}

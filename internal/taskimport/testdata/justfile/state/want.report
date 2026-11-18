@@ -1,0 +1,5 @@
+justfile:1: converted: where
+justfile:5: converted: env
+justfile:11: converted: last
+justfile:15: converted: block
+summary: 4 converted, 0 review, 0 unsupported, 0 wrappers

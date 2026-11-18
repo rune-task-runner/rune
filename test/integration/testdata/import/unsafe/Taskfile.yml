@@ -1,0 +1,18 @@
+version: '3'
+
+includes:
+  remote: https://example.invalid/Taskfile.yml
+  local: ./missing
+
+vars:
+  NOW:
+    sh: touch MARKER
+
+env:
+  STAMP:
+    sh: touch MARKER
+
+tasks:
+  build:
+    cmds:
+      - touch MARKER

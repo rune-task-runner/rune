@@ -12,6 +12,9 @@ Two ways to compose Runefiles:
 - **`mod`** loads another file as a **namespace**, invoked with a prefix (`rune api::build`) —
   good for isolating per-service or per-package tasks in a monorepo.
 
+The `import` statement is not the `rune import` command, which writes a Runefile from the
+task file of another runner: see [Import from another runner](import-from-other-runners.md).
+
 ## Syntax
 
 ```rune

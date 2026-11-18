@@ -1,0 +1,14 @@
+set:
+    echo set
+
+if:
+    echo if
+
+task-if:
+    echo kept
+
+_private_one:
+    echo private
+
+all: set if task-if _private_one
+    echo all

@@ -1,0 +1,9 @@
+package.json:4: unsupported: registry: it uses $npm_config_registry, which only npm sets
+package.json:5: unsupported: where: it uses $INIT_CWD, which only npm sets
+package.json:6: unsupported: lines: the command spans several lines: echo one
+package.json:7: unsupported: windows: not a complete shell command on one line: if exist dist (rmdir /s /q dist
+package.json:8: unsupported: number: the script is not text
+package.json:9: unsupported: nothing: the script is not text
+package.json:10: unsupported: dash: the command starts with "-", which Rune reads as a line prefix: -v
+package.json:11: converted: ok
+summary: 1 converted, 0 review, 7 unsupported, 0 wrappers

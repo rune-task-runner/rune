@@ -1,0 +1,65 @@
+# Imported from Makefile by rune import.
+
+AFTER := "x"
+
+all: app-o stamp
+
+# Not imported (Makefile:35): a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp
+app-o *args:
+    @echo 'rune import: "app.o" (Makefile:35) was not imported: a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp' >&2; exit 1
+
+# Not imported (Makefile:41): a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp
+dist-app *args:
+    @echo 'rune import: "dist/app" (Makefile:41) was not imported: a file target: make rebuilds it only when its prerequisites are newer, and Rune does not build by timestamp' >&2; exit 1
+
+# Not imported (Makefile:44): it uses the variable "NOW" of line 3, which was not converted
+stamp *args:
+    @echo 'rune import: "stamp" (Makefile:44) was not imported: it uses the variable "NOW" of line 3, which was not converted' >&2; exit 1
+
+# Not imported (Makefile:47): it uses $(MAKE), which the Makefile does not set (an environment or built-in make variable)
+recurse *args:
+    @echo 'rune import: "recurse" (Makefile:47) was not imported: it uses $(MAKE), which the Makefile does not set (an environment or built-in make variable)' >&2; exit 1
+
+# Not imported (Makefile:50): it uses the automatic variable $@
+auto *args:
+    @echo 'rune import: "auto" (Makefile:50) was not imported: it uses the automatic variable $@' >&2; exit 1
+
+# Not imported (Makefile:53): it uses a make function or substitution: $(notdir $(CURDIR))
+func *args:
+    @echo 'rune import: "func" (Makefile:53) was not imported: it uses a make function or substitution: $(notdir $(CURDIR))' >&2; exit 1
+
+# Not imported (Makefile:56): it uses the variable "CC" of line 15, which was not converted
+undefined *args:
+    @echo 'rune import: "undefined" (Makefile:56) was not imported: it uses the variable "CC" of line 15, which was not converted' >&2; exit 1
+
+# Not imported (Makefile:59): it uses the make variable $V
+single *args:
+    @echo 'rune import: "single" (Makefile:59) was not imported: it uses the make variable $V' >&2; exit 1
+
+# Not imported (Makefile:62): a rule with several targets
+multi1 *args:
+    @echo 'rune import: "multi1" (Makefile:62) was not imported: a rule with several targets' >&2; exit 1
+
+# Not imported (Makefile:62): a rule with several targets
+multi2 *args:
+    @echo 'rune import: "multi2" (Makefile:62) was not imported: a rule with several targets' >&2; exit 1
+
+# Not imported (Makefile:65): a command on the rule line after a semicolon
+inline *args:
+    @echo 'rune import: "inline" (Makefile:65) was not imported: a command on the rule line after a semicolon' >&2; exit 1
+
+# Not imported (Makefile:67): order-only prerequisites
+order *args:
+    @echo 'rune import: "order" (Makefile:67) was not imported: order-only prerequisites' >&2; exit 1
+
+# Not imported (Makefile:70): a double-colon rule
+twice *args:
+    @echo 'rune import: "twice" (Makefile:70) was not imported: a double-colon rule' >&2; exit 1
+
+# Not imported (Makefile:73): the target has more than one rule
+dup *args:
+    @echo 'rune import: "dup" (Makefile:73) was not imported: the target has more than one rule' >&2; exit 1
+
+# Not imported (Makefile:79): it uses the variable "LATE" of line 11, which was not converted
+late *args:
+    @echo 'rune import: "late" (Makefile:79) was not imported: it uses the variable "LATE" of line 11, which was not converted' >&2; exit 1

@@ -1,0 +1,10 @@
+.PHONY: all
+
+all: build node_modules
+
+# Not declared phony.
+build:
+	go build ./...
+
+install: build
+	cp app /usr/local/bin

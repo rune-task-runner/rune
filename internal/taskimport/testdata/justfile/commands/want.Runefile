@@ -1,0 +1,19 @@
+# Imported from justfile by rune import.
+
+# Show the recipes.
+help:
+    @echo "usage"
+
+serve port="8080":
+    ./server --port {{port}}
+
+[confirm("Deploy?")]
+deploy: build
+    ./deploy.sh
+
+[confirm]
+clean:
+    rm -rf dist
+
+build:
+    go build ./...

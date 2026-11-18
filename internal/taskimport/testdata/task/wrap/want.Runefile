@@ -1,0 +1,20 @@
+# Imported from Taskfile.yml by rune import.
+
+# Runs "task build" (wrapper, needs task). Build for every platform.
+build *args:
+    task --taskfile Taskfile.yml build -- {{quote_each(args)}}
+
+# Not imported (Taskfile.yml:10): the key "preconditions" is not converted
+[private]
+secret *args:
+    @echo 'rune import: "secret" (Taskfile.yml:10) was not imported: the key "preconditions" is not converted' >&2; exit 1
+
+# Not imported (Taskfile.yml:17): a wildcard task name
+start *args:
+    @echo 'rune import: "start:*" (Taskfile.yml:17) was not imported: a wildcard task name' >&2; exit 1
+
+all: build secret lib-lint
+
+# Not imported (Taskfile.yml:21): not defined in Taskfile.yml
+lib-lint *args:
+    @echo 'rune import: "lib:lint" (Taskfile.yml:21) was not imported: not defined in Taskfile.yml' >&2; exit 1

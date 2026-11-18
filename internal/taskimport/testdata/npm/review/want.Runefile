@@ -1,0 +1,38 @@
+# Imported from package.json by rune import.
+
+path_sep := if os() == "windows" { ";" } else { ":" }
+
+[env("npm_lifecycle_event", "ci")]
+ci *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    npm run lint && npm run test {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "lint")]
+lint *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    eslint . {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "test")]
+test *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    npx jest {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "prepare")]
+prepare *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    husky {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "preprebuild")]
+preprebuild *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    echo first {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "prebuild")]
+prebuild *args:
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    echo second {{quote_each(args)}}
+
+[env("npm_lifecycle_event", "build")]
+build *args: prebuild
+    @export PATH="$PWD/node_modules/.bin{{path_sep}}$PATH"
+    echo third {{quote_each(args)}}

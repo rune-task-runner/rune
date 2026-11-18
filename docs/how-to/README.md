@@ -19,6 +19,7 @@ for a guided tour, see the **[user guide](../user-guide/README.md)**.
 | [Secret masking](secret-masking.md) | Credentials masked as `***` in all output | [secret-masking](../examples/secret-masking/README.md) |
 | [Imports & modules](imports-and-modules.md) | Compose and namespace task files | [monorepo](../examples/monorepo/README.md) |
 | [OS filtering](os-filtering.md) | Tasks scoped to an operating system | [os-filtering](../examples/os-filtering/README.md) |
+| [Import from another runner](import-from-other-runners.md) | Turn a justfile, Makefile, Taskfile or npm scripts into a Runefile | |
 | [AI agents (MCP)](../mcp.md) | Expose tasks to agents; security model | [agent-driven](../examples/agent-driven/README.md) |
 
 Working on a whole project? See the **[use-case walkthroughs](../use-cases/README.md)** for

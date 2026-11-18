@@ -1,0 +1,14 @@
+{
+  "name": "demo",
+  "version": "1.2.3",
+  "scripts": {
+    "prebuild": "echo pre $npm_lifecycle_event",
+    "build": "mytool one",
+    "postbuild": "echo post $npm_package_name $npm_package_version",
+    "fail": "echo before && exit 3",
+    "postfail": "echo never",
+    "where": "echo \"${PWD##*/}\"",
+    "braces": "echo '{{x}}'",
+    "test:unit": "echo unit"
+  }
+}

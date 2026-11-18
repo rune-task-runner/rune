@@ -1,0 +1,7 @@
+# Imported from Makefile by rune import.
+
+build:
+    echo build
+
+check:
+    echo check

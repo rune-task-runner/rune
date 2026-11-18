@@ -1,0 +1,32 @@
+Taskfile.yml:3: unsupported: includes: included Taskfiles are not read, so their tasks are not imported
+Taskfile.yml:7: unsupported: dotenv: the key is not converted, and it changes how every task runs
+Taskfile.yml:8: unsupported: output: the key is not converted
+Taskfile.yml:9: unsupported: set: the key is not converted, and it changes how every task runs
+Taskfile.yml:12: unsupported: variable NOW: its value runs a command (sh), which import never runs
+Taskfile.yml:14: unsupported: variable LIST: its value is not text, a number or a boolean
+Taskfile.yml:15: unsupported: variable REF: its value is not text, a number or a boolean
+Taskfile.yml:17: unsupported: variable USES_NOW: it uses "NOW", which is not a converted variable
+Taskfile.yml:18: unsupported: variable UPPER: its value is not built from text and plain variables
+Taskfile.yml:22: unsupported: env STAMP: its value is not literal text, so no task has it
+Taskfile.yml:26: review: ok: see Taskfile.yml:7; see Taskfile.yml:9; see Taskfile.yml:22
+Taskfile.yml:30: unsupported: stamp: it uses the variable "NOW" of line 12, which was not converted
+Taskfile.yml:34: unsupported: undefined: it uses {{.MISSING}}, which the Taskfile does not set
+Taskfile.yml:38: unsupported: special: it uses {{.TASK}}, which the Taskfile does not set
+Taskfile.yml:42: unsupported: multiline: the command spans several lines: echo one
+Taskfile.yml:48: unsupported: loop: a command with the key "for"
+Taskfile.yml:53: unsupported: deferred: a command with the key "defer"
+Taskfile.yml:58: unsupported: conditions: the key "preconditions" is not converted; the key "requires" is not converted; the key "status" is not converted; the key "platforms" is not converted
+Taskfile.yml:69: unsupported: local-vars: the key "vars" is not converted; it uses {{.X}}, which the Taskfile does not set
+Taskfile.yml:75: unsupported: between: a task call between shell commands
+Taskfile.yml:81: unsupported: with-vars: a task call with vars
+Taskfile.yml:86: unsupported: both: task calls at the start of cmds together with deps: Task runs the deps concurrently and the calls one at a time
+Taskfile.yml:92: unsupported: twice: it runs "ok" more than once, and Rune runs a task once per invocation
+Taskfile.yml:98: unsupported: prompts: the prompt is not one line of plain text
+Taskfile.yml:105: unsupported: outputs-only: generates without sources
+Taskfile.yml:110: unsupported: excluded: the sources are not a list of literal patterns
+Taskfile.yml:117: unsupported: dynamic-env: the value of env WHEN is not literal text; the dir is not a literal path
+Taskfile.yml:125: unsupported: start:* -> start: a wildcard task name
+Taskfile.yml:129: review: remote-call: see Taskfile.yml:7; see Taskfile.yml:9; see Taskfile.yml:22
+Taskfile.yml:129: unsupported: lib:build -> lib-build: not defined in Taskfile.yml
+Taskfile.yml:133: review: number: see Taskfile.yml:7; see Taskfile.yml:9; see Taskfile.yml:22
+summary: 0 converted, 3 review, 28 unsupported, 0 wrappers

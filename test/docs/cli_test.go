@@ -73,3 +73,43 @@ func globalFlagsSection(cli string) string {
 	}
 	return rest
 }
+
+// TestCLIReferenceImportFlags keeps the row of `rune import` in docs/cli.md
+// equal to the command: every flag of `rune import --help` is named there, and
+// the row names no flag the command does not have (spec 054, SC-008).
+func TestCLIReferenceImportFlags(t *testing.T) {
+	help := runRune(t, "", "import", "--help")
+	if help.code != 0 {
+		t.Fatalf("`rune import --help` exit = %d, want 0\nstderr:\n%s", help.code, help.stderr)
+	}
+	cliBytes, err := os.ReadFile(filepath.Join(repoRoot, "docs", "cli.md"))
+	if err != nil {
+		t.Fatalf("read docs/cli.md: %v", err)
+	}
+	row := ""
+	for line := range strings.SplitSeq(string(cliBytes), "\n") {
+		if strings.HasPrefix(line, "| `rune import ") {
+			row = line
+		}
+	}
+	if row == "" {
+		t.Fatal("docs/cli.md has no row for `rune import`")
+	}
+	_, flags, found := strings.Cut(help.stdout, "Flags:")
+	if !found {
+		t.Fatalf("`rune import --help` has no Flags section:\n%s", help.stdout)
+	}
+	flags, _, _ = strings.Cut(flags, "Global Flags:")
+	binFlags, docFlags := longFlags(flags), longFlags(row)
+	delete(binFlags, "help")
+	for f := range binFlags {
+		if !docFlags[f] {
+			t.Errorf("flag --%s of `rune import` is not in its row of docs/cli.md", f)
+		}
+	}
+	for f := range docFlags {
+		if !binFlags[f] {
+			t.Errorf("the row of `rune import` in docs/cli.md names --%s, which the command does not have", f)
+		}
+	}
+}

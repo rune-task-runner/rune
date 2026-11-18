@@ -1,0 +1,49 @@
+greeting := "hello"
+target := greeting + ", world"
+
+# Print the greeting.
+hello:
+    @echo "{{target}}"
+
+# A directory change lasts for one line.
+where:
+    @cd sub
+    @echo "${PWD##*/}"
+
+# A variable set on one line is gone on the next.
+state:
+    @export NAME=one
+    @echo "name=${NAME:-unset}"
+
+# Stop at the failing line.
+fail:
+    @echo before
+    @exit 3
+    @echo after
+
+# Go on after a line whose failure is ignored.
+ignore:
+    @-false
+    @echo after
+
+# Print one argument.
+arg value="none":
+    @printf '[%s]\n' "{{value}}"
+
+# Print every argument.
+count +items:
+    @printf '[%s]' {{items}}
+    @echo
+
+# Run the dependencies first and the hook last.
+all: first second && last
+    @echo all
+
+first:
+    @echo first
+
+second: first
+    @echo second
+
+last:
+    @echo last

@@ -1,0 +1,13 @@
+set shell := ["bash", "-uc"]
+set dotenv-load
+set windows-shell := [
+  "powershell.exe",
+  "-c",
+]
+
+build:
+    echo build
+
+# Already to review.
+test: build
+    echo test

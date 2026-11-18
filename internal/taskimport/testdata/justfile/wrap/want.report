@@ -1,0 +1,6 @@
+justfile:1: unsupported: variable version: its value runs a command (backtick), which import never runs
+justfile:4: wrapper: tag: it uses the variable "version" of line 1, which was not converted
+justfile:8: wrapper: _stamp: a shebang task runs as a script, which is not converted
+justfile:12: converted: build
+justfile:12: unsupported: missing: not defined in justfile
+summary: 1 converted, 0 review, 2 unsupported, 2 wrappers

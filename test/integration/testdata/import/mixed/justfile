@@ -1,0 +1,13 @@
+version := `git describe --tags`
+
+# Converts.
+build:
+    @echo build
+
+# Uses a variable that runs a command.
+tag:
+    @echo {{version}}
+
+# Depends on a recipe that does not convert.
+release: build tag
+    @echo release
