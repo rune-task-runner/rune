@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -644,11 +645,11 @@ func TestInsideProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, target := range []string{filepath.Join(dir, "a", "b", "c.json"), filepath.Join(dir, "x.json"), filepath.Join(dir, "a")} {
-		if err := insideProject(dir, target); err != nil {
+		if err := insideProject(dir, target, agentInitScope); err != nil {
 			t.Errorf("insideProject(%s) = %v", target, err)
 		}
 	}
-	if err := insideProject(filepath.Join(dir, "missing"), filepath.Join(dir, "missing", "x")); err == nil {
+	if err := insideProject(filepath.Join(dir, "missing"), filepath.Join(dir, "missing", "x"), agentInitScope); err == nil {
 		t.Error("a project directory that does not exist is accepted")
 	}
 }
@@ -712,5 +713,194 @@ func TestErrorDiags(t *testing.T) {
 	}
 	if got := errorDiags(diag.List{warning}); got != nil {
 		t.Errorf("errorDiags of warnings = %+v, want none", got)
+	}
+}
+
+// writePlanned removes a file marked for removal, and a write that fails
+// later puts it back with its bytes (spec 056).
+func TestWritePlannedRemovesAndPutsBack(t *testing.T) {
+	dir := t.TempDir()
+	gone, kept := filepath.Join(dir, "gone.md"), filepath.Join(dir, "sub", "new.md")
+	if err := os.WriteFile(gone, []byte("old text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := []plannedFile{
+		{target: kept, shown: "sub/new.md", new: []byte("new text\n")},
+		{target: gone, shown: "gone.md", old: []byte("old text\n"), existed: true, remove: true},
+	}
+	if err := writePlanned(files, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(gone); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the file marked for removal is still there: %v", err)
+	}
+	if got := readFile(t, kept); got != "new text\n" {
+		t.Errorf("the new file holds %q", got)
+	}
+
+	// The removal comes first now, and the write after it fails.
+	if err := os.WriteFile(gone, []byte("old text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "sub")); err != nil {
+		t.Fatal(err)
+	}
+	slices.Reverse(files)
+	err := writePlanned(files, func(string, []byte) error { return errors.New("disk is full") })
+	wantErr[*CommandFailure](t, err, "sub/new.md: disk is full")
+	if got := readFile(t, gone); got != "old text\n" {
+		t.Errorf("the removed file was put back as %q", got)
+	}
+	if got := dirNames(t, dir); got != "gone.md" {
+		t.Errorf("after the failed run the directory holds %q", got)
+	}
+
+	// A file that cannot be removed fails the run with its name.
+	err = writePlanned([]plannedFile{{target: filepath.Join(dir, "absent.md"), shown: "absent.md", remove: true}}, nil)
+	var failure *CommandFailure
+	if !errors.As(err, &failure) || !strings.HasPrefix(err.Error(), "absent.md: ") {
+		t.Errorf("err = %v, want a failure that names absent.md", err)
+	}
+}
+
+// A file marked for removal that is a symbolic link loses the link and keeps
+// the file behind it, so no link without a file is left for the next run. A
+// write that fails later puts the link back (spec 056).
+func TestWritePlannedRemovesALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need a privilege on Windows")
+	}
+	dir := t.TempDir()
+	behind, link := filepath.Join(dir, "behind.md"), filepath.Join(dir, "tasks.md")
+	if err := os.WriteFile(behind, []byte("old text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("behind.md", link); err != nil {
+		t.Fatal(err)
+	}
+	remove := plannedFile{target: link, shown: "tasks.md", old: []byte("old text\n"), existed: true, remove: true}
+	if err := writePlanned([]plannedFile{remove}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := dirNames(t, dir); got != "behind.md" {
+		t.Errorf("after the removal the directory holds %q, want the file behind the link alone", got)
+	}
+	if got := readFile(t, behind); got != "old text\n" {
+		t.Errorf("the file behind the link holds %q", got)
+	}
+
+	if err := os.Symlink("behind.md", link); err != nil {
+		t.Fatal(err)
+	}
+	later := plannedFile{target: filepath.Join(dir, "new.md"), shown: "new.md", new: []byte("new text\n")}
+	err := writePlanned([]plannedFile{remove, later}, func(string, []byte) error { return errors.New("disk is full") })
+	wantErr[*CommandFailure](t, err, "new.md: disk is full")
+	if dest, err := os.Readlink(link); err != nil || dest != "behind.md" {
+		t.Errorf("the link was put back as %q, %v", dest, err)
+	}
+	if got := dirNames(t, dir); got != "behind.md tasks.md" {
+		t.Errorf("after the failed run the directory holds %q", got)
+	}
+}
+
+// A link whose file does not exist yet is written through like any other:
+// the file appears where the link leads and the link stays a link. A write
+// that fails later takes the file away again and leaves the link.
+func TestWritePlannedWritesThroughALinkWithoutAFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need a privilege on Windows")
+	}
+	// The directory as the system resolves it, which is how a path that was
+	// read through a link comes back.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join("docs", "agents.md")
+	link, behind := filepath.Join(dir, "AGENTS.md"), filepath.Join(dir, dest)
+	if err := os.Symlink(dest, link); err != nil {
+		t.Fatal(err)
+	}
+	if got := writeTarget(link); got != behind {
+		t.Errorf("writeTarget = %s, want %s", got, behind)
+	}
+	if got, plain := writeTarget(filepath.Join(dir, "new.md")), filepath.Join(dir, "new.md"); got != plain {
+		t.Errorf("writeTarget of a path that is no link = %s, want %s", got, plain)
+	}
+	isLink := func() {
+		t.Helper()
+		if got, err := os.Readlink(link); err != nil || got != dest {
+			t.Errorf("the link now leads to %q, %v", got, err)
+		}
+	}
+
+	through := plannedFile{target: link, shown: "AGENTS.md", new: []byte("new text\n")}
+	if err := writePlanned([]plannedFile{through}, nil); err != nil {
+		t.Fatal(err)
+	}
+	isLink()
+	if got := readFile(t, behind); got != "new text\n" {
+		t.Errorf("the file behind the link holds %q", got)
+	}
+
+	if err := os.RemoveAll(filepath.Join(dir, "docs")); err != nil {
+		t.Fatal(err)
+	}
+	later := plannedFile{target: filepath.Join(dir, "new.md"), shown: "new.md", new: []byte("new text\n")}
+	err = writePlanned([]plannedFile{through, later}, func(path string, data []byte) error {
+		if filepath.Base(path) == "new.md" {
+			return errors.New("disk is full")
+		}
+		return writeFileAtomic(path, data)
+	})
+	wantErr[*CommandFailure](t, err, "new.md: disk is full")
+	isLink()
+	if got := dirNames(t, dir); got != "AGENTS.md" {
+		t.Errorf("after the failed run the directory holds %q", got)
+	}
+}
+
+// A removed file that a failed run puts back gets its permissions back too:
+// the file is gone by then, so the write cannot copy them from it.
+func TestWritePlannedPutsBackTheModeOfARemovedFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no permission bits to lose")
+	}
+	dir := t.TempDir()
+	private := filepath.Join(dir, "tasks.md")
+	if err := os.WriteFile(private, []byte("old text\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files := []plannedFile{
+		{target: private, shown: "tasks.md", old: []byte("old text\n"), existed: true, remove: true},
+		{target: filepath.Join(dir, "new.md"), shown: "new.md", new: []byte("new text\n")},
+	}
+	err := writePlanned(files, func(string, []byte) error { return errors.New("disk is full") })
+	wantErr[*CommandFailure](t, err, "new.md: disk is full")
+	info, err := os.Stat(private)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("the removed file came back as %v, %v, want mode 0600", info.Mode().Perm(), err)
+	}
+	if got := readFile(t, private); got != "old text\n" {
+		t.Errorf("the removed file came back holding %q", got)
+	}
+}
+
+// The message of insideProject ends with the sentence its caller gives:
+// which command it is, and what it writes.
+func TestInsideProjectNamesItsCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need a privilege on Windows")
+	}
+	dir, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, "out")); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "out", "AGENTS.md")
+	for _, scope := range []string{agentInitScope, exportScope} {
+		err := insideProject(dir, target, scope)
+		if err == nil || !strings.HasPrefix(err.Error(), "out leads outside the project, to ") || !strings.HasSuffix(err.Error(), ". "+scope) {
+			t.Errorf("insideProject with %q = %v", scope, err)
+		}
 	}
 }

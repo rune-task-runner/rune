@@ -214,6 +214,12 @@ replace it in silence.
 `agent` is a built-in command: `rune agent init` sets an agent client up. **Fix:** run the
 task with `rune -- agent`.
 
+### `rune export` asks for a format, not my `export` task
+
+`export` is a built-in command: `rune export agents-md` writes
+[instructions for agents](how-to/agent-instructions.md) from the Runefile. **Fix:** run the
+task with `rune -- export`.
+
 ### A cached task ran when you expected a skip
 
 `[cache]` re-runs (rather than falsely skipping) when a declared **output is missing** or an

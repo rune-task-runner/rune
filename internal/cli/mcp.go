@@ -161,6 +161,16 @@ func (a *mcpAdapter) reach(t *ast.Task) (destructive []string, network bool) {
 // reachTasks lists t and then every task a run of t can reach through its
 // dependencies and hooks, each once, in the order a run first reaches them.
 func (a *mcpAdapter) reachTasks(t *ast.Task) []*ast.Task {
+	// A run skips a task unavailable on this host, and so never reaches
+	// what that task would run (spec 033 FR-006).
+	return reachTasks(a.tasks, t, func(next *ast.Task) bool { return next.AvailableOn(a.goos) })
+}
+
+// reachTasks is the walk behind mcpAdapter.reachTasks: it reaches a task
+// only when available says a run would not skip it. An export passes a
+// predicate that is always true, so that what it states does not depend on
+// the host (spec 056).
+func reachTasks(tasks map[string]*ast.Task, t *ast.Task, available func(*ast.Task) bool) []*ast.Task {
 	reached := []*ast.Task{t}
 	// A task run as a failure hook runs its dependencies and && hooks but not
 	// its own || hooks: the scheduler does not chain post-mortems. hookOnly
@@ -169,10 +179,8 @@ func (a *mcpAdapter) reachTasks(t *ast.Task) []*ast.Task {
 	hookOnly := map[string]bool{}
 	var walk func(task *ast.Task, runs, failHooks bool)
 	visit := func(name string, failHook bool) {
-		next, ok := a.tasks[name]
-		// A run skips a task unavailable on this host, and so never reaches
-		// what that task would run (spec 033 FR-006).
-		if !ok || !next.AvailableOn(a.goos) {
+		next, ok := tasks[name]
+		if !ok || !available(next) {
 			return
 		}
 		switch {

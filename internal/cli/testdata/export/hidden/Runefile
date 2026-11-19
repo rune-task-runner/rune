@@ -1,0 +1,17 @@
+# The one public task.
+build: _prepare
+    @echo build
+
+# Marked private.
+[private]
+secret:
+    @echo secret
+
+# Private by its name.
+_prepare:
+    @echo prepare
+
+# Project health for agents.
+[context]
+health:
+    @echo healthy

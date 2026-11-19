@@ -160,3 +160,46 @@ func TestFormatPlan(t *testing.T) {
 		t.Errorf("formatting is not idempotent:\nonce:\n%s\ntwice:\n%s", once, twice)
 	}
 }
+
+// Expr is the canonical text of one expression: what the formatter writes
+// for it, and what an export shows for a default that is not a literal.
+func TestExpr(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"string literal", `"a b"`, `"a b"`},
+		{"variable", `region`, `region`},
+		{"concatenation", `"v"+tag`, `"v" + tag`},
+		{"path join", `root/"bin"`, `root / "bin"`},
+		{"function call", `env("TAG","latest")`, `env("TAG", "latest")`},
+		{"conditional", `if os()=="linux" {"a"} else {"b"}`, `if os() == "linux" { "a" } else { "b" }`},
+		// The parser keeps no parentheses. Without them these two would
+		// read as (root / prefix) + "bin" and as a conditional followed by
+		// text that belongs to no expression.
+		{"grouped right operand", `root/(prefix+"bin")`, `root / (prefix + "bin")`},
+		{"conditional before an operator", `(if a=="" {"x"} else {"y"})+"z"`, `(if a == "" { "x" } else { "y" }) + "z"`},
+		{"grouped left operand", `(root/prefix)+"bin"`, `root / prefix + "bin"`},
+		{"conditional after an operator", `"z"+if a=="" {"x"} else {"y"}`, `"z" + if a == "" { "x" } else { "y" }`},
+	}
+	parse := func(t *testing.T, src string) string {
+		t.Helper()
+		file, diags := parser.Parse("Runefile", "t p="+src+":\n    @true\n")
+		if diags.HasErrors() || len(file.Tasks) != 1 || len(file.Tasks[0].Params) != 1 {
+			t.Fatalf("%s does not parse as one default: %v", src, diags)
+		}
+		return Expr(file.Tasks[0].Params[0].Default)
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := parse(t, c.src)
+			if got != c.want {
+				t.Errorf("Expr = %s, want %s", got, c.want)
+			}
+			// The text is source: read again, it is the same expression.
+			if again := parse(t, got); again != got {
+				t.Errorf("Expr of its own text = %s, want %s", again, got)
+			}
+		})
+	}
+	if got := Expr(nil); got != "" {
+		t.Errorf("Expr(nil) = %q, want the empty text", got)
+	}
+}

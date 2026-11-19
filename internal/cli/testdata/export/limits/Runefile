@@ -1,0 +1,58 @@
+# Deploy the service.
+[confirm("Deploy now?")]
+[agent-allow(env="staging")]
+deploy env:enum("staging","prod"):
+    @echo deploy {{env}}
+
+# Run the tests.
+[readonly]
+test:
+    @echo test
+
+# Ship to production.
+ship: test (deploy "prod")
+    @echo shipped
+
+# Remove everything.
+[confirm]
+_wipe:
+    @echo wipe
+
+# Run the nightly job.
+nightly: || _wipe
+    @echo nightly
+
+# Prepare the Windows build.
+[windows]
+winprep: _wipe
+    @echo winprep
+
+# Ship the Windows build.
+winship: winprep
+    @echo winship
+
+# Publish, to production by default.
+[agent-allow(env="staging")]
+publish env:enum("staging","prod")="prod":
+    @echo publish {{env}}
+
+# Roll out.
+[agent-allow(env="staging")]
+rollout force:boolean="false" env="prod":
+    @echo rollout {{force}} {{env}}
+
+# Plan the infrastructure change.
+[plan(file="tfplan", summary="tfplan.txt")]
+plan:
+    @echo plan > tfplan
+    @echo summary > tfplan.txt
+
+# Apply the reviewed plan.
+[applies("plan")]
+apply:
+    @echo apply "$RUNE_PLAN_FILE"
+
+# Fetch the dependencies.
+[network]
+fetch:
+    @echo fetch

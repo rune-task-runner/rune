@@ -1,0 +1,5 @@
+mod ops
+
+# Build the app.
+build:
+    @echo build

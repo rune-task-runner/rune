@@ -1,0 +1,7 @@
+# Nothing here is public.
+_only:
+    @echo only
+
+[private]
+another:
+    @echo another

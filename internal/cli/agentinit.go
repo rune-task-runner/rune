@@ -205,7 +205,7 @@ func readClientFiles(dir string, paths []string) (map[string][]byte, error) {
 	files := make(map[string][]byte, len(paths))
 	for _, rel := range paths {
 		target := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := insideProject(dir, target); err != nil {
+		if err := insideProject(dir, target, agentInitScope); err != nil {
 			return nil, &UsageError{Err: err}
 		}
 		data, err := os.ReadFile(target)
@@ -220,11 +220,15 @@ func readClientFiles(dir string, paths []string) (map[string][]byte, error) {
 	return files, nil
 }
 
+// agentInitScope is what insideProject says for `rune agent init`.
+const agentInitScope = "rune agent init writes only inside the project"
+
 // insideProject refuses a target that a symbolic link takes out of the
 // project directory. `.claude` linked to the settings directory of the user
 // is a real setup, and writing through it would change settings that are
-// not the project's.
-func insideProject(dir, target string) error {
+// not the project's. scope is the sentence that ends the message: which
+// command it is, and what it writes.
+func insideProject(dir, target, scope string) error {
 	root, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return err
@@ -246,23 +250,53 @@ func insideProject(dir, target string) error {
 	}
 	rel, err := filepath.Rel(root, resolved)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("%s leads outside the project, to %s. rune agent init writes only inside the project", shown, filepath.ToSlash(resolved))
+		return fmt.Errorf("%s leads outside the project, to %s. %s", shown, filepath.ToSlash(resolved), scope)
 	}
 	return nil
 }
 
-// writeClientFiles writes the files a plan changed, in its order. When one
-// cannot be written, the files this run already wrote are put back as they
-// were, so a failure never leaves half a setup. write is the function that
-// writes one file; nil is the real one.
+// writeClientFiles writes the files a plan changed, in its order. write is
+// the function that writes one file; nil is the real one.
 func writeClientFiles(dir string, files []agentinit.File, write func(string, []byte) error) error {
+	var planned []plannedFile
+	for _, f := range files {
+		if f.Status() == "unchanged" {
+			continue
+		}
+		planned = append(planned, plannedFile{
+			target:  filepath.Join(dir, filepath.FromSlash(f.Path)),
+			shown:   f.Path,
+			old:     f.Old,
+			new:     f.New,
+			existed: f.Existed,
+		})
+	}
+	return writePlanned(planned, write)
+}
+
+// plannedFile is one file a command is about to write or remove: where it
+// is, how an error names it, what it holds now and what it is to hold.
+type plannedFile struct {
+	target   string
+	shown    string
+	old, new []byte
+	existed  bool
+	remove   bool
+}
+
+// writePlanned writes and removes the files given, in their order. When one
+// cannot be written, the files this run already changed are put back as
+// they were, so a failure never leaves half a result. write is the function
+// that writes one file; nil is the real one.
+func writePlanned(files []plannedFile, write func(string, []byte) error) error {
 	if write == nil {
 		write = writeFileAtomic
 	}
 	type written struct {
-		target string
-		file   agentinit.File
-		made   []string // the directories this run created for it
+		file plannedFile
+		made []string    // the directories this run created for it
+		link string      // where a removed symbolic link led
+		mode fs.FileMode // the permissions of a removed file
 	}
 	var done []written
 	removeDirs := func(dirs []string) {
@@ -271,33 +305,70 @@ func writeClientFiles(dir string, files []agentinit.File, write func(string, []b
 		}
 	}
 	for _, f := range files {
-		if f.Status() == "unchanged" {
-			continue
-		}
-		target := filepath.Join(dir, filepath.FromSlash(f.Path))
-		// A link inside the project is written through, not replaced.
-		if resolved, err := filepath.EvalSymlinks(target); err == nil {
-			target = resolved
-		}
-		made, err := makeDirs(filepath.Dir(target))
-		if err == nil {
-			err = write(target, f.New)
+		var made []string
+		var link string
+		var mode fs.FileMode
+		var err error
+		if f.remove {
+			// The name is removed, not the file a link leads to: a link
+			// left without its file would stop the next run.
+			link, _ = os.Readlink(f.target)
+			if info, statErr := os.Lstat(f.target); statErr == nil {
+				mode = info.Mode().Perm()
+			}
+			err = os.Remove(f.target)
+		} else {
+			f.target = writeTarget(f.target)
+			made, err = makeDirs(filepath.Dir(f.target))
+			if err == nil {
+				err = write(f.target, f.new)
+			}
 		}
 		if err != nil {
 			removeDirs(made)
 			for _, w := range slices.Backward(done) {
-				if w.file.Existed {
-					_ = writeFileAtomic(w.target, w.file.Old)
-				} else {
-					_ = os.Remove(w.target)
+				switch {
+				case w.link != "":
+					_ = os.Symlink(w.link, w.file.target)
+				case w.file.existed:
+					_ = writeFileAtomic(w.file.target, w.file.old)
+					// A file that was removed is gone, so the write above
+					// could not keep its permissions.
+					if w.file.remove && w.mode != 0 {
+						_ = os.Chmod(w.file.target, w.mode)
+					}
+				default:
+					_ = os.Remove(w.file.target)
 				}
 				removeDirs(w.made)
 			}
-			return &CommandFailure{Err: fmt.Errorf("%s: %w", f.Path, err)}
+			return &CommandFailure{Err: fmt.Errorf("%s: %w", f.shown, err)}
 		}
-		done = append(done, written{target: target, file: f, made: made})
+		done = append(done, written{file: f, made: made, link: link, mode: mode})
 	}
 	return nil
+}
+
+// writeTarget is where a write to path lands. A link is written through, not
+// replaced, also when the file it leads to does not exist yet: the rename
+// that ends a write would otherwise put a file in the place of the link.
+func writeTarget(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	dest, err := os.Readlink(path)
+	if err != nil {
+		return path
+	}
+	if filepath.IsAbs(dest) {
+		return dest
+	}
+	// A relative link is read from the directory that holds it.
+	dir := filepath.Dir(path)
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	return filepath.Join(dir, dest)
 }
 
 // makeDirs creates dir and its missing parents, and returns the ones it
@@ -319,7 +390,7 @@ func makeDirs(dir string) ([]string, error) {
 // that exists keeps its permissions. A new file gets the ones any new file
 // gets: 0644 less the umask of the process.
 func writeFileAtomic(path string, data []byte) error {
-	name := filepath.Join(filepath.Dir(path), ".rune-agent-init-"+rand.Text())
+	name := filepath.Join(filepath.Dir(path), ".rune-tmp-"+rand.Text())
 	tmp, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err

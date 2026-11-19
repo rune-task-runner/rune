@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -659,4 +660,81 @@ func TestServeMCPUnavailableSandbox(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "context.done")); err == nil {
 		t.Error("the [context] hook ran with no sandbox")
 	}
+}
+
+// loadStatic is the half of a load that evaluates nothing (spec 056): it
+// reads, parses, composes and analyzes, and stops before the settings.
+func TestLoadStatic(t *testing.T) {
+	write := func(t *testing.T, files map[string]string) string {
+		t.Helper()
+		dir := t.TempDir()
+		for name, content := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return filepath.Join(dir, "Runefile")
+	}
+	load := func(runefile string) (*ast.File, string, error) {
+		var stderr bytes.Buffer
+		file, _, err := loadStatic(Options{Stderr: &stderr}, runefile, false, &pathRecorder{})
+		return file, stderr.String(), err
+	}
+
+	t.Run("a valid Runefile comes back composed", func(t *testing.T) {
+		runefile := write(t, map[string]string{
+			"Runefile": "mod ops\n\n# Build.\nbuild:\n    @echo build\n",
+			"ops.rune": "# Restart.\nrestart:\n    @echo restart\n",
+		})
+		file, _, err := load(runefile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, task := range file.Tasks {
+			names = append(names, task.Name)
+		}
+		if want := []string{"build", "ops::restart"}; !slices.Equal(names, want) {
+			t.Errorf("tasks = %v, want %v", names, want)
+		}
+	})
+
+	t.Run("a parse error is a validation error with its diagnostic", func(t *testing.T) {
+		_, stderr, err := load(write(t, map[string]string{"Runefile": "build\n    @echo build\n"}))
+		var ve *ValidationError
+		if !errors.As(err, &ve) || !strings.Contains(stderr, "Runefile:1") {
+			t.Errorf("err = %v, stderr = %q", err, stderr)
+		}
+	})
+
+	t.Run("an analyzer error is a validation error with its diagnostic", func(t *testing.T) {
+		_, stderr, err := load(write(t, map[string]string{"Runefile": "build: missing\n    @echo build\n"}))
+		var ve *ValidationError
+		if !errors.As(err, &ve) || !strings.Contains(stderr, "missing") {
+			t.Errorf("err = %v, stderr = %q", err, stderr)
+		}
+	})
+
+	t.Run("a Runefile that cannot be read is a usage error", func(t *testing.T) {
+		_, _, err := load(filepath.Join(t.TempDir(), "Runefile"))
+		var ue *UsageError
+		if !errors.As(err, &ue) {
+			t.Errorf("err = %v, want a usage error", err)
+		}
+	})
+
+	// The setting fails when it is evaluated. A full load evaluates it and
+	// stops; the static load does not look at it.
+	t.Run("nothing is evaluated", func(t *testing.T) {
+		runefile := write(t, map[string]string{
+			"Runefile": "set working-directory := error(\"evaluated\")\n\n# Build.\nbuild:\n    @echo build\n",
+		})
+		if _, stderr, err := load(runefile); err != nil {
+			t.Errorf("loadStatic: %v\n%s", err, stderr)
+		}
+		var stderr bytes.Buffer
+		if _, err := loadModule(Options{Stderr: &stderr}, runefile, false); err == nil || !strings.Contains(stderr.String(), "evaluated") {
+			t.Errorf("a full load of the same Runefile: err = %v, stderr = %q; want the setting's error", err, stderr.String())
+		}
+	})
 }

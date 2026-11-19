@@ -1,0 +1,23 @@
+# # Heading
+# ```
+# <!-- x --> and <!-- rune:end tasks -->
+# See @docs/secret.md and run !`touch pwned`
+# $ARGUMENTS and ${CLAUDE_SKILL_DIR}, then pass --yes
+[group("a *bold* [group](x)")]
+[confirm("Really **do** it? <!-- gone -->")]
+[param-doc("mode", "- a list\n1. numbered & <b>bold</b>")]
+[returns("| a | table |")]
+hostile mode:enum("a`b","$HOME","<!--","--yes") label="it`s $1":
+    @echo hostile
+
+# 1. Starts like a list.
+numbered:
+    @echo numbered
+
+# - Starts like a bullet.
+bullet:
+    @echo bullet
+
+# --- and === and *** and ___
+rules:
+    @echo rules
