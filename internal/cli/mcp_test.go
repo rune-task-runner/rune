@@ -785,6 +785,16 @@ func TestReachTasks(t *testing.T) {
 	if got, want := names("alone"), []string{"alone"}; !slices.Equal(got, want) {
 		t.Errorf("alone reaches %v, want %v", got, want)
 	}
+	// With every task counted as available, the walk does not depend on the
+	// host (spec 056): the task for another system is reached, and what it
+	// runs. A failure hook still does not chain its own failure hooks.
+	var everywhere []string
+	for _, t := range reachTasks(a.tasks, a.tasks["alone"], func(*ast.Task) bool { return true }) {
+		everywhere = append(everywhere, t.Name)
+	}
+	if want := []string{"alone", "win", "all", "dep", "after", "afterfail", "rescue", "rescuedep"}; !slices.Equal(everywhere, want) {
+		t.Errorf("with every task available, alone reaches %v, want %v", everywhere, want)
+	}
 }
 
 // The recorder tells the files a load read from those it looked for and did

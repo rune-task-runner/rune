@@ -1,0 +1,19 @@
+# Runs anywhere.
+anywhere:
+    @echo anywhere
+
+# Package for the two desktop systems.
+[linux]
+[macos]
+package:
+    @echo package
+
+# Sign the installer.
+[windows]
+sign:
+    @echo sign
+
+# Install the service.
+[unix]
+install:
+    @echo install

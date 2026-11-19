@@ -1,0 +1,11 @@
+# Restart the service.
+restart env:enum("staging","prod"):
+    @echo restart {{env}}
+
+# A helper of the module. Its full name is ops::_helper, which is public.
+_helper:
+    @echo helper
+
+# Roll the service, after a restart.
+roll: (restart "staging")
+    @echo roll

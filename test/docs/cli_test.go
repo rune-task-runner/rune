@@ -87,6 +87,12 @@ func TestCLIReferenceAgentInitFlags(t *testing.T) {
 	checkCommandRow(t, "rune agent init", "agent", "init", "--help")
 }
 
+// TestCLIReferenceExportFlags does the same for `rune export` (spec 056,
+// FR-046).
+func TestCLIReferenceExportFlags(t *testing.T) {
+	checkCommandRow(t, "rune export", "export", "--help")
+}
+
 // checkCommandRow compares the flags a command's help lists with the flags
 // its row of docs/cli.md names. command is the command as the row starts,
 // and helpArgs asks the binary for its help.

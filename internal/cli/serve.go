@@ -13,6 +13,7 @@ import (
 	"github.com/rune-task-runner/rune/internal/analyzer"
 	"github.com/rune-task-runner/rune/internal/ast"
 	"github.com/rune-task-runner/rune/internal/config"
+	"github.com/rune-task-runner/rune/internal/diag"
 	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/parser"
 	"github.com/rune-task-runner/rune/internal/style"
@@ -60,26 +61,40 @@ func loadModulePaths(opts Options, runefile string, allowIgnoreVersion bool) (*l
 	return mod, rec.paths, err
 }
 
-func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec *pathRecorder) (*loadedModule, error) {
-	root := filepath.Dir(runefile)
+// loadStatic is the part of a load that evaluates nothing: read, parse, the
+// minimum_version check, compose and analyze. It reads the Runefile and the
+// files it imports, and neither the environment nor a dotenv file. The
+// diagnostics of a Runefile that is not valid are rendered, and the error is
+// a ValidationError. rune export stops here (spec 056); every other load
+// goes on to resolve the settings and build the environment.
+func loadStatic(opts Options, runefile string, allowIgnoreVersion bool, rec *pathRecorder) (*ast.File, diag.SourceProvider, error) {
 	source, err := os.ReadFile(runefile)
 	if err != nil {
-		return nil, &UsageError{Err: err}
+		return nil, nil, &UsageError{Err: err}
 	}
 	file, diags := parser.Parse(runefile, string(source))
 	src := rec.wrap(newSourceProvider(runefile, source))
 	// Enforce minimum_version before imports/analysis on the MCP/agent path too.
 	if err := enforceMinimumVersion(opts, file, src, allowIgnoreVersion); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	diags = append(diags, config.Compose(file, src)...)
 	if diags.HasErrors() {
 		renderDiags(opts, diags, src)
-		return nil, &ValidationError{Err: errorf("%d static error(s)", countErrors(diags))}
+		return nil, nil, &ValidationError{Err: errorf("%d static error(s)", countErrors(diags))}
 	}
 	if adiags := analyzer.Analyze(file); adiags.HasErrors() {
 		renderDiags(opts, adiags, src)
-		return nil, &ValidationError{Err: errorf("%d static error(s)", countErrors(adiags))}
+		return nil, nil, &ValidationError{Err: errorf("%d static error(s)", countErrors(adiags))}
+	}
+	return file, src, nil
+}
+
+func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec *pathRecorder) (*loadedModule, error) {
+	root := filepath.Dir(runefile)
+	file, src, err := loadStatic(opts, runefile, allowIgnoreVersion, rec)
+	if err != nil {
+		return nil, err
 	}
 
 	scope := eval.NewScope(indexAssignments(file), map[string]string{})

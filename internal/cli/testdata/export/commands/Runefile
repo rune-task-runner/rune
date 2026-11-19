@@ -1,0 +1,22 @@
+# Show the application log.
+[group("ops")]
+log level:enum("info","debug"):
+    @echo log {{level}}
+
+# Between the groups.
+plain:
+    @echo plain
+
+# Export the data.
+[group("data")]
+export:
+    @echo exported
+
+# Restart, in the first group again.
+[group("ops")]
+restart:
+    @echo restart
+
+# Start the service.
+serve:
+    @echo serve

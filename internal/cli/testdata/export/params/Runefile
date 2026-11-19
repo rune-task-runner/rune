@@ -1,0 +1,36 @@
+default_region := "eu-west-1"
+
+# Deploy the service to one environment.
+[param-doc("env", "The environment to deploy to.")]
+[param-doc("region", "Where the service runs.")]
+[returns("The URL of the deployed service.")]
+deploy env:enum("staging","prod") region="eu-west-1":
+    @echo deploy {{env}} {{region}}
+
+# Pick a place.
+place where:enum("us east","it's","a;b"):
+    @echo {{quote(where)}}
+
+# Tag an image.
+tag name count:number force:boolean stamp=env("REGION", "eu-west-1") region=default_region:
+    @echo tag
+
+# Pack some files.
+pack dest:path +files:path:
+    @echo pack
+
+# Pass flags to the linter.
+lint *flags:raw:
+    @echo lint {{flags}}
+
+# Toggle a feature.
+toggle on:boolean:
+    @echo {{on}}
+
+# Greet someone.
+greet name="world" title:string="":
+    @echo hello {{title}} {{name}}
+
+# Values that a shell would split or change.
+quoting who:enum("it's","x") what:enum("a;b") rest:enum("a b  c") last:enum(""):
+    @echo quoting

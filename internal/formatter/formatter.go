@@ -33,7 +33,7 @@ func Format(f *ast.File) string {
 	if len(f.Assignments) > 0 {
 		section()
 		for _, a := range f.Assignments {
-			fmt.Fprintf(&b, "%s := %s\n", a.Name, formatExpr(a.Expr))
+			fmt.Fprintf(&b, "%s := %s\n", a.Name, Expr(a.Expr))
 		}
 		wrote = true
 	}
@@ -69,11 +69,11 @@ func formatSetting(s *ast.Setting) string {
 	case s.List != nil:
 		parts := make([]string, len(s.List))
 		for i, e := range s.List {
-			parts[i] = formatExpr(e)
+			parts[i] = Expr(e)
 		}
 		return fmt.Sprintf("set %s := [%s]", s.Name, strings.Join(parts, ", "))
 	default:
-		return fmt.Sprintf("set %s := %s", s.Name, formatExpr(s.Value))
+		return fmt.Sprintf("set %s := %s", s.Name, Expr(s.Value))
 	}
 }
 
@@ -139,7 +139,7 @@ func formatParam(p *ast.Param) string {
 	case ast.ParamVariadicStar:
 		return "*" + p.Name + anno
 	case ast.ParamDefaulted:
-		return p.Name + anno + "=" + formatExpr(p.Default)
+		return p.Name + anno + "=" + Expr(p.Default)
 	default:
 		return p.Name + anno
 	}
@@ -151,7 +151,7 @@ func formatDep(d *ast.DepCall) string {
 	}
 	parts := make([]string, len(d.Args))
 	for i, a := range d.Args {
-		parts[i] = formatExpr(a)
+		parts[i] = Expr(a)
 	}
 	return fmt.Sprintf("(%s %s)", d.Name, strings.Join(parts, " "))
 }
@@ -181,13 +181,15 @@ func formatAttr(a *ast.Attribute) string {
 func formatExprList(es []ast.Expr) string {
 	parts := make([]string, len(es))
 	for i, e := range es {
-		parts[i] = formatExpr(e)
+		parts[i] = Expr(e)
 	}
 	return strings.Join(parts, ", ")
 }
 
-// formatExpr renders an expression back into canonical source syntax.
-func formatExpr(e ast.Expr) string {
+// Expr renders an expression back into canonical source syntax. It is the
+// text the formatter writes, and what an export shows for a default that is
+// not a literal (spec 056).
+func Expr(e ast.Expr) string {
 	switch x := e.(type) {
 	case nil:
 		return ""
@@ -200,7 +202,7 @@ func formatExpr(e ast.Expr) string {
 		if x.Op == token.SLASH {
 			op = "/"
 		}
-		return fmt.Sprintf("%s %s %s", formatExpr(x.Left), op, formatExpr(x.Right))
+		return fmt.Sprintf("%s %s %s", operand(x.Left, false), op, operand(x.Right, true))
 	case *ast.FuncCall:
 		return fmt.Sprintf("%s(%s)", x.Name, formatExprList(x.Args))
 	case *ast.Conditional:
@@ -211,13 +213,33 @@ func formatExpr(e ast.Expr) string {
 			} else {
 				b.WriteString(" else if ")
 			}
-			fmt.Fprintf(&b, "%s %s %s { %s }", formatExpr(br.Left), cmpString(br.Op), formatExpr(br.Right), formatExpr(br.Result))
+			fmt.Fprintf(&b, "%s %s %s { %s }", Expr(br.Left), cmpString(br.Op), Expr(br.Right), Expr(br.Result))
 		}
-		fmt.Fprintf(&b, " else { %s }", formatExpr(x.Else))
+		fmt.Fprintf(&b, " else { %s }", Expr(x.Else))
 		return b.String()
 	default:
 		return ""
 	}
+}
+
+// operand renders one side of a + or /. The parser keeps no grouping
+// parentheses, so they are written again where the text would read as
+// another expression without them: the two operators share one precedence
+// and group to the left, and an expression that starts with `if` ends at the
+// closing brace of its else.
+func operand(e ast.Expr, right bool) string {
+	text := Expr(e)
+	switch e.(type) {
+	case *ast.Binary:
+		if right {
+			return "(" + text + ")"
+		}
+	case *ast.Conditional:
+		if !right {
+			return "(" + text + ")"
+		}
+	}
+	return text
 }
 
 func cmpString(k token.Kind) string {

@@ -306,6 +306,13 @@ the rules it added.
   [Enforcement boundaries](../design/rune-only-agent-mode.md#enforcement-boundaries) lists
   what a session without a shell can still do.
 
+## Agents that are not set up
+
+A client this command does not cover, or a session started without the setup, still reads
+instruction files. [`rune export`](agent-instructions.md) writes your tasks, their
+parameters and their limits into `AGENTS.md` or a Claude skill. That text is guidance: it
+tells an agent what to do and stops nothing.
+
 ## A task named `agent`
 
 `rune agent` is the command, so a Runefile task named `agent` is run with `rune -- agent`.

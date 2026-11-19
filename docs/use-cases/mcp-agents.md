@@ -68,6 +68,10 @@ repository). `list-tasks` is marked `[readonly]`, so it tells clients it changes
   would have run. `rune agent init claude`, `codex` or `vscode` writes the project files
   that take the shell away where the client can: see
   [Set up an agent client](../how-to/agent-setup.md).
+- **An agent without MCP reads instructions.** `rune export agents-md` and
+  `rune export claude-skill` write your tasks, their parameters and their limits into
+  `AGENTS.md` or a Claude skill. That text is guidance and enforces nothing: see
+  [Export instructions for agents](../how-to/agent-instructions.md).
 - **`[doc(...)]`** gives each tool a clear description an agent can reason about, without
   leaking anything sensitive.
 

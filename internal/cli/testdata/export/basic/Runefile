@@ -1,0 +1,11 @@
+# Build the app.
+build:
+    @echo build
+
+# Run the tests.
+# Every package, with the race detector.
+test:
+    @echo test
+
+undocumented:
+    @echo x

@@ -21,6 +21,11 @@ Most local agent tooling launches the server this way and talks to it over stdin
 client's own shell where the client can do without it; see
 [Set up an agent client](how-to/agent-setup.md).
 
+An agent with no MCP integration can still be told which tasks exist: `rune export`
+writes them into `AGENTS.md` or a Claude skill. That text is guidance, and nothing in this
+guide is enforced for a command such an agent runs in its own shell; see
+[Export instructions for agents](how-to/agent-instructions.md).
+
 **Serving a Runefile from another directory:**
 
 ```sh
@@ -2043,6 +2048,8 @@ Sources: [MCP](https://zed.dev/docs/ai/mcp), and in `crates/`:
 - [agent-driven example](examples/agent-driven/README.md) — a runnable agent task + gating
 - [CLI reference](cli.md): `rune mcp` and `rune serve` flags, and `rune log`
 - [Runefile language guide](runefile.md) — `[private]`, `[confirm]`, `[network]`, executors
+- [Export instructions for agents](how-to/agent-instructions.md): `rune export`, which
+  writes the tasks into `AGENTS.md` or a Claude skill for an agent without MCP.
 - [Set up an agent client](how-to/agent-setup.md): `rune agent init`, which registers the
   server with a client and removes the client's shell
 - [Rune-only agent mode](design/rune-only-agent-mode.md): a design note on removing a
