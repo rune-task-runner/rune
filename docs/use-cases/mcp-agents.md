@@ -65,8 +65,9 @@ repository). `list-tasks` is marked `[readonly]`, so it tells clients it changes
   See [The sandbox](../mcp.md#the-sandbox).
 - **This limits what Rune runs, not what the agent can do.** Registering Rune does not
   remove the client's own shell, where an agent can still type the command a refused task
-  would have run. [Rune-only agent mode](../design/rune-only-agent-mode.md) says which
-  clients can take the shell away, and how.
+  would have run. `rune agent init claude`, `codex` or `vscode` writes the project files
+  that take the shell away where the client can: see
+  [Set up an agent client](../how-to/agent-setup.md).
 - **`[doc(...)]`** gives each tool a clear description an agent can reason about, without
   leaking anything sensitive.
 

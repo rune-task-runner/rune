@@ -1,0 +1,14 @@
+.vscode/mcp.json: created: server "rune" runs: rune mcp --file /work/demo/Runefile --no-reload
+.mcp.json: created: server "rune" runs: rune mcp --file /work/demo/Runefile --no-reload
+.github/agents/rune.agent.md: unchanged
+client: VS Code, no version found (checked: none)
+outcome: Registered only, pending 2 steps
+reason: no VS Code version has been checked with these files
+remains: runInTerminal, runTask, createAndRunTask, runNotebookCell, runSubagent, vscode/runCommand (kept by every agent but "rune", and not checked for it)
+step: open /work/demo in VS Code, trust the workspace and start the server "rune" when VS Code asks. Until then the session has no Rune tools.
+step: choose the agent "rune" in the Chat view. Every other agent keeps the terminal.
+note: the server keeps the tasks it read at start (--no-reload). After an edit to the Runefile, start a new session.
+note: [confirm] tasks are not approved by this setup. Rune refuses them, or asks you for each call.
+note: the server is registered with this checkout's path. For a file you commit, use --unpinned.
+note: a task an agent calls runs in Rune's sandbox, which needs bubblewrap on Linux. Where there is none, each call is refused until the server runs with --sandbox off.
+check: in the Chat view choose the agent "rune" and open its tools: only the rune tools are selected, and no terminal tool is

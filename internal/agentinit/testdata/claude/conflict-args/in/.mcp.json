@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "rune": {
+      "type": "stdio",
+      "command": "rune",
+      "args": ["mcp"],
+      "env": { "RUNE_AUDIT_DIR": "/var/log/rune" }
+    }
+  }
+}

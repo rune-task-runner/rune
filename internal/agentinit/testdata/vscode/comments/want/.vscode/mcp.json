@@ -1,0 +1,13 @@
+{
+  // Servers for this workspace.
+  "servers": {
+    /* the docs */
+    "docs": { "type": "http", "url": "https://docs.example.com/mcp" }, // keep
+    "rune": {
+      "type": "stdio",
+      "command": "rune",
+      "args": ["mcp", "--file", "/work/demo/Runefile", "--no-reload"]
+    }
+  },
+  "inputs": []
+}

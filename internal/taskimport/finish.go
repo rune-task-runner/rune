@@ -12,7 +12,7 @@ import (
 // task can be named import, which is a keyword.
 var RuneCommands = map[string]bool{
 	"help": true, "version": true, "serve": true, "mcp": true, "log": true,
-	"analyze": true, "lsp": true, "completion": true,
+	"agent": true, "analyze": true, "lsp": true, "completion": true,
 }
 
 // finish applies the rules that hold for every format: a task that is

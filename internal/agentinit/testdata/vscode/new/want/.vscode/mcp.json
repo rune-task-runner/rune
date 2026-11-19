@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "rune": {
+      "type": "stdio",
+      "command": "rune",
+      "args": ["mcp", "--file", "/work/demo/Runefile", "--no-reload"]
+    }
+  }
+}

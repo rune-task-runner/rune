@@ -1,0 +1,2 @@
+conflict: .codex/config.toml:2:14: features.shell_tool is true; rune agent init writes false. Edit the file, or run again with --force
+conflict: .codex/config.toml:5:11: agents.enabled is true; rune agent init writes false. Edit the file, or run again with --force

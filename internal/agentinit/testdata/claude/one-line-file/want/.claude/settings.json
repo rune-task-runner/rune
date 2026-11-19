@@ -1,0 +1,1 @@
+{"permissions":{"deny":["WebFetch", "Bash", "PowerShell", "Monitor", "Workflow", "CronCreate", "RemoteTrigger"], "allow": ["mcp__rune"]}}

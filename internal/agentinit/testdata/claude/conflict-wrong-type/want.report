@@ -1,0 +1,2 @@
+conflict: .mcp.json:2:17: mcpServers is not an object; rune agent init cannot add to it
+conflict: .claude/settings.json:2:18: permissions is not an object; rune agent init cannot add to it

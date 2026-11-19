@@ -209,6 +209,11 @@ replace it in silence.
 
 `log` is a built-in command. **Fix:** run the task with `rune -- log`.
 
+### `rune agent` prints help, not my `agent` task
+
+`agent` is a built-in command: `rune agent init` sets an agent client up. **Fix:** run the
+task with `rune -- agent`.
+
 ### A cached task ran when you expected a skip
 
 `[cache]` re-runs (rather than falsely skipping) when a declared **output is missing** or an

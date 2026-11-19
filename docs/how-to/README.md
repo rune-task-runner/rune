@@ -21,6 +21,7 @@ for a guided tour, see the **[user guide](../user-guide/README.md)**.
 | [OS filtering](os-filtering.md) | Tasks scoped to an operating system | [os-filtering](../examples/os-filtering/README.md) |
 | [Import from another runner](import-from-other-runners.md) | Turn a justfile, Makefile, Taskfile or npm scripts into a Runefile | |
 | [AI agents (MCP)](../mcp.md) | Expose tasks to agents; security model | [agent-driven](../examples/agent-driven/README.md) |
+| [Set up an agent client](agent-setup.md) | Register Rune with Claude Code, Codex CLI or VS Code and remove the client's shell | |
 
 Working on a whole project? See the **[use-case walkthroughs](../use-cases/README.md)** for
 Python, Node, and AI-agent setups.

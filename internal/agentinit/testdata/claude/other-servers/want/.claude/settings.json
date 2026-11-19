@@ -1,0 +1,9 @@
+{
+    "model": "sonnet",
+    "hooks": {},
+    "permissions": {
+        "additionalDirectories": ["../shared"],
+        "deny": ["Bash", "PowerShell", "Monitor", "Workflow", "CronCreate", "RemoteTrigger"],
+        "allow": ["mcp__rune"]
+    }
+}

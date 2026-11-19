@@ -1170,3 +1170,14 @@ func countErrors(diags diag.List) int {
 	}
 	return n
 }
+
+// errorDiags returns the diagnostics that are errors, in their order.
+func errorDiags(diags diag.List) diag.List {
+	var errs diag.List
+	for _, d := range diags {
+		if d.Severity == diag.Error {
+			errs = append(errs, d)
+		}
+	}
+	return errs
+}

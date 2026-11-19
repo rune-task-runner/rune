@@ -1,0 +1,12 @@
+.mcp.json: created: server "rune" runs: rune mcp --file '/work/my demo/Runefile' --no-reload
+.claude/settings.json: created: deny Bash, PowerShell, Monitor, Workflow, CronCreate, RemoteTrigger; allow mcp__rune
+client: Claude Code 2.1.325 (checked: 2.1.325, 2.1.326)
+outcome: Rune-only, pending 2 steps
+step: trust the project: start claude in '/work/my demo' and accept the trust question. Until then the deny rules apply and the allow rule does not: the session has no shell and Rune's tools are refused.
+step: approve the server "rune" when Claude Code asks, and start a new session. Until then the session has no Rune tools.
+note: the server keeps the tasks it read at start (--no-reload). After an edit to the Runefile, start a new session.
+note: [confirm] tasks are not approved by this setup. Rune refuses them, or asks you for each call.
+note: the server is registered with this checkout's path. For a file you commit, use --unpinned.
+note: a task an agent calls runs in Rune's sandbox, which needs bubblewrap on Linux. Where there is none, each call is refused until the server runs with --sandbox off.
+check: claude -p hi --output-format stream-json --verbose
+check: the "tools" list in the first line of its output has names that start with mcp__rune__ and none of: Bash, PowerShell, Monitor, Workflow, CronCreate, RemoteTrigger

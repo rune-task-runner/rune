@@ -1,0 +1,5 @@
+[features]
+shell_tool = true   # why
+
+[agents]
+enabled = true

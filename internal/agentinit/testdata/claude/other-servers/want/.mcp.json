@@ -1,0 +1,16 @@
+{
+    "$schema": "https://example.com/mcp.schema.json",
+    "mcpServers": {
+        "docs": {
+            "type": "http",
+            "url": "https://docs.example.com/mcp"
+        },
+        "db": { "command": "db-mcp", "args": ["--read-only"], "env": { "DB": "dev" } },
+        "rune": {
+            "type": "stdio",
+            "command": "rune",
+            "args": ["mcp", "--file", "/work/demo/Runefile", "--no-reload"]
+        }
+    },
+    "unknownKey": [1, 2, {"deep": null}]
+}

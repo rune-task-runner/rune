@@ -1,0 +1,9 @@
+[features]
+shell_tool = false
+
+[agents]
+enabled = false
+
+[mcp_servers.rune]
+command = "rune"
+args = ["mcp", "--file", "/work/de\"mo\\x/Runefile", "--no-reload"]

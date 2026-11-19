@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "rune": {
+      "type": "stdio",
+      "command": "rune",
+      "args": ["mcp", "--file", "/work/de\"mo\\x/Runefile", "--no-reload"]
+    }
+  }
+}

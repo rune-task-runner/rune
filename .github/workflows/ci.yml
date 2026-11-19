@@ -139,7 +139,7 @@ jobs:
       # Regenerate the golden-bearing packages, then fail if anything drifted —
       # ensures committed goldens match a fresh regeneration (never hand-edited).
       - name: Regenerate goldens
-        run: go test ./internal/diag ./internal/lexer ./internal/parser ./internal/cli ./internal/taskimport ./test/corpus -update
+        run: go test ./internal/diag ./internal/lexer ./internal/parser ./internal/cli ./internal/taskimport ./internal/agentinit ./test/corpus -update
       - name: Check goldens are committed
         run: |
           if ! git diff --exit-code; then
@@ -206,3 +206,5 @@ jobs:
         run: go test -run=xxx -fuzz=FuzzLexer -fuzztime=20s ./internal/lexer
       - name: Fuzz parser (smoke)
         run: go test -run=xxx -fuzz=FuzzParser -fuzztime=20s ./internal/parser
+      - name: Fuzz the JSON reader of rune agent init (smoke)
+        run: go test -run=xxx -fuzz=FuzzParseJSON -fuzztime=20s ./internal/agentinit

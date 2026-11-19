@@ -244,9 +244,13 @@ func TestFinishRuneCommandNames(t *testing.T) {
 		{Source: "serve", Line: 2, Status: Review, Notes: []string{"n"}},
 		{Source: "log", Line: 3, Status: Unsupported, Notes: []string{"u"}},
 		{Source: "build", Line: 4},
+		{Source: "agent", Line: 5},
 	}}
 	mustFinish(t, src, Options{Format: FormatMake, SourceName: "Makefile", Wrap: true})
-	help, serve, log, build := src.tasks[0], src.tasks[1], src.tasks[2], src.tasks[3]
+	help, serve, log, build, agent := src.tasks[0], src.tasks[1], src.tasks[2], src.tasks[3], src.tasks[4]
+	if agent.Status != Review || !slices.Equal(agent.Notes, []string{"agent is also a rune command: run the task with rune -- agent"}) {
+		t.Errorf("agent = %v %q", agent.Status, agent.Notes)
+	}
 	if help.Name != "help" || help.Status != Review || !slices.Equal(help.Notes, []string{"help is also a rune command: run the task with rune -- help"}) {
 		t.Errorf("help = %q %v %q", help.Name, help.Status, help.Notes)
 	}

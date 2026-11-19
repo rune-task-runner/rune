@@ -1,0 +1,1 @@
+error: .codex/config.toml:1:1: rune agent init cannot add to this file in place. Set this yourself: features.shell_tool = false

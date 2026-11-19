@@ -209,13 +209,7 @@ func checkGenerated(opts Options, path, text string) error {
 	if !snap.Diagnostics.HasErrors() {
 		return nil
 	}
-	var errs diag.List
-	for _, d := range snap.Diagnostics {
-		if d.Severity == diag.Error {
-			errs = append(errs, d)
-		}
-	}
-	renderDiags(opts, errs, snap.Sources)
+	renderDiags(opts, errorDiags(snap.Diagnostics), snap.Sources)
 	return &CommandFailure{Err: errorf("import: the generated Runefile is not valid; this is a bug in rune import")}
 }
 
