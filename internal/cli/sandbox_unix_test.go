@@ -1009,6 +1009,40 @@ func TestGitRunnerBuildsItsSpecOnce(t *testing.T) {
 	}
 }
 
+// Calls that start at the same time each keep their own temporary directory:
+// the sweep one call makes for what a dead server left must not take the
+// directory another call has just made. A lock file that exists and is not
+// held yet reads as left behind, so the lock is held before it has its name.
+func TestPrivateDirsConcurrentCalls(t *testing.T) {
+	base := filepath.Join(realTempDir(t), "base")
+	s := testState(sandbox.ModeEnforce, &stubBackend{name: "bubblewrap"}, realTempDir(t), base, nil, nil)
+	const calls, rounds = 16, 200
+	var wg sync.WaitGroup
+	for range calls {
+		wg.Go(func() {
+			for range rounds {
+				tmp, _, cleanup, err := s.privateDirs()
+				if err != nil {
+					t.Errorf("privateDirs: %v", err)
+					return
+				}
+				// What a body would find when it starts.
+				_, statErr := os.Stat(tmp)
+				held := tmpHeld(tmp + tmpLockSuffix)
+				cleanup()
+				if statErr != nil || !held {
+					t.Errorf("a call lost its temporary directory to another call's sweep: %v, lock held %v", statErr, held)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	if left, err := os.ReadDir(filepath.Join(base, "tmp")); err != nil || len(left) != 0 {
+		t.Errorf("after every call cleaned up, the directory holds %d entries (%v)", len(left), err)
+	}
+}
+
 func TestHoldTmp(t *testing.T) {
 	lock := filepath.Join(t.TempDir(), "body"+tmpLockSuffix)
 	if tmpHeld(lock) {

@@ -5,6 +5,7 @@ package cli
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"syscall"
 )
@@ -33,12 +34,25 @@ func workerPipes() (job, result *os.File, err error) {
 // holdTmp takes the lock that marks a body's temporary directory as in use.
 // The lock is this process's and ends with it. release gives it up and
 // removes the file.
+//
+// The lock is taken on a file that has another name, and the file is given
+// the name of the lock only once it is held. A lock file that exists and
+// that nobody holds is what a dead server leaves, and the sweep of another
+// call removes its directory: a file created under the lock's name and
+// locked a moment later reads as exactly that for the time between.
 func holdTmp(lock string) (release func(), err error) {
-	file, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0o600)
+	file, err := os.CreateTemp(filepath.Dir(lock), filepath.Base(lock)+".*")
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	unnamed := file.Name()
+	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		// A link fails where the name is taken, so a lock that another
+		// body holds is never replaced.
+		err = os.Link(unnamed, lock)
+	}
+	_ = os.Remove(unnamed)
+	if err != nil {
 		_ = file.Close()
 		return nil, err
 	}
