@@ -64,7 +64,7 @@ func TestUnifiedDiff(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := unifiedDiff("dir/f.json", []byte(tt.old), []byte(tt.new), tt.existed); got != tt.want {
+			if got := UnifiedDiff("dir/f.json", []byte(tt.old), []byte(tt.new), tt.existed); got != tt.want {
 				t.Errorf("got\n%s\nwant\n%s", got, tt.want)
 			}
 		})

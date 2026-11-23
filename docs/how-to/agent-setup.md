@@ -308,6 +308,9 @@ the rules it added.
 
 ## Agents that are not set up
 
+No Runefile yet? Before you take the shell away, let [`rune agent observe`](learn-tasks-from-agent.md)
+record the commands the agent repeats, and add them as tasks with `rune suggest`.
+
 A client this command does not cover, or a session started without the setup, still reads
 instruction files. [`rune export`](agent-instructions.md) writes your tasks, their
 parameters and their limits into `AGENTS.md` or a Claude skill. That text is guidance: it

@@ -10,25 +10,40 @@ import (
 	"strings"
 )
 
-// DefaultBase is the directory the logs of every project live under when
-// the operator names none: the user's state directory. A relative
-// XDG_STATE_HOME is ignored, as the XDG specification says: a server and
-// `rune log` each have a working directory of their own, and it would name a
-// different directory in each.
-func DefaultBase(getenv func(string) string, goos string, home func() (string, error)) (string, error) {
+// StateDir is the directory Rune keeps the user's state in: rune under the
+// user's state directory. A relative XDG_STATE_HOME is ignored, as the XDG
+// specification says: two programs with working directories of their own
+// would each read it as a different directory.
+func StateDir(getenv func(string) string, goos string, home func() (string, error)) (string, error) {
 	if dir := getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
-		return filepath.Join(dir, "rune", "audit"), nil
+		return filepath.Join(dir, "rune"), nil
 	}
 	if goos == "windows" {
 		if dir := getenv("LocalAppData"); dir != "" {
-			return filepath.Join(dir, "rune", "audit"), nil
+			return filepath.Join(dir, "rune"), nil
 		}
 	}
 	dir, err := home()
 	if err != nil || dir == "" {
+		return "", errors.New("no state directory: set XDG_STATE_HOME")
+	}
+	return filepath.Join(dir, ".local", "state", "rune"), nil
+}
+
+// DefaultBase is the directory the logs of every project live under when
+// the operator names none: audit under StateDir.
+func DefaultBase(getenv func(string) string, goos string, home func() (string, error)) (string, error) {
+	dir, err := StateDir(getenv, goos, home)
+	if err != nil {
 		return "", errors.New("no state directory: set RUNE_AUDIT_DIR or XDG_STATE_HOME")
 	}
-	return filepath.Join(dir, ".local", "state", "rune", "audit"), nil
+	return filepath.Join(dir, "audit"), nil
+}
+
+// Inside reports whether dir, with the symbolic links of its existing part
+// followed, is project or lies under it.
+func Inside(dir, project string) bool {
+	return within(resolve(dir), resolve(project))
 }
 
 // ProjectID names a project's directory: the first 16 hex digits of the

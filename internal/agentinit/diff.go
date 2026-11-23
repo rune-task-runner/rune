@@ -15,11 +15,11 @@ type diffOp struct {
 	text string
 }
 
-// unifiedDiff is the difference between two texts in unified format, as
+// UnifiedDiff is the difference between two texts in unified format, as
 // `git apply` and `patch` read it. It is "" when they are equal. The files
 // are a few dozen lines, so the comparison is the plain table of the longest
 // common subsequence, over the lines between the common head and tail.
-func unifiedDiff(path string, old, edited []byte, existed bool) string {
+func UnifiedDiff(path string, old, edited []byte, existed bool) string {
 	if bytes.Equal(old, edited) {
 		return ""
 	}

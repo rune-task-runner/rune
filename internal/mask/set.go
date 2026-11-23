@@ -154,6 +154,14 @@ func (s *Set) scan(buf []byte, final bool) (out, carry []byte) {
 	return out, nil
 }
 
+// SecretName reports whether NewSet tracks the value of a variable named
+// name: one declared, or one that matches a built-in pattern and is neither
+// exempt nor one of the built-in exemptions. Names are compared ignoring
+// case.
+func SecretName(name string, declared, exempt []string) bool {
+	return isSecretName(name, toNameSet(declared), toNameSet(exempt))
+}
+
 // isSecretName applies the name rules on the uppercased name, so declared and
 // exempt lookups are case-insensitive exactly like the built-in patterns.
 func isSecretName(name string, declared, exempt map[string]struct{}) bool {

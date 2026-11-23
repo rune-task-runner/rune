@@ -147,8 +147,8 @@ func TestEscapeBraces(t *testing.T) {
 		"}}}}}":                        "}}}}}}}}}",
 		`'{"a":{"b":{"c":{"d":1}}}}'`:  `'{"a":{"b":{"c":{"d":1}}}}}}}}'`,
 	} {
-		if got := escapeBraces(in); got != want {
-			t.Errorf("escapeBraces(%q) = %q, want %q", in, got, want)
+		if got := EscapeBraces(in); got != want {
+			t.Errorf("EscapeBraces(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -161,9 +161,9 @@ func TestEscapeBracesRoundTrip(t *testing.T) {
 		"echo hi", "{", "{{", "{{{", "{{{{", "}", "}}", "}}}", "}}}}", "}}}}}", "}}}}}}", "}}}}}}}}",
 		"{{a}}", "{{a}}}}", "{{{{a}}}}", `curl -d '{"a":{"b":{"c":{"d":1}}}}' x`, "}}{{", "{{}}}}{{",
 	} {
-		got, err := ev.Interpolate(escapeBraces(in), token.Span{})
+		got, err := ev.Interpolate(EscapeBraces(in), token.Span{})
 		if err != nil || got != in {
-			t.Errorf("Rune reads escapeBraces(%q) as %q, %v", in, got, err)
+			t.Errorf("Rune reads EscapeBraces(%q) as %q, %v", in, got, err)
 		}
 	}
 }

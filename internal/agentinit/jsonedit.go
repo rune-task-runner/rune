@@ -510,6 +510,50 @@ func insertItems(doc []byte, root, n *jsonNode, items []func(indent string, inli
 	return applySplices(doc, splices...)
 }
 
+// removeItem takes member or element i out of the object or list n, with
+// the comma and the white space that belong to it. An item on a line of its
+// own takes its line with it. The only item leaves the brackets empty.
+func removeItem(doc []byte, n *jsonNode, i int) []byte {
+	type item struct{ start, end int }
+	var items []item
+	for _, m := range n.members {
+		items = append(items, item{m.keyStart, m.value.end})
+	}
+	for _, e := range n.elems {
+		items = append(items, item{e.start, e.end})
+	}
+	if len(items) == 1 {
+		return applySplices(doc, splice{n.start + 1, n.end - 1 - (n.start + 1), ""})
+	}
+	lineOf := func(off int) int {
+		if startsLine(doc, off) {
+			return bytes.LastIndexByte(doc[:off], '\n') + 1
+		}
+		return off
+	}
+	if i < len(items)-1 {
+		start, end := lineOf(items[i].start), lineOf(items[i+1].start)
+		return applySplices(doc, splice{start, end - start, ""})
+	}
+	// The last item goes with the comma before it, and with a comma after
+	// it, if there is one.
+	start, end := items[i-1].end, items[i].end
+	if n.lastComma >= end {
+		end = n.lastComma + 1
+	}
+	// On a line of its own it goes with its line, and only the comma goes
+	// from the line before: a comment after that comma stays.
+	comma := start + len(doc[start:]) - len(bytes.TrimLeft(doc[start:], " \t\r\n"))
+	if !startsLine(doc, items[i].start) || doc[comma] != ',' {
+		return applySplices(doc, splice{start, end - start, ""})
+	}
+	from := bytes.LastIndexByte(doc[:items[i].start], '\n')
+	if from > 0 && doc[from-1] == '\r' {
+		from--
+	}
+	return applySplices(doc, splice{comma, 1, ""}, splice{from, end - from, ""})
+}
+
 func dotted(path []string) string { return strings.Join(path, ".") }
 
 // conflictAt is a conflict at the value that starts at off.

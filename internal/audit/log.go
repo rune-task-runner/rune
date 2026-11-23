@@ -123,26 +123,8 @@ func (l *Log) Dir() string { return l.dir }
 // ensureDir creates the base and the project directory when they are
 // missing and checks that they are what the log would have created.
 func (l *Log) ensureDir() error {
-	if err := os.MkdirAll(l.base, 0o700); err != nil {
-		return fmt.Errorf("cannot create %s: %w; set RUNE_AUDIT_DIR to a writable directory", l.base, err)
-	}
-	if _, err := realDir(l.base); err != nil {
+	if err := PrivateDir(l.base, l.dir, "; set RUNE_AUDIT_DIR to a writable directory"); err != nil {
 		return err
-	}
-	if err := os.Mkdir(l.dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-		return fmt.Errorf("cannot create %s: %w; set RUNE_AUDIT_DIR to a writable directory", l.dir, err)
-	}
-	info, err := realDir(l.dir)
-	if err != nil {
-		return err
-	}
-	if !ownedByCurrentUser(info) {
-		return &UnusableError{Path: l.dir, Reason: "belongs to another user"}
-	}
-	if info.Mode().Perm() != 0o700 {
-		if err := os.Chmod(l.dir, 0o700); err != nil {
-			return fmt.Errorf("restrict %s: %w", l.dir, err)
-		}
 	}
 	// A hint for a person who browses the base directory: which project a
 	// directory named by a digest belongs to.
@@ -159,6 +141,47 @@ func (l *Log) ensureDir() error {
 		}
 	}
 	return nil
+}
+
+// PrivateDir creates base and dir, the directory under it that one project
+// writes to, when they are missing, and checks that both are directories and
+// not symbolic links, and that dir belongs to the current user and is open
+// to that user only. hint ends the message of a directory that cannot be
+// created: what the person can set instead.
+func PrivateDir(base, dir, hint string) error {
+	if err := os.MkdirAll(base, 0o700); err != nil {
+		return fmt.Errorf("cannot create %s: %w%s", base, err, hint)
+	}
+	if _, err := realDir(base); err != nil {
+		return err
+	}
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("cannot create %s: %w%s", dir, err, hint)
+	}
+	info, err := realDir(dir)
+	if err != nil {
+		return err
+	}
+	if !ownedByCurrentUser(info) {
+		return &UnusableError{Path: dir, Reason: "belongs to another user"}
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return fmt.Errorf("restrict %s: %w", dir, err)
+		}
+	}
+	return nil
+}
+
+// ErrLocked is the error of a lock another writer held for the whole wait.
+var ErrLocked = errors.New("another writer holds the lock")
+
+// LockDir takes the lock of dir, waiting at most wait for another writer to
+// release it, and returns the function that releases it. Writers of the
+// audit log and of other stores Rune keeps in a directory of their own use
+// it the same way.
+func LockDir(dir string, wait time.Duration) (unlock func(), err error) {
+	return lockDir(dir, wait)
 }
 
 // Append writes rec to the file of the UTC day its action started on. The
@@ -248,7 +271,7 @@ func lockDir(dir string, wait time.Duration) (unlock func(), err error) {
 			continue
 		}
 		if !time.Now().Before(deadline) {
-			return nil, fmt.Errorf("lock %s: another writer holds the lock", dir)
+			return nil, fmt.Errorf("lock %s: %w", dir, ErrLocked)
 		}
 		time.Sleep(lockPoll)
 	}

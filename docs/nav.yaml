@@ -35,6 +35,7 @@ groups:
       - how-to/import-from-other-runners.md
       - how-to/agent-setup.md
       - how-to/agent-instructions.md
+      - how-to/learn-tasks-from-agent.md
       - path: how-to/README.md
         label: All how-to guides
 

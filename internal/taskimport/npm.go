@@ -184,7 +184,7 @@ func readNPM(text string) (*source, error) {
 		src.tasks = append(src.tasks, t)
 		env := [][2]string{{"npm_lifecycle_event", s.name}, {"npm_package_name", pkg.name}, {"npm_package_version", pkg.version}}
 		for _, e := range env {
-			if lit, ok := quote(e[1]); ok && e[1] != "" {
+			if lit, ok := Quote(e[1]); ok && e[1] != "" {
 				t.Attrs = append(t.Attrs, fmt.Sprintf("env(%q, %s)", e[0], lit))
 			}
 		}
@@ -196,7 +196,7 @@ func readNPM(text string) (*source, error) {
 			t.unsupported(fmt.Sprintf("it uses $%s, which only npm sets", name))
 			continue
 		}
-		body, why := shellBody([]cmdLine{{text: escapeBraces(s.text)}}, false)
+		body, why := shellBody([]cmdLine{{text: EscapeBraces(s.text)}}, false)
 		if why != "" {
 			t.unsupported(why)
 			continue

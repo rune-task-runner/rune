@@ -406,6 +406,72 @@ func TestLock(t *testing.T) {
 	})
 }
 
+func TestPrivateDir(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	dir := filepath.Join(base, "p")
+	if err := PrivateDir(base, dir, "; hint"); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := PrivateDir(base, dir, "; hint"); err != nil {
+			t.Fatal(err)
+		}
+		if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("mode not tightened: %v %v", info.Mode().Perm(), err)
+		}
+	}
+
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PrivateDir(filepath.Join(file, "base"), filepath.Join(file, "base", "p"), "; hint"); err == nil || !strings.HasSuffix(err.Error(), "; hint") {
+		t.Errorf("a base that cannot be created: %v", err)
+	}
+	if err := PrivateDir(filepath.Dir(file), file, "; hint"); err == nil {
+		t.Error("a file is accepted as the directory")
+	}
+	missing := filepath.Join(t.TempDir(), "base")
+	if err := PrivateDir(missing, filepath.Join(missing, "a", "b"), "; hint"); err == nil || !strings.HasSuffix(err.Error(), "; hint") {
+		t.Errorf("a directory whose parent is missing: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	target := t.TempDir()
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	var unusable *UnusableError
+	if err := PrivateDir(base, link, "; hint"); !errors.As(err, &unusable) || unusable.Reason != "is a symbolic link" {
+		t.Errorf("a link: %v", err)
+	}
+	if err := PrivateDir(link, filepath.Join(link, "p"), "; hint"); !errors.As(err, &unusable) {
+		t.Errorf("a base that is a link: %v", err)
+	}
+}
+
+func TestLockDir(t *testing.T) {
+	dir := t.TempDir()
+	unlock, err := LockDir(dir, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LockDir(dir, 20*time.Millisecond); !errors.Is(err, ErrLocked) || !strings.Contains(err.Error(), "another writer holds the lock") {
+		t.Errorf("a second writer: %v", err)
+	}
+	unlock()
+	unlock, err = LockDir(dir, time.Second)
+	if err != nil {
+		t.Fatalf("after release: %v", err)
+	}
+	unlock()
+}
+
 func TestStealStale(t *testing.T) {
 	dir := t.TempDir()
 	lock := filepath.Join(dir, lockName)

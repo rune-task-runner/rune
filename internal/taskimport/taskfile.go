@@ -70,8 +70,8 @@ func readTaskfile(text string) (*source, error) {
 		case "env":
 			for _, e := range taskPairs(value) {
 				text, ok := taskScalar(e.value)
-				name, okName := quote(e.key.Value)
-				lit, okValue := quote(text)
+				name, okName := Quote(e.key.Value)
+				lit, okValue := Quote(text)
 				if !ok || !okName || !okValue || strings.Contains(text, "{{") {
 					src.items = append(src.items, Item{
 						Line: e.key.Line, Name: "env " + e.key.Value, Global: true,
@@ -203,7 +203,7 @@ func taskValue(value string) (expr string, refs []string, reason string) {
 		if s == "" {
 			return true
 		}
-		q, ok := quote(s)
+		q, ok := Quote(s)
 		parts = append(parts, q)
 		return ok
 	}
@@ -252,7 +252,7 @@ func taskTemplate(text string, good map[string]bool, bad map[string]int) (out st
 		m := taskVarRef.FindStringSubmatch(action)
 		// The text between the templates has no "{{"; Rune would still read
 		// its "}}}}" as two braces.
-		b.WriteString(escapeBraces(rest[:loc[0]]))
+		b.WriteString(EscapeBraces(rest[:loc[0]]))
 		switch {
 		case m == nil:
 			return "", false, "the template " + action + " is not a plain variable"
@@ -271,7 +271,7 @@ func taskTemplate(text string, good map[string]bool, bad map[string]int) (out st
 	if strings.Contains(rest, "{{") {
 		return "", false, "a template is not closed: " + text
 	}
-	b.WriteString(escapeBraces(rest))
+	b.WriteString(EscapeBraces(rest))
 	return b.String(), args, ""
 }
 
@@ -281,7 +281,7 @@ func taskLiteral(n *yaml.Node) (string, bool) {
 	if !ok || strings.Contains(text, "{{") {
 		return "", false
 	}
-	return quote(text)
+	return Quote(text)
 }
 
 // taskTask converts one task. A key outside the supported subset makes the
@@ -338,7 +338,7 @@ func taskTask(key, value *yaml.Node, tf *taskfile) *Task {
 			ignore = taskTrue(e.value)
 		case "env":
 			for _, p := range taskPairs(e.value) {
-				name, okName := quote(p.key.Value)
+				name, okName := Quote(p.key.Value)
 				lit, okValue := taskLiteral(p.value)
 				if !okName || !okValue {
 					t.unsupported(fmt.Sprintf("the value of env %s is not literal text", p.key.Value))
@@ -460,7 +460,7 @@ func taskGlobs(n *yaml.Node) ([]string, bool) {
 		return nil, false
 	}
 	for i, s := range items {
-		lit, printable := quote(s)
+		lit, printable := Quote(s)
 		if !printable || strings.Contains(s, "{{") {
 			return nil, false
 		}

@@ -23,6 +23,7 @@ for a guided tour, see the **[user guide](../user-guide/README.md)**.
 | [AI agents (MCP)](../mcp.md) | Expose tasks to agents; security model | [agent-driven](../examples/agent-driven/README.md) |
 | [Set up an agent client](agent-setup.md) | Register Rune with Claude Code, Codex CLI or VS Code and remove the client's shell | |
 | [Export instructions for agents](agent-instructions.md) | Write the tasks into `AGENTS.md` or a Claude skill for an agent without MCP, and check that the text is current | |
+| [Learn tasks from your agent's commands](learn-tasks-from-agent.md) | Record the shell commands an agent repeats and turn the ones you choose into tasks | |
 
 Working on a whole project? See the **[use-case walkthroughs](../use-cases/README.md)** for
 Python, Node, and AI-agent setups.

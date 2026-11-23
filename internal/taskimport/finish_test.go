@@ -265,6 +265,16 @@ func TestFinishRuneCommandNames(t *testing.T) {
 	}
 }
 
+// rune suggest is a command (spec 058), so a task named suggest is run with
+// rune -- suggest, and the importer says so.
+func TestFinishSuggestIsARuneCommand(t *testing.T) {
+	src := &source{tasks: []*Task{{Source: "suggest", Line: 1}}}
+	mustFinish(t, src, Options{Format: FormatMake, SourceName: "Makefile"})
+	if got := src.tasks[0]; got.Status != Review || !slices.Equal(got.Notes, []string{"suggest is also a rune command: run the task with rune -- suggest"}) {
+		t.Errorf("suggest = %v %q", got.Status, got.Notes)
+	}
+}
+
 func TestFinishConfirmWithDependencies(t *testing.T) {
 	const note = "the source runner asks before the dependencies run; Rune asks after them"
 	src := &source{tasks: []*Task{

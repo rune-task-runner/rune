@@ -53,6 +53,72 @@ func TestDefaultBase(t *testing.T) {
 	}
 }
 
+func TestStateDir(t *testing.T) {
+	env := func(vars map[string]string) func(string) string {
+		return func(name string) string { return vars[name] }
+	}
+	home := func() (string, error) { return filepath.FromSlash("/home/op"), nil }
+	state := filepath.Join(filepath.VolumeName(t.TempDir())+string(filepath.Separator), "state")
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		goos string
+		want string
+	}{
+		{"xdg", map[string]string{"XDG_STATE_HOME": state}, "linux", filepath.Join(state, "rune")},
+		{"a relative xdg is ignored", map[string]string{"XDG_STATE_HOME": "state"}, "linux", "/home/op/.local/state/rune"},
+		{"windows", map[string]string{"LocalAppData": "/local"}, "windows", "/local/rune"},
+		{"home", nil, "darwin", "/home/op/.local/state/rune"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := StateDir(env(tt.env), tt.goos, home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != filepath.FromSlash(tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+	_, err := StateDir(env(nil), "linux", func() (string, error) { return "", errors.New("no home") })
+	if err == nil || err.Error() != "no state directory: set XDG_STATE_HOME" {
+		t.Errorf("without a home directory: %v", err)
+	}
+	// The audit log keeps its own message, which names its own variable.
+	_, err = DefaultBase(env(nil), "linux", func() (string, error) { return "", errors.New("no home") })
+	if err == nil || err.Error() != "no state directory: set RUNE_AUDIT_DIR or XDG_STATE_HOME" {
+		t.Errorf("DefaultBase without a home directory: %v", err)
+	}
+}
+
+func TestInside(t *testing.T) {
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !Inside(filepath.Join(project, "a", "missing"), project) {
+		t.Error("a missing directory under the project is not inside")
+	}
+	if !Inside(project, project) {
+		t.Error("the project itself is not inside")
+	}
+	if Inside(t.TempDir(), project) {
+		t.Error("another directory is inside")
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(project, link); err != nil {
+		t.Fatal(err)
+	}
+	if !Inside(filepath.Join(link, "state"), project) {
+		t.Error("a directory reached through a link into the project is not inside")
+	}
+}
+
 func TestProjectID(t *testing.T) {
 	a, b := ProjectID("/repo/Runefile"), ProjectID("/other/Runefile")
 	if len(a) != 16 {

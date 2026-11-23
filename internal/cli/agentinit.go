@@ -87,7 +87,7 @@ func AgentInit(opts Options, flags AgentInitFlags, clientName string) error {
 	}
 
 	dir := filepath.Dir(runefile)
-	files, err := readClientFiles(dir, agentinit.Paths(client))
+	files, err := readClientFiles(dir, agentinit.Paths(client), agentInitScope)
 	if err != nil {
 		return err
 	}
@@ -200,12 +200,13 @@ func renderConflicts(opts Options, files map[string][]byte, conflicts []agentini
 }
 
 // readClientFiles reads the client files that exist, by their path relative
-// to the project directory.
-func readClientFiles(dir string, paths []string) (map[string][]byte, error) {
+// to the project directory. scope ends the message of a file a link takes
+// out of the project, as insideProject says.
+func readClientFiles(dir string, paths []string, scope string) (map[string][]byte, error) {
 	files := make(map[string][]byte, len(paths))
 	for _, rel := range paths {
 		target := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := insideProject(dir, target, agentInitScope); err != nil {
+		if err := insideProject(dir, target, scope); err != nil {
 			return nil, &UsageError{Err: err}
 		}
 		data, err := os.ReadFile(target)

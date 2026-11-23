@@ -502,3 +502,49 @@ func TestSetPathAndLookupPath(t *testing.T) {
 		t.Errorf("lookupPath of a missing key = %v, want nil", got)
 	}
 }
+
+// Spec 058: removeItem takes one member or element out, with its comma and
+// its line, and the result decodes to the old value without it.
+func TestRemoveItem(t *testing.T) {
+	tests := []struct {
+		name, doc string
+		path      []string
+		i         int
+		want      string
+	}{
+		{"only element", `{"a": [1]}`, []string{"a"}, 0, `{"a": []}`},
+		{"first inline", `{"a": [1, 2, 3]}`, []string{"a"}, 0, `{"a": [2, 3]}`},
+		{"middle inline", `{"a": [1, 2, 3]}`, []string{"a"}, 1, `{"a": [1, 3]}`},
+		{"last inline", `{"a": [1, 2, 3]}`, []string{"a"}, 2, `{"a": [1, 2]}`},
+		{"last with a trailing comma", `{"a": [1, 2,]}`, []string{"a"}, 1, `{"a": [1]}`},
+		{"first on lines", "{\"a\": [\n  1,\n  2\n]}", []string{"a"}, 0, "{\"a\": [\n  2\n]}"},
+		{"last on lines", "{\"a\": [\n  1,\n  2\n]}", []string{"a"}, 1, "{\"a\": [\n  1\n]}"},
+		{"only member", `{"a": {"b": 1}}`, []string{"a"}, 0, `{"a": {}}`},
+		{"first member on lines", "{\n  \"a\": 1,\n  \"b\": 2\n}", nil, 0, "{\n  \"b\": 2\n}"},
+		{"last member on lines", "{\n  \"a\": 1,\n  \"b\": 2\n}", nil, 1, "{\n  \"a\": 1\n}"},
+		{"with a comment", "{\n  // keep\n  \"a\": 1,\n  \"b\": 2\n}", nil, 1, "{\n  // keep\n  \"a\": 1\n}"},
+		{"a comment after the comma before", "{\n  \"a\": 1, // keep\n  \"b\": 2\n}", nil, 1, "{\n  \"a\": 1 // keep\n}"},
+		{"last on lines with a trailing comma", "{\"a\": [\n  1,\n  2,\n]}", []string{"a"}, 1, "{\"a\": [\n  1\n]}"},
+		{"last on lines with CRLF", "{\"a\": [\r\n  1,\r\n  2\r\n]}", []string{"a"}, 1, "{\"a\": [\r\n  1\r\n]}"},
+		{"a comment before the comma", "{\"a\": [\n  1 /* c */,\n  2\n]}", []string{"a"}, 1, "{\"a\": [\n  1\n]}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root, err := parseJSON("f", []byte(tt.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := root
+			for _, key := range tt.path {
+				n = n.member(key)
+			}
+			got := string(removeItem([]byte(tt.doc), n, tt.i))
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+			if _, err := parseJSON("f", []byte(got)); err != nil {
+				t.Errorf("the result does not parse: %v", err)
+			}
+		})
+	}
+}
