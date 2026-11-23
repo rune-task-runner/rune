@@ -531,4 +531,11 @@ func TestSuggestApplyShownThroughALink(t *testing.T) {
 	if err != nil || !strings.HasPrefix(stderr, "Runefile: created, added make\n") {
 		t.Errorf("%v\n%s", err, stderr)
 	}
+	// With the Runefile there, found through the link.
+	seed(t, dir, dir, "go vet ./...", 3, "ok")
+	ids = suggestionIDs(t, dir)
+	_, stderr, err = runApply(t, Options{Cwd: link}, SuggestFlags{}, ids[0])
+	if err != nil || !strings.HasPrefix(stderr, "Runefile: updated, added go-vet\n") {
+		t.Errorf("an existing Runefile: %v\n%s", err, stderr)
+	}
 }
