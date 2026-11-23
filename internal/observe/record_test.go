@@ -116,6 +116,12 @@ func TestNewRecord(t *testing.T) {
 		if rec, err := NewRecord(ev, root, Secrets{}, testNow); err != nil || rec.Cwd != "web" {
 			t.Errorf("through a link: %q %v", rec.Cwd, err)
 		}
+		// A directory that is not there, named through the link: its
+		// existing part is resolved, the rest kept.
+		ev.Cwd = filepath.Join(link, "gone", "deeper")
+		if rec, err := NewRecord(ev, root, Secrets{}, testNow); err != nil || rec.Cwd != "gone/deeper" {
+			t.Errorf("a missing directory through a link: %q %v", rec.Cwd, err)
+		}
 	})
 	t.Run("failure", func(t *testing.T) {
 		ev := bashEvent(EventFailure, root)
@@ -188,5 +194,15 @@ func TestRecordEncode(t *testing.T) {
 	rec.Description = strings.Repeat("d", MaxDescriptionBytes)
 	if line, err := rec.Encode(); err != nil || len(line) > MaxRecordBytes {
 		t.Errorf("the longest plain record: %d bytes, %v", len(line), err)
+	}
+}
+
+func TestResolveExisting(t *testing.T) {
+	root := testRoot(t)
+	if got := resolveExisting(filepath.Join(root, "a", "b")); got != filepath.Join(root, "a", "b") {
+		t.Errorf("a missing tail: %q", got)
+	}
+	if got := resolveExisting(root); got != root {
+		t.Errorf("an existing directory: %q", got)
 	}
 }

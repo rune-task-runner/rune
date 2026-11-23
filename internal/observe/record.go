@@ -98,15 +98,13 @@ func validID(id string) bool {
 
 // relative is dir relative to root, "" for root itself, with forward
 // slashes. ok is false for a directory outside root. dir is resolved like
-// root, so that two names of one directory agree.
+// root, so that two names of one directory agree: a link, macOS's /var for
+// /private/var, a short name of Windows.
 func relative(root, dir string) (rel string, ok bool) {
 	if !filepath.IsAbs(dir) {
 		return "", false
 	}
-	if real, err := filepath.EvalSymlinks(dir); err == nil {
-		dir = real
-	}
-	rel, err := filepath.Rel(root, filepath.Clean(dir))
+	rel, err := filepath.Rel(root, resolveExisting(filepath.Clean(dir)))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", false
 	}
@@ -114,6 +112,22 @@ func relative(root, dir string) (rel string, ok bool) {
 		return "", true
 	}
 	return filepath.ToSlash(rel), true
+}
+
+// resolveExisting follows the links of the part of dir that exists and keeps
+// the rest as written: a command may run in a directory that is gone, or not
+// there yet.
+func resolveExisting(dir string) string {
+	rest := ""
+	for d := dir; ; d = filepath.Dir(d) {
+		if real, err := filepath.EvalSymlinks(d); err == nil {
+			return filepath.Join(real, rest)
+		}
+		if filepath.Dir(d) == d {
+			return dir
+		}
+		rest = filepath.Join(filepath.Base(d), rest)
+	}
 }
 
 // exitCode reads "Exit code N" from the first line of a failure's error.

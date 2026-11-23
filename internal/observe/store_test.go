@@ -407,8 +407,10 @@ func TestStoreFailures(t *testing.T) {
 		if err := os.WriteFile(s.Dir(), nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := s.Prune(); err == nil {
-			t.Error("Prune under a file")
+		// Windows reads a path under a file as missing, so there is
+		// nothing to prune there; elsewhere it is an error.
+		if err := s.Prune(); (err == nil) != (runtime.GOOS == "windows") {
+			t.Errorf("Prune under a file: %v", err)
 		}
 		if _, err := s.Forget(); err == nil {
 			t.Error("Forget of a file")

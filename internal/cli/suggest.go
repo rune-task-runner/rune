@@ -86,7 +86,13 @@ func SuggestApply(opts Options, flags SuggestFlags, ids []string) error {
 	if !existed {
 		target = filepath.Join(root, "Runefile")
 	}
-	shown := showPath(opts.Cwd, target)
+	// The root is resolved, so the working directory is too: two names of
+	// one directory would show the path in full.
+	cwd := opts.Cwd
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
+	shown := showPath(cwd, target)
 	if info, err := os.Lstat(target); err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		dest, _ := filepath.EvalSymlinks(target)
 		return usagef("%s is a symbolic link to %s; edit that file, or apply in its directory", shown, filepath.ToSlash(dest))

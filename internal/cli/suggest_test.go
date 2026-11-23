@@ -329,7 +329,7 @@ func TestSuggestForget(t *testing.T) {
 }
 
 func TestTaskInfo(t *testing.T) {
-	root := filepath.FromSlash("/p")
+	root := t.TempDir()
 	body := []*ast.BodyLine{{Raw: "  go vet ./...  "}}
 	attr := func(kind, str string) *ast.Attribute { return &ast.Attribute{Kind: kind, Str: str} }
 	tests := []struct {
@@ -509,5 +509,26 @@ func TestSuggestApplyWriteFails(t *testing.T) {
 	}}, ids[0])
 	if _, ok := err.(*CommandFailure); !ok || !strings.HasPrefix(err.Error(), "Runefile: ") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// The Runefile is named relative to the working directory also when that
+// directory is reached through a link (a short name on Windows does the
+// same).
+func TestSuggestApplyShownThroughALink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	observeState(t)
+	dir := t.TempDir()
+	seed(t, dir, dir, "make", 3, "ok")
+	ids := suggestionIDs(t, dir)
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err := runApply(t, Options{Cwd: link}, SuggestFlags{}, ids[0])
+	if err != nil || !strings.HasPrefix(stderr, "Runefile: created, added make\n") {
+		t.Errorf("%v\n%s", err, stderr)
 	}
 }
