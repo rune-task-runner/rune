@@ -1,0 +1,17 @@
+File
+  Task test
+    doc: "The agent-output and agent-summary attributes (spec 057): what an agent's result keeps."
+    Attr agent-output(tail="50")
+    Body
+      @"go test ./..."
+  Task build
+    Attr agent-output(head="10", tail="40")
+    Attr agent-summary
+    Body
+      @"go build ./..."
+  Task deploy
+    Attr confirm
+    Attr agent-summary
+    Param env required
+    Body
+      @"echo {{quote(env)}}"

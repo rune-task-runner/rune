@@ -46,6 +46,10 @@ const (
 	// does not exist or has other parameters, an apply body that does not read
 	// the stored plan, or an apply task run by another task (spec 051).
 	CodeInvalidPlanBinding = "RUNE2020"
+	// Invalid [agent-output] or [agent-summary]: an unknown, repeated or
+	// missing argument, a number of lines that is not 1 to 10000, or a second
+	// attribute on the task (spec 057).
+	CodeInvalidAgentOutput = "RUNE2021"
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

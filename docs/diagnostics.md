@@ -71,6 +71,7 @@ filtering and CI.
 | `RUNE2018` | Invalid `[readonly]`: the task also uses `[confirm]`, or runs a dependency or hook that is not `[readonly]` |
 | `RUNE2019` | Invalid `[agent-allow]`: an unknown, repeated, variadic or non-string parameter, a value its enum does not have or that is not printable, or a second `[agent-allow]` on the task |
 | `RUNE2020` | Invalid `[plan]` or `[applies]`: a wrong plan argument or path, a plan task that does not exist or has other parameters, an apply body that does not use `RUNE_PLAN_FILE`, an apply task that another task runs or that runs its plan task, or a combination the attributes do not allow |
+| `RUNE2021` | Invalid `[agent-output]` or `[agent-summary]`: an unknown or repeated argument, no `tail`, a number of lines that is not a whole number from 1 to 10000, or a second attribute of either kind on the task |
 
 ### Project (RUNE3xxx) — errors
 

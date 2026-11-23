@@ -27,7 +27,8 @@ clean:
     @echo cleaned
 `
 
-// structuredSchema is the output schema of contracts/mcp-results.md.
+// structuredSchema is the output schema of contracts/mcp-results.md, with
+// the two optional objects of spec 057.
 const structuredSchema = `{
   "type": "object",
   "properties": {
@@ -46,6 +47,58 @@ const structuredSchema = `{
     "fixSuggestion": {
       "type": "string",
       "description": "Output of the task's || failure hooks. Present only when a failed run produced one."
+    },
+    "output": {
+      "type": "object",
+      "description": "Present when the task keeps only some lines of its output for agents: the lines kept from the start and the end of each stream, and for each stream how many lines and bytes it had and how many are in the result.",
+      "properties": {
+        "head": {"type": "integer", "description": "Lines kept from the start of each stream, 0 when none."},
+        "tail": {"type": "integer", "description": "Lines kept from the end of each stream."},
+        "stdout": {
+          "type": "object",
+          "description": "What standard output had and what of it the stdout field holds.",
+          "properties": {
+            "lines": {"type": "integer", "description": "Lines the stream had."},
+            "bytes": {"type": "integer", "description": "Bytes the stream had, after masking."},
+            "keptLines": {"type": "integer", "description": "Lines with at least one byte in the result."},
+            "keptBytes": {"type": "integer", "description": "Bytes of the stream in the result, the omission line not counted."}
+          },
+          "required": ["lines", "bytes", "keptLines", "keptBytes"],
+          "additionalProperties": false
+        },
+        "stderr": {
+          "type": "object",
+          "description": "What standard error had and what of it the stderr field holds.",
+          "properties": {
+            "lines": {"type": "integer", "description": "Lines the stream had."},
+            "bytes": {"type": "integer", "description": "Bytes the stream had, after masking."},
+            "keptLines": {"type": "integer", "description": "Lines with at least one byte in the result."},
+            "keptBytes": {"type": "integer", "description": "Bytes of the stream in the result, the omission line not counted."}
+          },
+          "required": ["lines", "bytes", "keptLines", "keptBytes"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["head", "tail", "stdout", "stderr"],
+      "additionalProperties": false
+    },
+    "failureSummary": {
+      "type": "object",
+      "description": "Present when a failed run of a task with [agent-summary] has a failure summary: the same facts as the summary section of the text.",
+      "properties": {
+        "kind": {"type": "string", "enum": ["step", "script", "error", "cancelled", "unknown"], "description": "What Rune observed: a body line failed, a script failed, Rune stopped the run, the call was cancelled, or only the exit status is known."},
+        "task": {"type": "string", "description": "The task the agent called."},
+        "failedTask": {"type": "string", "description": "The task whose body failed, when Rune knows it."},
+        "file": {"type": "string", "description": "The file of the failed step, relative to the directory of the Runefile."},
+        "line": {"type": "integer", "description": "The line of the failed step in that file."},
+        "command": {"type": "string", "description": "The command that failed, with secrets masked."},
+        "reason": {"type": "string", "description": "Why the run failed: an exit status, Rune's message, or what Rune could not tell."},
+        "fixSuggestion": {"type": "boolean", "description": "Whether the result has a fix suggestion from the task's || failure hooks."},
+        "stdoutTail": {"type": "string", "description": "The last lines of the stdout field."},
+        "stderrTail": {"type": "string", "description": "The last lines of the stderr field."}
+      },
+      "required": ["kind", "task", "reason", "fixSuggestion"],
+      "additionalProperties": false
     }
   },
   "required": ["exitCode", "stdout", "stderr"],

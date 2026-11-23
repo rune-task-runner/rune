@@ -67,10 +67,13 @@ AttrItem    = "private"
             | "param-doc" "(" StringLit "," StringLit ")"  (* parameter description for tool schemas *)
             | "agent-allow" "(" AllowPred { "," AllowPred } ")"  (* values an agent may pass *)
             | "plan" "(" PlanArg { "," PlanArg } ")"     (* the task makes a plan that Rune stores *)
+            | "agent-output" "(" OutputArg { "," OutputArg } ")"  (* lines an agent's result keeps *)
+            | "agent-summary"                             (* a failure summary for agents *)
             | "applies" "(" StringLit ")"                (* applies the named task's stored plan *)
             | "cache" "(" "inputs" "=" List [ "," "outputs" "=" List ] ")" ;
 AllowPred   = Name "=" StringLit ;               (* a parameter and the one value an agent may run with *)
 PlanArg     = Name "=" StringLit ;               (* file, summary, tool, expires: each at most once *)
+OutputArg   = Name "=" StringLit ;               (* head, tail: each at most once, tail required, 1 to 10000 lines *)
 
 (* ---- Expression sublanguage (Pratt-parsed; total, non-Turing-complete) ---- *)
 Expr        = Conditional | Concat ;

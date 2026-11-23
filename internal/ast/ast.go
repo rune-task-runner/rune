@@ -372,6 +372,62 @@ func PlanExpiry(text string) (time.Duration, error) {
 	return d, nil
 }
 
+// MaxAgentOutputLines is the most lines [agent-output] can keep from the
+// start or the end of a stream (spec 057).
+const MaxAgentOutputLines = 10000
+
+// AgentOutputLines reads a number of lines of [agent-output]: 1 to 5 decimal
+// digits whose value is from 1 to MaxAgentOutputLines. The analyzer and the
+// engine both read the text through it, so neither accepts what the other
+// rejects.
+func AgentOutputLines(text string) (int, error) {
+	n := 0
+	for _, c := range []byte(text) {
+		if c < '0' || c > '9' {
+			n = -1
+			break
+		}
+		n = n*10 + int(c-'0')
+	}
+	if len(text) == 0 || len(text) > 5 || n < 1 || n > MaxAgentOutputLines {
+		return 0, fmt.Errorf("must be a whole number of lines from 1 to %d", MaxAgentOutputLines)
+	}
+	return n, nil
+}
+
+// AgentOutput returns the [agent-output] policy of the task: the lines kept
+// from the start (0 when head is not set) and from the end of each stream.
+// ok is false when the task has none, and when the attribute is one the
+// analyzer rejects, so a policy is never read in part.
+func (t *Task) AgentOutput() (head, tail int, ok bool) {
+	a := t.Attr(AttrAgentOutput)
+	if a == nil {
+		return 0, 0, false
+	}
+	for _, arg := range a.Allow {
+		n, err := AgentOutputLines(arg.Value)
+		if err != nil {
+			return 0, 0, false
+		}
+		switch arg.Name {
+		case "head":
+			head = n
+		case "tail":
+			tail = n
+		default:
+			return 0, 0, false
+		}
+	}
+	if tail == 0 {
+		return 0, 0, false
+	}
+	return head, tail, true
+}
+
+// AgentSummary reports whether a failed call of the task from an agent gets
+// a failure summary (spec 057).
+func (t *Task) AgentSummary() bool { return t.Attr(AttrAgentSummary) != nil }
+
 // PlanPathError says why p cannot be a file or summary path of [plan], or ""
 // when it can. The rule reads the text only, so one Runefile is valid or not
 // on every host: filepath.IsAbs would accept C:/x on Linux and /x on Windows.
@@ -449,6 +505,8 @@ const (
 	AttrAgentAllow       = "agent-allow"     // limits the values an agent may run the task with (spec 050)
 	AttrPlan             = "plan"            // the task makes a plan file that Rune stores (spec 051)
 	AttrApplies          = "applies"         // the task applies the stored plan of the named plan task (spec 051)
+	AttrAgentOutput      = "agent-output"    // the lines of each stream an agent's result keeps (spec 057)
+	AttrAgentSummary     = "agent-summary"   // a failed call from an agent gets a failure summary (spec 057)
 )
 
 // The variables Rune gives the body of a task that applies a plan (spec 051).
@@ -476,7 +534,7 @@ var KnownAttributes = []string{
 	AttrNoCD, AttrWorkingDirectory, AttrEnv, AttrDoc, AttrScript,
 	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
 	AttrParamDoc, AttrReturns, AttrReadonly, AttrAgentAllow,
-	AttrPlan, AttrApplies,
+	AttrPlan, AttrApplies, AttrAgentOutput, AttrAgentSummary,
 }
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a

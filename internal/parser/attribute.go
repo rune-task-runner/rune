@@ -39,7 +39,7 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 	switch name.Lit {
 	case ast.AttrPrivate, ast.AttrParallel, ast.AttrLinux, ast.AttrMacos,
 		ast.AttrWindows, ast.AttrUnix, ast.AttrNoCD, ast.AttrNetwork,
-		ast.AttrNoExitMessage, ast.AttrContext, ast.AttrReadonly:
+		ast.AttrNoExitMessage, ast.AttrContext, ast.AttrReadonly, ast.AttrAgentSummary:
 		// No arguments (confirm may also be bare).
 		return a
 
@@ -97,6 +97,10 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 
 	case ast.AttrPlan:
 		p.parseNamedStringArgs(a, "an argument name", "the argument's value")
+		return a
+
+	case ast.AttrAgentOutput:
+		p.parseNamedStringArgs(a, "an argument name", "a number of lines")
 		return a
 
 	default:

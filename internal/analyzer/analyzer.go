@@ -29,6 +29,7 @@ func Analyze(f *ast.File) diag.List {
 	a.checkConstraints()
 	a.checkAgentAllow()
 	a.checkPlanBinding()
+	a.checkAgentOutput()
 	a.checkContext()
 	a.checkReadonly()
 	a.checkExpressions()
