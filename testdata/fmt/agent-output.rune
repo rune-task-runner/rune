@@ -1,0 +1,13 @@
+# The agent-output and agent-summary attributes (spec 057): what an agent's result keeps.
+[agent-output( tail = "50" )]
+test:
+    @go test ./...
+
+[agent-output(tail="40",head="10")]
+[agent-summary]
+build:
+    @go build ./...
+
+[confirm, agent-summary , agent-output(head="5", tail="5")]
+deploy env:
+    @echo {{quote(env)}}

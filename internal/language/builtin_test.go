@@ -1,6 +1,9 @@
 package language
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestRegistryLookupAndValidity(t *testing.T) {
 	if !IsValid(BuiltinFunction, "env") {
@@ -46,6 +49,30 @@ func TestRegistryHasPlanAttributes(t *testing.T) {
 		}
 		if got := MatchKind(BuiltinAttribute, name[:2]); len(got) == 0 {
 			t.Errorf("MatchKind(%q) finds nothing", name[:2])
+		}
+	}
+}
+
+// Spec 057: completion and hover read the registry, so both attributes have
+// to be in it with the signature and documentation of the contract.
+func TestRegistryHasAgentOutputAttributes(t *testing.T) {
+	for name, signature := range map[string]string{
+		"agent-output":  `[agent-output(head="10", tail="50")]`,
+		"agent-summary": `[agent-summary]`,
+	} {
+		b, ok := Lookup(BuiltinAttribute, name)
+		if !ok || b.Signature != signature || b.Documentation == "" {
+			t.Errorf("Lookup(%q) = %+v, %v", name, b, ok)
+		}
+	}
+	got := MatchKind(BuiltinAttribute, "agent-")
+	names := make([]string, 0, len(got))
+	for _, b := range got {
+		names = append(names, b.Name)
+	}
+	for _, want := range []string{"agent-allow", "agent-output", "agent-summary"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("MatchKind(\"agent-\") = %v, want %s among them", names, want)
 		}
 	}
 }

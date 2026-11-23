@@ -14,7 +14,8 @@ import (
 
 // Spec 044 (contracts/mcp-results.md): every tool declares one output
 // schema, and every result of a task run carries the exit code and the two
-// streams as fields, beside the text it always had.
+// streams as fields, beside the text it always had. Spec 057 adds the two
+// optional objects of an output policy and a failure summary.
 
 // wantOutputSchema is the contract's schema, written out so a change to the
 // production text is a change to this test.
@@ -36,6 +37,58 @@ const wantOutputSchema = `{
     "fixSuggestion": {
       "type": "string",
       "description": "Output of the task's || failure hooks. Present only when a failed run produced one."
+    },
+    "output": {
+      "type": "object",
+      "description": "Present when the task keeps only some lines of its output for agents: the lines kept from the start and the end of each stream, and for each stream how many lines and bytes it had and how many are in the result.",
+      "properties": {
+        "head": {"type": "integer", "description": "Lines kept from the start of each stream, 0 when none."},
+        "tail": {"type": "integer", "description": "Lines kept from the end of each stream."},
+        "stdout": {
+          "type": "object",
+          "description": "What standard output had and what of it the stdout field holds.",
+          "properties": {
+            "lines": {"type": "integer", "description": "Lines the stream had."},
+            "bytes": {"type": "integer", "description": "Bytes the stream had, after masking."},
+            "keptLines": {"type": "integer", "description": "Lines with at least one byte in the result."},
+            "keptBytes": {"type": "integer", "description": "Bytes of the stream in the result, the omission line not counted."}
+          },
+          "required": ["lines", "bytes", "keptLines", "keptBytes"],
+          "additionalProperties": false
+        },
+        "stderr": {
+          "type": "object",
+          "description": "What standard error had and what of it the stderr field holds.",
+          "properties": {
+            "lines": {"type": "integer", "description": "Lines the stream had."},
+            "bytes": {"type": "integer", "description": "Bytes the stream had, after masking."},
+            "keptLines": {"type": "integer", "description": "Lines with at least one byte in the result."},
+            "keptBytes": {"type": "integer", "description": "Bytes of the stream in the result, the omission line not counted."}
+          },
+          "required": ["lines", "bytes", "keptLines", "keptBytes"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["head", "tail", "stdout", "stderr"],
+      "additionalProperties": false
+    },
+    "failureSummary": {
+      "type": "object",
+      "description": "Present when a failed run of a task with [agent-summary] has a failure summary: the same facts as the summary section of the text.",
+      "properties": {
+        "kind": {"type": "string", "enum": ["step", "script", "error", "cancelled", "unknown"], "description": "What Rune observed: a body line failed, a script failed, Rune stopped the run, the call was cancelled, or only the exit status is known."},
+        "task": {"type": "string", "description": "The task the agent called."},
+        "failedTask": {"type": "string", "description": "The task whose body failed, when Rune knows it."},
+        "file": {"type": "string", "description": "The file of the failed step, relative to the directory of the Runefile."},
+        "line": {"type": "integer", "description": "The line of the failed step in that file."},
+        "command": {"type": "string", "description": "The command that failed, with secrets masked."},
+        "reason": {"type": "string", "description": "Why the run failed: an exit status, Rune's message, or what Rune could not tell."},
+        "fixSuggestion": {"type": "boolean", "description": "Whether the result has a fix suggestion from the task's || failure hooks."},
+        "stdoutTail": {"type": "string", "description": "The last lines of the stdout field."},
+        "stderrTail": {"type": "string", "description": "The last lines of the stderr field."}
+      },
+      "required": ["kind", "task", "reason", "fixSuggestion"],
+      "additionalProperties": false
     }
   },
   "required": ["exitCode", "stdout", "stderr"],
@@ -509,5 +562,105 @@ func TestStructuredCappedForAnyEngine(t *testing.T) {
 	}
 	if want := stdout + "\n" + stderr + "\n[exit 1]"; contentText(res) != want {
 		t.Error("the text is not the two capped fields joined by the text rule")
+	}
+}
+
+// policyResult is a result an engine returns for a task with both spec 057
+// attributes: kept streams with omission lines, their report, and a summary.
+func policyResult() Result {
+	out := NewLineBuffer(1024, 0, 3)
+	errs := NewLineBuffer(1024, 1, 1)
+	for i := range 200 {
+		_, _ = out.Write([]byte("line " + strings.Repeat("o", i%7) + "\n"))
+		_, _ = errs.Write([]byte("err " + strings.Repeat("e", i%5) + "\n"))
+	}
+	return Result{
+		Stdout: out.String(), Stderr: errs.String(), ExitCode: 2, FixSuggestion: "re-run",
+		Output:  &OutputReport{Head: 1, Tail: 3, Stdout: out.Report(), Stderr: errs.Report()},
+		Failure: &FailureSummary{Kind: FailureStep, Task: "test", FailedTask: "test", File: "Runefile", Line: 4, Command: "go test ./...", Reason: "exit status 2"},
+	}
+}
+
+// Spec 057 FR-027 to FR-030: the two objects validate against the declared
+// schema and say what the text says.
+func TestStructuredOutputAndSummary(t *testing.T) {
+	eng := sampleEngine()
+	cs := connect(t, New(eng, Options{OutputLimit: 1024}))
+	validator := outputValidator(t, cs)
+	eng.result = policyResult()
+	res := callTool(t, cs, "logs", nil)
+	got := structured(t, res)
+	if err := validator.Validate(got); err != nil {
+		t.Fatalf("structured content %v is not valid: %v", got, err)
+	}
+	text := res.Content[0].(*mcp.TextContent).Text
+	if !res.IsError || !strings.Contains(text, "\n[exit 2]\n[failure summary - from rune]\n") {
+		t.Errorf("isError %v, text %q", res.IsError, text)
+	}
+	if got["stdout"] != eng.result.Stdout || got["stderr"] != eng.result.Stderr {
+		t.Errorf("the stream fields are not the kept streams")
+	}
+
+	// Every count of the output object is in the omission line it describes.
+	output := got["output"].(map[string]any)
+	for _, name := range []string{"stdout", "stderr"} {
+		rep := output[name].(map[string]any)
+		line := omissionLine(int64(rep["lines"].(float64)-rep["keptLines"].(float64)), int64(rep["bytes"].(float64)-rep["keptBytes"].(float64)))
+		if !strings.Contains(got[name].(string), line) {
+			t.Errorf("%s: no %q in the stream", name, line)
+		}
+	}
+	if output["head"] != float64(1) || output["tail"] != float64(3) {
+		t.Errorf("output = %v", output)
+	}
+
+	// Every field of the summary is the value its text line shows.
+	summary := got["failureSummary"].(map[string]any)
+	for _, line := range []string{
+		"task: " + summary["task"].(string),
+		"failed task: " + summary["failedTask"].(string),
+		"step: " + summary["file"].(string) + ":4: " + summary["command"].(string),
+		"reason: " + summary["reason"].(string),
+		"fix suggestion: follows, from the task's || failure hooks",
+		"last lines of stdout:\n" + summary["stdoutTail"].(string),
+		"last lines of stderr:\n" + summary["stderrTail"].(string),
+	} {
+		if !strings.Contains(text, line) {
+			t.Errorf("the text has no %q", line)
+		}
+	}
+	if summary["kind"] != "step" || summary["line"] != float64(4) || summary["fixSuggestion"] != true {
+		t.Errorf("summary = %v", summary)
+	}
+
+	// The strict schema rejects what the objects do not allow.
+	for name, obj := range map[string]map[string]any{
+		"unknown kind":        {"exitCode": 1, "stdout": "", "stderr": "", "failureSummary": map[string]any{"kind": "panic", "task": "t", "reason": "r", "fixSuggestion": false}},
+		"summary extra key":   {"exitCode": 1, "stdout": "", "stderr": "", "failureSummary": map[string]any{"kind": "step", "task": "t", "reason": "r", "fixSuggestion": false, "cause": "x"}},
+		"output without tail": {"exitCode": 0, "stdout": "", "stderr": "", "output": map[string]any{"head": 0, "stdout": map[string]any{}, "stderr": map[string]any{}}},
+	} {
+		if err := validator.Validate(asJSONValue(t, obj)); err == nil {
+			t.Errorf("%s: the declared schema accepts %v", name, obj)
+		}
+	}
+}
+
+// A success carries the output object and no summary; a result with neither
+// object carries exactly the four fields of spec 044.
+func TestStructuredWithoutSummary(t *testing.T) {
+	r := policyResult()
+	r.ExitCode = 0
+	got := structured(t, callResult(t, r, Options{OutputLimit: 1024}))
+	if _, has := got["failureSummary"]; has {
+		t.Error("a success has a failure summary")
+	}
+	if _, has := got["output"]; !has {
+		t.Error("a success with a policy has no output object")
+	}
+	plain := structured(t, callResult(t, Result{Stdout: "ok\n", ExitCode: 1, FixSuggestion: "x"}, Options{}))
+	for key := range plain {
+		if key != "exitCode" && key != "stdout" && key != "stderr" && key != "fixSuggestion" {
+			t.Errorf("a result without the attributes has the field %q", key)
+		}
 	}
 }

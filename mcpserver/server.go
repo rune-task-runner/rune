@@ -33,6 +33,17 @@ type Result struct {
 	// as the fixSuggestion field of the structured content (spec 044). Empty
 	// means no section and no field.
 	FixSuggestion string
+	// Output describes the kept streams of a task with an output policy
+	// (spec 057): the engine captured Stdout and Stderr in LineBuffers and
+	// reports them here. Nil means no policy, and the result is what it was
+	// before spec 057.
+	Output *OutputReport
+	// Failure is the failure summary of a failed call of a task with
+	// [agent-summary] (spec 057). The engine sets what it observed and masks
+	// Command and Reason; the server bounds every field, adds the quoted
+	// lines and FixSuggestion, and drops the summary of a call that
+	// succeeded.
+	Failure *FailureSummary
 }
 
 // ParamInfo describes a task parameter for input-schema derivation.

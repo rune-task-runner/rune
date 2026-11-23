@@ -62,3 +62,17 @@ func TestHoverAttribute(t *testing.T) {
 		t.Errorf("expected attribute hover, got ok=%v md=%q", ok, md)
 	}
 }
+
+func TestHoverAgentOutputAttributes(t *testing.T) {
+	src := "# T.\n[agent-output(tail=\"5\"), agent-summary]\ntest:\n    @echo hi\n"
+	f, _ := resolve(t, src)
+	for name, want := range map[string]string{
+		"agent-output":  `[agent-output(head="10", tail="50")]`,
+		"agent-summary": "[agent-summary]",
+	} {
+		md, _, ok := Hover(f, "Runefile", at(src, name))
+		if !ok || !strings.Contains(md, want) {
+			t.Errorf("hover on %s: ok=%v md=%q, want %q", name, ok, md, want)
+		}
+	}
+}

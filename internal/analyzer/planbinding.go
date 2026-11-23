@@ -21,8 +21,8 @@ var planArguments = []string{"file", "summary", "tool", "expires"}
 // Runefile that reads as applying only reviewed plans must do so.
 func (a *analyzer) checkPlanBinding() {
 	for _, t := range a.file.Tasks {
-		plan := a.firstOf(t, ast.AttrPlan)
-		applies := a.firstOf(t, ast.AttrApplies)
+		plan := a.firstOf(t, ast.AttrPlan, diag.CodeInvalidPlanBinding)
+		applies := a.firstOf(t, ast.AttrApplies, diag.CodeInvalidPlanBinding)
 		if plan != nil && applies != nil {
 			a.planErrorf(applies.Sp, "task %q cannot both make a plan and apply one", t.Name)
 		}
@@ -60,8 +60,9 @@ func (a *analyzer) planErrorf(span token.Span, format string, args ...any) {
 }
 
 // firstOf returns the task's first attribute of kind and reports every later
-// one: the engine reads the first only, so a second would be silently unused.
-func (a *analyzer) firstOf(t *ast.Task, kind string) *ast.Attribute {
+// one with code: the engine reads the first only, so a second would be
+// silently unused.
+func (a *analyzer) firstOf(t *ast.Task, kind, code string) *ast.Attribute {
 	var first *ast.Attribute
 	for _, attr := range t.Attributes {
 		if attr.Kind != kind {
@@ -72,7 +73,7 @@ func (a *analyzer) firstOf(t *ast.Task, kind string) *ast.Attribute {
 			continue
 		}
 		a.diags.Add(diag.New(attr.Sp, fmt.Sprintf("duplicate [%s] on task %q", kind, t.Name)).
-			WithCode(diag.CodeInvalidPlanBinding).
+			WithCode(code).
 			WithRelated(diag.RelatedLocation{Span: first.Sp, Message: fmt.Sprintf("first [%s] declared here", kind)}))
 	}
 	return first

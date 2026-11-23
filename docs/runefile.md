@@ -367,6 +367,8 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [returns("JSON array of IDs")]  # outcome description: shown to agents and in --list
 [param-doc("env", "Target environment")]  # describe one parameter for the tool schema
 [agent-allow(env="staging")]    # the only value an agent may run the task with
+[agent-output(tail="50")]       # an agent's result keeps the last 50 lines of each stream
+[agent-summary]                 # a failed call from an agent gets a failure summary
 [plan(file="tfplan", summary="tfplan.txt")]  # the task makes a plan, which Rune stores
 [applies("plan")]               # runs only with the approved plan of the named task, once
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
@@ -405,6 +407,18 @@ used twice, a value the parameter's `enum` does not have, a value with a charact
 not printable, a parameter of another type, and a second `[agent-allow]` on one task are
 each a static error (`RUNE2019`). Rune never drops a policy it cannot apply. See
 [Restricting the values an agent may pass](mcp.md#restricting-the-values-an-agent-may-pass).
+
+`[agent-output(tail="T")]` and `[agent-output(head="H", tail="T")]` decide what an AI
+agent receives of a task's output over MCP: the first H lines (optional) and the last T
+lines of each of stdout and stderr, with one line such as `[omitted 1950 lines, 98765 bytes]`
+where lines were left out. Each value is a whole number of lines from 1 to 10000. The
+output limit of the server still applies, so a stream never passes it, however long a line
+is. `[agent-summary]` adds a short failure summary after the `[exit N]` line of a failed
+call: the task and the step that failed, the reason, and the last lines of each stream. Only
+the attributes of the task an agent calls count. On the command line both change nothing:
+every line is printed. An unknown or repeated argument, a missing `tail`, a value out of
+range, and a second attribute of either kind on one task are each a static error
+(`RUNE2021`). See [Short results for noisy tasks](mcp.md#short-results-for-noisy-tasks).
 
 `[plan(file="...", summary="...")]` marks a task that makes a plan, and `[applies("<task>")]`
 marks the task that applies the plan of the named plan task. The apply task runs only with

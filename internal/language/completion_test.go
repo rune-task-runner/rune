@@ -117,3 +117,12 @@ func TestCompletePrivateTaskSameFileOnly(t *testing.T) {
 		t.Errorf("same-file private task should be offered, got %v", labels(items))
 	}
 }
+
+func TestCompleteAgentOutputAttributes(t *testing.T) {
+	items := completeAt(t, "[agent-|\n# B.\nbuild:\n    @echo b\n")
+	for _, want := range []string{"agent-output", "agent-summary"} {
+		if !contains(items, want) {
+			t.Errorf("attribute completions = %v, want %s", labels(items), want)
+		}
+	}
+}

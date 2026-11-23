@@ -104,7 +104,7 @@ func dumpAttr(b *strings.Builder, a *Attribute) {
 		b.WriteString(")\n")
 	case AttrEnv, AttrParamDoc:
 		fmt.Fprintf(b, "    Attr %s(%s, %s)\n", a.Kind, strconv.Quote(a.Str), strconv.Quote(a.Str2))
-	case AttrAgentAllow, AttrPlan:
+	case AttrAgentAllow, AttrPlan, AttrAgentOutput:
 		fmt.Fprintf(b, "    Attr %s(%s)\n", a.Kind, FormatAllow(a.Allow))
 	default:
 		if a.Str != "" {

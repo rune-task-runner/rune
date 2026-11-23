@@ -299,6 +299,9 @@ func renderText(r Result) string {
 		b.WriteByte('\n')
 	}
 	fmt.Fprintf(&b, "[exit %d]", r.ExitCode)
+	if r.Failure != nil {
+		b.WriteString("\n" + renderSummary(*r.Failure))
+	}
 	if r.FixSuggestion != "" {
 		b.WriteString("\n[fix suggestion - from Runefile || failure hooks]\n")
 		b.WriteString(r.FixSuggestion)

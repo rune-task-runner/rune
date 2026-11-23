@@ -206,6 +206,8 @@ result of every task run carries the same information as `structuredContent`:
 | `stdout` | string | What the run wrote to standard output. Always present; empty when it wrote nothing. |
 | `stderr` | string | What the run wrote to standard error, including Rune's own lines about the run. Always present. |
 | `fixSuggestion` | string | Output of the task's `||` [failure hooks](#fix-suggestions-on-failure). Present only when a failed run produced one. |
+| `output` | object | What a task with [`[agent-output]`](#short-results-for-noisy-tasks) kept of each stream. Present only for such a task. |
+| `failureSummary` | object | The [failure summary](#the-failure-summary) of a failed call of a task with `[agent-summary]`. Present only then. |
 
 - The text is unchanged, so a client that ignores structured content sees what it always
   saw. The fields are the strings the text is made of: `stdout`, then `stderr`, then the
@@ -219,7 +221,8 @@ result of every task run carries the same information as `structuredContent`:
   a `[confirm]` call that was not approved, an undeclared argument, a missing required
   argument, an invalid value, or any other call rejected before the task starts. Such a result is always marked as an error and carries
   its explanation as text.
-- The schema is the same for every tool and allows no other field.
+- The schema is the same for every tool and allows no other field. A task with neither
+  [attribute for short results](#short-results-for-noisy-tasks) has only the first four.
 
 ### Tool hints
 
@@ -383,6 +386,7 @@ build finished
 - Secret masking happens before truncation, so a cut never exposes part of a secret.
 - The [fix suggestion](#fix-suggestions-on-failure) and the
   [project context](#project-context-for-agents) keep their own 8 KiB limit.
+- A [failure summary](#the-failure-summary) adds at most 4 KiB after the `[exit N]` line.
 
 Change the limit for one server with `--output-limit`, or for every server of a Runefile
 with a setting. The flag wins when both are given:
@@ -403,6 +407,113 @@ task runs. The limit cannot be turned off.
 The setting also applies to the endpoint an [agent task](#agent-task-bodies) opens for its
 own agent, which no `rune mcp` flag reaches. It has no effect on tasks run from the command
 line: their output goes to the terminal whole.
+
+## Short results for noisy tasks
+
+The [output limit](#output-limit) keeps a result small, but it cannot tell what matters for
+a given task: a test run that prints two thousand lines still fills 64 KiB with passing
+tests, cut in the middle. Two task attributes let the author of the Runefile decide what an
+agent receives. Both are optional and independent, and neither changes what a person sees
+on the command line.
+
+| Attribute | What the result of an agent's call gets |
+|---|---|
+| `[agent-output(tail="T")]` | The last T lines of each of stdout and stderr, and one line where lines were left out |
+| `[agent-output(head="H", tail="T")]` | The first H and the last T lines of each stream, with that line between them |
+| `[agent-summary]` | When the call fails: a summary after the `[exit N]` line of the task and step that failed, the reason, and the last lines of each stream |
+
+A test task whose output is 2,005 lines (1,000 passing tests and one failure; the loop
+stands in for `go test -v`):
+
+```rune
+# Run the tests.
+[agent-output(tail="6")]
+[agent-summary]
+test: || hint
+    @i=1; while [ $i -le 1000 ]; do echo "=== RUN   TestCase$i"; echo "--- PASS: TestCase$i (0.00s)"; i=$((i+1)); done
+    @echo "=== RUN   TestParse"; echo "    parse_test.go:12: want 2, got 3"; echo "--- FAIL: TestParse (0.00s)"; echo "FAIL"; echo "FAIL	example.com/app	0.412s"
+    @exit 1
+
+hint:
+    @echo "the golden files may be out of date: re-run with -update"
+```
+
+Without the two attributes an agent's call returns all 2,009 lines of text, 52,035 bytes.
+With them it returns 25 lines, 656 bytes, and the person who runs `rune test` still sees
+every line:
+
+```text
+[omitted 1999 lines, 51755 bytes]
+--- PASS: TestCase1000 (0.00s)
+=== RUN   TestParse
+    parse_test.go:12: want 2, got 3
+--- FAIL: TestParse (0.00s)
+FAIL
+FAIL	example.com/app	0.412s
+diagnosing: hint
+[exit 1]
+[failure summary - from rune]
+task: test
+failed task: test
+step: Runefile:7: exit 1
+reason: exit status 1
+fix suggestion: follows, from the task's || failure hooks
+last lines of stdout:
+=== RUN   TestParse
+    parse_test.go:12: want 2, got 3
+--- FAIL: TestParse (0.00s)
+FAIL
+FAIL	example.com/app	0.412s
+last lines of stderr:
+diagnosing: hint
+[fix suggestion - from Runefile || failure hooks]
+the golden files may be out of date: re-run with -update
+```
+
+### Kept lines
+
+- A line ends at a line feed. A last line without one is a line, and a carriage return is
+  part of its line.
+- Each stream is reduced on its own, and a stream with no more lines than the policy keeps
+  is returned whole. The line `[omitted N lines, M bytes]` stands where lines were left out.
+- The output limit still applies: a kept stream, its omission line included, is never
+  longer than the limit, and the server never holds more than the limit for a stream while
+  the task runs. When the kept lines do not fit, the part that does not fit is cut at a
+  character boundary and counted in the omission line, and the stream still ends with the
+  last byte the task wrote. A single line longer than the limit keeps its end.
+- Only the attributes of the task an agent calls count, not those of its dependencies.
+- Secret masking happens before any line is kept or cut.
+- A task without the attributes gets the results described above, byte for byte.
+
+### The failure summary
+
+The summary is built by Rune from what it observed, with no model and no network. It names
+the task that was called and the task whose body failed when Rune knows it. The `step:` line
+gives the Runefile line and the command of a body line that failed, says that a `[script]`
+body failed, or says that the run stopped before a body line failed (an environment variable
+that `env()` reads and that is not set, for example). The `reason:` line is the exit status,
+Rune's message for the error, `the call was cancelled`, or
+`not known, Rune has only the exit status` when that is all Rune has. It never guesses a
+cause. The summary quotes the last up to 5 lines of each stream as the result holds them, and
+says when a [fix suggestion](#fix-suggestions-on-failure) follows. A call that succeeds has
+no summary.
+
+Every field of the summary is one line, and each is bounded after masking, so the section is
+at most 4 KiB. The exit status, the `[exit N]` line and the error flag of a result are never
+changed by either attribute.
+
+### In structured results
+
+Two optional objects join the [structured result](#structured-results):
+
+| Field | Present | Holds |
+|---|---|---|
+| `output` | when the called task has `[agent-output]` | `head`, `tail`, and for each of `stdout` and `stderr` the `lines` and `bytes` the stream had and the `keptLines` and `keptBytes` in the result |
+| `failureSummary` | when the text has a summary section | `kind` (`step`, `script`, `error`, `cancelled` or `unknown`), `task`, `failedTask`, `file`, `line`, `command`, `reason`, `fixSuggestion` (a boolean), `stdoutTail`, `stderrTail` |
+
+The `stdout` and `stderr` fields are the kept streams, omission lines included, and every
+count and fact in the two objects is the one the text shows. The [audit log](#the-audit-log)
+records neither the kept output nor the summary.
 
 ## Reloading
 

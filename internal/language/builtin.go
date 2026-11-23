@@ -106,6 +106,8 @@ var builtinAttributes = []Builtin{
 	{Name: "agent-allow", Kind: BuiltinAttribute, Signature: "[agent-allow(param=\"value\")]", Documentation: "Limit the values an agent may run the task with: each named string or enum parameter must have exactly this value. People on the command line are not limited."},
 	{Name: "plan", Kind: BuiltinAttribute, Signature: "[plan(file=\"path\", summary=\"path\")]", Documentation: "The task makes a plan: when its body ends, Rune moves the plan file and its summary into its store and identifies the plan by its SHA-256 digest. Optional arguments: tool=\"name\" binds the executable, expires=\"30m\" sets how long the plan can be applied (default 1h)."},
 	{Name: "applies", Kind: BuiltinAttribute, Signature: "[applies(\"plan-task\")]", Documentation: "The task applies the stored plan of the named plan task, once, after a person approved that plan. The body reads it from RUNE_PLAN_FILE."},
+	{Name: "agent-output", Kind: BuiltinAttribute, Signature: "[agent-output(head=\"10\", tail=\"50\")]", Documentation: "An agent's result keeps the first head lines (optional) and the last tail lines of each of stdout and stderr, with one line that says what was left out. The command line prints everything."},
+	{Name: "agent-summary", Kind: BuiltinAttribute, Signature: "[agent-summary]", Documentation: "A failed call from an agent gets a short summary after the exit line: the task and step that failed, the reason, and the last lines of output. The command line is unchanged."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

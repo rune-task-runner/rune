@@ -366,8 +366,8 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	// 042 FR-015). The buffers lock themselves: [parallel] tasks and their ||
 	// failure hooks write concurrently, and with an empty mask set nothing
 	// else sits between those writers and the buffers.
-	outBuf := mcpserver.NewOutputBuffer(limit)
-	errBuf := mcpserver.NewOutputBuffer(limit)
+	outBuf := newStreamBuffer(limit, t)
+	errBuf := newStreamBuffer(limit, t)
 	scope := eval.NewScope(a.assigns, a.overrides)
 	// One host-OS truth per adapter: availability (above), dependency
 	// skipping (eng.goos below), and the os()/os_family() builtins must
@@ -500,10 +500,14 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 
 	runErr := scheduler.Run(eng, []scheduler.Invocation{{Task: t, Params: params}})
 	code := ExitSuccess
+	cancelled := false
 	if runErr != nil {
 		// classifyRunErr can render diagnostics into the masked stderr, so it
 		// must precede the flush that drains the writers into the buffers.
-		code = CodeFor(eng.classifyRunErr(runErr))
+		classified := eng.classifyRunErr(runErr)
+		code = CodeFor(classified)
+		var interrupted *Interrupted
+		cancelled = errors.As(classified, &interrupted)
 	}
 	// Before the flush too: a tampered copy is reported on standard error.
 	if eng.finishApply(code) && code == ExitSuccess {
@@ -511,12 +515,18 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 	}
 	flushMask()
 	flushFix()
-	return mcpserver.Result{
-		Stdout:        outBuf.String(),
-		Stderr:        errBuf.String(),
+	stdout, stderr, output := keptStreams(t, outBuf, errBuf)
+	res := mcpserver.Result{
+		Stdout:        stdout,
+		Stderr:        stderr,
 		ExitCode:      code,
 		FixSuggestion: capAgentText(fixBuf.String()),
-	}, nil
+		Output:        output,
+	}
+	if t.AgentSummary() && code != ExitSuccess {
+		res.Failure = failureFacts(cancelled, t, runErr, a.root, a.maskText)
+	}
+	return res, nil
 }
 
 // invocationEnv adds the id of the agent's call to the environment of its
