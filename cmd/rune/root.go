@@ -51,6 +51,13 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 		// Resolve streams/context once, before the task path OR any subcommand,
 		// so every command observes the same I/O and cancellation.
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			// The CI signing key leaves the environment first, so that no
+			// task, hook or child process this rune starts can sign with it
+			// (spec 060).
+			opts.ReceiptKey = os.Getenv("RUNE_RECEIPT_KEY")
+			if err := os.Unsetenv("RUNE_RECEIPT_KEY"); err != nil {
+				return err
+			}
 			mode, err := parseColorMode(colorFlag)
 			if err != nil {
 				return &cli.UsageError{Err: err}
@@ -65,6 +72,7 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 			opts.ColorStdout = resolveColor(mode, streamIsTTY(opts.Stdout))
 			opts.ColorStderr = resolveColor(mode, streamIsTTY(opts.Stderr))
 			opts.Version = version
+			opts.Commit = commit
 			opts.Ctx = cmd.Context()
 			opts.Commands = subcommandNames(cmd.Root())
 			// Where the audit log lives is the operator's to say, through the

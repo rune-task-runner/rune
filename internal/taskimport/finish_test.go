@@ -285,6 +285,19 @@ func TestFinishCIIsARuneCommand(t *testing.T) {
 	}
 }
 
+// rune verify and rune receipt are commands (spec 060), so tasks of those
+// names are run with rune -- NAME, and the importer says so.
+func TestFinishReceiptCommandsAreRuneCommands(t *testing.T) {
+	for _, name := range []string{"verify", "receipt"} {
+		src := &source{tasks: []*Task{{Source: name, Line: 1}}}
+		mustFinish(t, src, Options{Format: FormatMake, SourceName: "Makefile"})
+		want := name + " is also a rune command: run the task with rune -- " + name
+		if got := src.tasks[0]; got.Status != Review || !slices.Equal(got.Notes, []string{want}) {
+			t.Errorf("%s = %v %q", name, got.Status, got.Notes)
+		}
+	}
+}
+
 func TestFinishConfirmWithDependencies(t *testing.T) {
 	const note = "the source runner asks before the dependencies run; Rune asks after them"
 	src := &source{tasks: []*Task{

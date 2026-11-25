@@ -21,6 +21,7 @@ for a guided tour, see the **[user guide](../user-guide/README.md)**.
 | [OS filtering](os-filtering.md) | Tasks scoped to an operating system | [os-filtering](../examples/os-filtering/README.md) |
 | [Import from another runner](import-from-other-runners.md) | Turn a justfile, Makefile, Taskfile or npm scripts into a Runefile | |
 | [Generate a GitHub Actions workflow](ci-github.md) | Run the Runefile's tasks in CI as one job each, with the same order, outputs and cache keys as a local run | [ci-github](../examples/ci-github/README.md) |
+| [Receipts](receipts.md) | Leave a signed receipt for every task run and check it against a git revision with `rune verify` | |
 | [AI agents (MCP)](../mcp.md) | Expose tasks to agents; security model | [agent-driven](../examples/agent-driven/README.md) |
 | [Set up an agent client](agent-setup.md) | Register Rune with Claude Code, Codex CLI or VS Code and remove the client's shell | |
 | [Export instructions for agents](agent-instructions.md) | Write the tasks into `AGENTS.md` or a Claude skill for an agent without MCP, and check that the text is current | |

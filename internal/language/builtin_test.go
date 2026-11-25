@@ -76,3 +76,11 @@ func TestRegistryHasAgentOutputAttributes(t *testing.T) {
 		}
 	}
 }
+
+// Spec 060: completion, hover and the setting check read the registry.
+func TestRegistryHasReceiptsSetting(t *testing.T) {
+	b, ok := Lookup(BuiltinSetting, "receipts")
+	if !ok || b.Signature != "set receipts" || b.Documentation == "" {
+		t.Fatalf("Lookup(receipts) = %+v, %v", b, ok)
+	}
+}

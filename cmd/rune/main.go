@@ -100,5 +100,5 @@ func internalCommand(ctx context.Context, args []string) (code int, handled bool
 // also makes Cobra add its `help` command automatically; `completion` is our
 // own (newCompletionCmd).
 func addCommands(root *cobra.Command, opts *cli.Options) {
-	root.AddCommand(newServeCmd(opts), newLogCmd(opts), newImportCmd(opts), newAgentCmd(opts), newExportCmd(opts), newSuggestCmd(opts), newCICmd(opts), newVersionCmd(opts), newCompletionCmd(), newAnalyzeCmd(opts), newLSPCmd(opts))
+	root.AddCommand(newServeCmd(opts), newLogCmd(opts), newImportCmd(opts), newAgentCmd(opts), newExportCmd(opts), newSuggestCmd(opts), newCICmd(opts), newVerifyCmd(opts), newReceiptCmd(opts), newVersionCmd(opts), newCompletionCmd(), newAnalyzeCmd(opts), newLSPCmd(opts))
 }

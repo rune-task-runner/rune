@@ -26,6 +26,9 @@ type Settings struct {
 	// MCPOutputLimit is the bytes of each of stdout and stderr a tool result
 	// returns to an agent: set mcp_output_limit := "256KiB". Zero when absent.
 	MCPOutputLimit int
+	// Receipts turns on a signed receipt for every task run: set receipts
+	// (spec 060).
+	Receipts bool
 }
 
 // ResolveSettings evaluates a file's settings into a Settings value. String and
@@ -104,6 +107,8 @@ func ResolveSettings(f *ast.File, ev *eval.Evaluator) (Settings, diag.List) {
 			s.Export = true
 		case "fallback":
 			s.Fallback = true
+		case "receipts":
+			s.Receipts = true
 		case "dotenv":
 			s.Dotenv = evalStr(set)
 		case "shell":

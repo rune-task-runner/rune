@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"maps"
@@ -128,14 +129,14 @@ func loadModuleFrom(opts Options, runefile string, allowIgnoreVersion bool, rec 
 // are the files the load touched, as loadModulePaths returns them, also when
 // it fails.
 func newMCPAdapter(opts Options, runefile string) (adapter *mcpAdapter, paths []string, err error) {
-	adapter, rec, err := loadMCPAdapter(opts, runefile)
+	adapter, rec, err := loadMCPAdapter(opts.ctx(), opts, runefile)
 	return adapter, rec.paths, err
 }
 
 // loadMCPAdapter is newMCPAdapter that returns the whole record of the files
 // the load touched, so a server can tell whether one changed before it was
 // watched.
-func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, error) {
+func loadMCPAdapter(ctx context.Context, opts Options, runefile string) (*mcpAdapter, *pathRecorder, error) {
 	rec := &pathRecorder{}
 	rec.addRead(runefile)
 	// On the MCP/agent path, ignoring an unmet minimum_version is an operator-only
@@ -143,6 +144,15 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 	mod, err := loadModuleFrom(opts, runefile, opts.MCPAllowIgnoreVersion, rec)
 	if err != nil {
 		return nil, rec, err
+	}
+	maskSet := deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked)
+	// A load that records receipts has its signer before any call: a key
+	// that cannot be had fails the load (spec 060).
+	var signer *receiptSigner
+	if mod.settings.Receipts {
+		if signer, err = newReceiptSigner(ctx, opts, runefile, rec.found(), maskerFor(maskSet)); err != nil {
+			return nil, rec, &UsageError{Err: err}
+		}
 	}
 	return &mcpAdapter{
 		file:      mod.file,
@@ -154,7 +164,7 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 		baseEnv:   mod.baseEnv,
 		overrides: map[string]string{},
 		now:       func() string { return "" },
-		maskSet:   deriveMaskSet(mod.baseEnv, mod.tasks, mod.settings.Secrets, mod.settings.Unmasked),
+		maskSet:   maskSet,
 		goos:      runtime.GOOS,
 		planIdent: mod.planIdent,
 		ident:     mod.ident,
@@ -162,6 +172,7 @@ func loadMCPAdapter(opts Options, runefile string) (*mcpAdapter, *pathRecorder, 
 		stderr:    operatorStderr(opts.Stderr),
 		loaded:    rec.found(),
 		missing:   rec.notFound(),
+		receipts:  signer,
 	}, rec, nil
 }
 
@@ -207,7 +218,7 @@ func ServeMCP(opts Options, useHTTP bool, addr, tokenFile string) error {
 	if err != nil {
 		return &UsageError{Err: err}
 	}
-	adapter, rec, err := loadMCPAdapter(opts, runefile)
+	adapter, rec, err := loadMCPAdapter(opts.ctx(), opts, runefile)
 	if err != nil {
 		return err
 	}

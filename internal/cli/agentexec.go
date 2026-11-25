@@ -161,6 +161,7 @@ func (e *engine) newAgentAdapter() *mcpAdapter {
 		clock:     e.clock,
 		gitInfo:   e.gitInfo,
 		stderr:    operatorStderr(e.opts.Stderr),
+		receipts:  e.receiptSigner(),
 	}
 }
 
