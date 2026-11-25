@@ -223,8 +223,11 @@ func TestSigningKey(t *testing.T) {
 	if _, _, _, err := signingKey(Options{ReceiptKey: "junk"}, true); err == nil || !strings.HasPrefix(err.Error(), "RUNE_RECEIPT_KEY: ") {
 		t.Fatalf("bad env key: %v", err)
 	}
-	t.Setenv("XDG_STATE_HOME", "")
-	t.Setenv("HOME", "")
+	// No state directory on any system: Windows reads LocalAppData, and its
+	// home is USERPROFILE.
+	for _, name := range []string{"XDG_STATE_HOME", "HOME", "LocalAppData", "USERPROFILE"} {
+		t.Setenv(name, "")
+	}
 	if _, _, _, err := signingKey(Options{}, true); err == nil {
 		t.Fatal("no state directory must be an error")
 	}
@@ -251,5 +254,14 @@ func TestRunefilesChanged(t *testing.T) {
 	}
 	if !s.runefilesChanged() {
 		t.Fatal("a removed file is not seen")
+	}
+}
+
+// clearClaimVars empties the claim variables for a test: a CI runner sets
+// them, and a receipt records them as claims.
+func clearClaimVars(t *testing.T) {
+	t.Helper()
+	for _, name := range receiptClaimVars {
+		t.Setenv(name, "")
 	}
 }

@@ -27,6 +27,7 @@ func receiptProject(t *testing.T, runefile string, files map[string]string, comm
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv(agentRunVar, "")
 	t.Setenv(invocationVar, "")
+	clearClaimVars(t)
 	dir := t.TempDir()
 	files["Runefile"] = runefile
 	for name, content := range files {

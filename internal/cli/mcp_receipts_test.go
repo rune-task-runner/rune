@@ -50,7 +50,7 @@ func TestCallRecorderWithoutAudit(t *testing.T) {
 		t.Fatal("an adapter without a signer records")
 	}
 	a.receipts = &receiptSigner{}
-	t.Setenv("CI", "")
+	clearClaimVars(t)
 	rec := a.callRecorder(nil)
 	if rec == nil || len(rec.invocation) != 16 || rec.channel != receipt.ChannelMCP || rec.claims != nil {
 		t.Fatalf("recorder %+v", rec)
