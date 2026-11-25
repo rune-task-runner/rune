@@ -30,6 +30,7 @@ Start here if you want a layout for a particular kind of project.
 | [python-project](python-project/README.md) | venv/pytest workflow + a Python task body. | python3 |
 | [monorepo](monorepo/README.md) | Shared tasks via `import`, per-service `mod` namespaces. | — |
 | [ci-cd](ci-cd/README.md) | A CI gate (lint/test/build) + a gated deploy + exit codes. | — |
+| [ci-github](ci-github/README.md) | A GitHub Actions workflow generated from the Runefile, with a drift check. | none |
 | [docker-workflow](docker-workflow/README.md) | Build/run/push lifecycle for a container image. | docker |
 | [polyglot](polyglot/README.md) | One pipeline across shell, Python, and Node. | python3, node |
 | [agent-driven](agent-driven/README.md) | An AI-agent task + MCP exposure + destructive gating. | agent CLI |

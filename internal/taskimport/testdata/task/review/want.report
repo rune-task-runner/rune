@@ -1,5 +1,5 @@
 Taskfile.yml:8: review: build: the key "summary" is not carried over; the key "aliases" is not carried over; the key "label" is not carried over; Rune caches by the content of the inputs, the task body and the variables, and logs a hit; Task keeps a value the environment already has; Rune's [env] replaces it
 Taskfile.yml:22: review: docs: Rune caches by the content of the inputs, the task body and the variables, and logs a hit; Task creates a missing directory; Rune does not; Task keeps a value the environment already has; Rune's [env] replaces it
 Taskfile.yml:31: review: test: Task keeps a value the environment already has; Rune's [env] replaces it; Task gives the arguments after -- to every task; here it gets them only when run by name
-Taskfile.yml:35: review: ci: Task keeps a value the environment already has; Rune's [env] replaces it
+Taskfile.yml:35: review: ci: Task keeps a value the environment already has; Rune's [env] replaces it; ci is also a rune command: run the task with rune -- ci
 summary: 0 converted, 4 review, 0 unsupported, 0 wrappers

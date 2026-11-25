@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/rune-task-runner/rune/internal/config"
+	"github.com/rune-task-runner/rune/internal/runtime/scheduler"
 	"github.com/rune-task-runner/rune/internal/style"
 )
 
@@ -89,6 +90,11 @@ type Options struct {
 	// Commands are the reserved subcommand names (and aliases). They are used
 	// only to enrich the "unknown task" error with a did-you-mean suggestion.
 	Commands []string
+
+	// nodeRun, when set, runs the bound invocations in place of
+	// scheduler.Run: `rune ci run` runs one body this way (spec 059). Nil for
+	// every other command.
+	nodeRun func(e *engine, invs []scheduler.Invocation) error
 }
 
 // ctx returns the invocation context, defaulting to Background.

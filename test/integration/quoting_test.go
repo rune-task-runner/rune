@@ -127,7 +127,8 @@ need +pkgs:
 		args []string
 		want string
 	}{
-		{[]string{"ci", "a b", "c"}, "2\ndone\n"},
+		// ci is a built-in command since spec 059, so the task runs after --.
+		{[]string{"--", "ci", "a b", "c"}, "2\ndone\n"},
 		{[]string{"plus"}, "0\nafter\n"},
 	}
 	for _, tt := range tests {

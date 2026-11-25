@@ -1,0 +1,31 @@
+# A pipeline that GitHub Actions runs as one job per task.
+# The workflow in .github/workflows/rune.yml is generated from this file:
+#   rune ci github --rune-version 0.11.0 --write gate
+
+# Prepare the build. It writes nothing a later task needs.
+generate:
+    @echo "generating"
+
+# Build the app. dist/app travels to the jobs after this one.
+[cache(inputs=["src/**"], outputs=["dist/app"])]
+build: generate
+    @mkdir -p dist
+    @cp src/app.txt dist/app
+
+# Lint the sources. Needs nothing.
+lint:
+    @echo "lint ok"
+
+# Test the app the build job made.
+test: build
+    @test -f dist/app
+    @echo "test ok"
+
+# Fail when the workflow file is not what the Runefile gives now.
+workflow-check:
+    rune ci github --check --rune-version 0.11.0 gate
+
+# The CI gate. [parallel] lets its dependencies run as parallel jobs.
+[parallel]
+gate: lint test workflow-check
+    @echo "CI passed"

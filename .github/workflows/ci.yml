@@ -58,6 +58,10 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.14
+      # The workflows `rune ci github` writes (spec 059) must pass the
+      # workflow linter, with shellcheck on their scripts.
+      - name: actionlint (generated workflows)
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 internal/ci/testdata/*.yml docs/examples/ci-github/.github/workflows/rune.yml
 
   docs-site:
     name: docs-site

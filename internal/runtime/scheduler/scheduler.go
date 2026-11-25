@@ -13,6 +13,9 @@
 // chains its own || hooks. User cancellation fires no hooks. Unavailable or
 // failing hooks warn via Engine.Warnf instead of being silent — a silent
 // skip would hide why no diagnosis appeared.
+//
+// RunOnly runs one invocation's body and failure hooks alone, for a CI job
+// whose prerequisites ran in other jobs (spec 059).
 package scheduler
 
 import (
@@ -79,6 +82,22 @@ func Run(engine Engine, roots []Invocation) error {
 		if err := s.run(r.Task, r.Params, nil); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// RunOnly runs the body of one invocation, without its dependencies or
+// post-hooks, and fires its || failure hooks as Run does. A CI job runs one
+// node this way: the jobs it needs already ran the rest (spec 059).
+func RunOnly(engine Engine, inv Invocation) error {
+	s := &state{
+		engine:   engine,
+		done:     map[string]error{},
+		inflight: map[string]*sync.WaitGroup{},
+	}
+	if err := engine.Execute(inv.Task, inv.Params); err != nil {
+		s.runFailHooks(inv.Task, inv.Params, err, []string{inv.Task.Name})
+		return err
 	}
 	return nil
 }
