@@ -186,3 +186,33 @@ func TestSensitiveName(t *testing.T) {
 		}
 	}
 }
+
+// SecretName is the name rule of NewSet on its own, for names that are read
+// from text rather than from the environment (spec 058).
+func TestSecretName(t *testing.T) {
+	declared, exempt := []string{"db_url"}, []string{"PUBLIC_TOKEN"}
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"API_TOKEN", true},
+		{"api_token", true},
+		{"DB_URL", true},
+		{"public_token", false},
+		{"GIT_AUTHOR_NAME", false},
+		{"SSH_AUTH_SOCK", false},
+		{"HOME", false},
+	}
+	for _, tt := range tests {
+		if got := SecretName(tt.name, declared, exempt); got != tt.want {
+			t.Errorf("SecretName(%q) = %v, want %v", tt.name, got, tt.want)
+		}
+	}
+	// NewSet keeps the value of exactly the names SecretName accepts.
+	for _, tt := range tests {
+		s := NewSet([]string{tt.name + "=value-of-" + tt.name}, declared, exempt)
+		if got := !s.Empty(); got != tt.want {
+			t.Errorf("NewSet tracks %s: %v, SecretName says %v", tt.name, got, tt.want)
+		}
+	}
+}

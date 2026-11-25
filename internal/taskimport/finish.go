@@ -13,6 +13,7 @@ import (
 var RuneCommands = map[string]bool{
 	"help": true, "version": true, "serve": true, "mcp": true, "log": true,
 	"agent": true, "export": true, "analyze": true, "lsp": true, "completion": true,
+	"suggest": true,
 }
 
 // finish applies the rules that hold for every format: a task that is
@@ -179,7 +180,7 @@ func stub(t *Task, opts Options) {
 	why := strings.Join(t.Notes, "; ")
 	t.Doc = fmt.Sprintf("Not imported (%s): %s", where, why)
 	msg := fmt.Sprintf("rune import: %q (%s) was not imported: %s", t.Source, where, why)
-	t.Body = []string{"@echo " + escapeBraces("'"+strings.ReplaceAll(msg, "'", `'\''`)+"'") + " >&2; exit 1"}
+	t.Body = []string{"@echo " + EscapeBraces("'"+strings.ReplaceAll(msg, "'", `'\''`)+"'") + " >&2; exit 1"}
 }
 
 // wrapperCommand is the command that runs one task of the source with its

@@ -10,14 +10,14 @@ func TestQuote(t *testing.T) {
 		"héllo ✓":     `"héllo ✓"`,
 		"":            `""`,
 	} {
-		got, ok := quote(in)
+		got, ok := Quote(in)
 		if !ok || got != want {
-			t.Errorf("quote(%q) = %s, %v, want %s", in, got, ok, want)
+			t.Errorf("Quote(%q) = %s, %v, want %s", in, got, ok, want)
 		}
 	}
 	for _, in := range []string{"bell\a", "nul\x00", "esc\x1b[0m", "caf\xe9"} {
-		if got, ok := quote(in); ok {
-			t.Errorf("quote(%q) = %s, want it rejected", in, got)
+		if got, ok := Quote(in); ok {
+			t.Errorf("Quote(%q) = %s, want it rejected", in, got)
 		}
 	}
 }

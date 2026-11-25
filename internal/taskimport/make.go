@@ -420,7 +420,7 @@ func makeValue(value string) (expr string, refs []string, reason string) {
 		if lit.Len() == 0 {
 			return true
 		}
-		q, ok := quote(lit.String())
+		q, ok := Quote(lit.String())
 		parts = append(parts, q)
 		lit.Reset()
 		return ok
@@ -495,7 +495,7 @@ func makeExpand(text string, good map[string]bool, bad map[string]int) (out, rea
 	}
 	// The literal braces are escaped before the interpolations are written,
 	// so that only the references of the Makefile are interpolations.
-	out = escapeBraces(b.String())
+	out = EscapeBraces(b.String())
 	return strings.NewReplacer("\x00", "{{", "\x01", "}}").Replace(out), ""
 }
 

@@ -467,7 +467,7 @@ func justExpr(s string) (expr string, refs []string, reason string) {
 			if !ok {
 				return "", nil, justExprReason
 			}
-			lit, ok := quote(value)
+			lit, ok := Quote(value)
 			if !ok {
 				return "", nil, "its value has a control character"
 			}
@@ -570,7 +570,7 @@ func justParams(s string) (params, names []string, reason string) {
 				return nil, nil, fmt.Sprintf("variadic parameter %q has a default", name)
 			}
 			value, ok := justString(def)
-			lit, printable := quote(value)
+			lit, printable := Quote(value)
 			if !ok || !printable {
 				return nil, nil, fmt.Sprintf("parameter %q has a default that is not a string literal", name)
 			}
@@ -612,7 +612,7 @@ func justDeps(s string, known func(string) bool) (deps, post []Call, reason stri
 			var args []string
 			for _, a := range inner[1:] {
 				if value, ok := justString(a); ok {
-					if lit, printable := quote(value); printable {
+					if lit, printable := Quote(value); printable {
 						args = append(args, lit)
 						continue
 					}
@@ -688,7 +688,7 @@ func justAttrs(line string) (attrs []string, reason string) {
 			continue
 		case justTextAttrs[m[1]]:
 			value, ok := justString(strings.TrimSpace(m[2]))
-			if lit, printable := quote(value); ok && printable {
+			if lit, printable := Quote(value); ok && printable {
 				attrs = append(attrs, m[1]+"("+lit+")")
 				continue
 			}

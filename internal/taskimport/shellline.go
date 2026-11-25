@@ -158,10 +158,10 @@ func isSubshell(text string) bool {
 
 var braceEscaper = strings.NewReplacer("{{", "{{{{", "}}}}", "}}}}}}}}")
 
-// escapeBraces writes text so that a Rune body prints it unchanged: Rune
+// EscapeBraces writes text so that a Rune body prints it unchanged: Rune
 // reads "{{" as the start of an interpolation, "{{{{" as two opening braces
 // and "}}}}" as two closing ones.
-func escapeBraces(text string) string {
+func EscapeBraces(text string) string {
 	return braceEscaper.Replace(text)
 }
 
@@ -172,5 +172,5 @@ func shellQuote(s string) string {
 	if !shellSafe.MatchString(s) {
 		s = "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 	}
-	return escapeBraces(s)
+	return EscapeBraces(s)
 }

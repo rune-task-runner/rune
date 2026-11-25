@@ -1,0 +1,1 @@
+{"session_id":"abc123","cwd":"/home/user/my-project","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"npm run dev","description":"Start the dev server","run_in_background":true},"tool_response":{"stdout":"","stderr":"","interrupted":false,"isImage":false},"tool_use_id":"toolu_01ABC126"}

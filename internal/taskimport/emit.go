@@ -8,10 +8,10 @@ import (
 	"unicode/utf8"
 )
 
-// quote writes s as a Runefile string literal. It reports false when s holds
+// Quote writes s as a Runefile string literal. It reports false when s holds
 // a character the Runefile lexer has no escape for, or is not UTF-8: Rune's
 // shell refuses such text, and writing it by character would change it.
-func quote(s string) (string, bool) {
+func Quote(s string) (string, bool) {
 	if !utf8.ValidString(s) {
 		return "", false
 	}

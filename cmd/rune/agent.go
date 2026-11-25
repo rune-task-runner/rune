@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +23,8 @@ Code, to work on this project through its Runefile.
 
 A Runefile task named 'agent' is run with 'rune -- agent'.`,
 		Example: `  rune agent init claude            # set up Claude Code for this project
-  rune agent init codex --dry-run   # show what would change for Codex CLI`,
+  rune agent init codex --dry-run   # show what would change for Codex CLI
+  rune agent observe claude         # record the shell commands it runs, for rune suggest`,
 		// Without this Cobra prints the help and exits 0 for any argument,
 		// so a script that ran a task named agent would do nothing and
 		// succeed.
@@ -35,8 +37,89 @@ A Runefile task named 'agent' is run with 'rune -- agent'.`,
 			return cmd.Help()
 		},
 	}
-	cmd.AddCommand(newAgentInitCmd(opts))
+	cmd.AddCommand(newAgentInitCmd(opts), newAgentObserveCmd(opts), newAgentRecordCmd(opts))
 	return cmd
+}
+
+// newAgentObserveCmd builds `agent observe <client>` (spec 058): it adds the
+// hook handlers that record the shell commands an agent runs, or takes them
+// out with --remove. It runs nothing of the Runefile and needs none.
+func newAgentObserveCmd(opts *cli.Options) *cobra.Command {
+	var flags cli.AgentObserveFlags
+
+	cmd := &cobra.Command{
+		Use:   "observe <client>",
+		Short: "Record the shell commands an agent runs here, for rune suggest",
+		Long: `Turn on, or with --remove turn off, the recording of the shell commands
+Claude Code runs in this project. Only claude is supported.
+
+The command adds three hook handlers to .claude/settings.local.json, your own
+settings file for the project: before a Bash call, after it succeeds and after
+it fails, each running 'rune agent record' in the background. Your other hooks,
+settings, comments and permission rules are kept, and a second run changes
+nothing. --remove takes out exactly those handlers.
+
+What is recorded stays on this machine, outside the project, for up to 30 days:
+the command with its secrets removed, its working directory, the time, the
+session and whether it succeeded. Never its output. 'rune suggest' lists what
+the agent repeated; 'rune suggest forget' deletes the records.
+
+No Runefile is needed. The project is the directory of the Runefile found from
+here, or this directory when there is none. Start Claude Code there.
+
+When the settings deny the Bash tool, as 'rune agent init claude' does, the
+agent runs no shell command and nothing is recorded. Observation never changes
+a permission rule.
+
+Exit status: 0 on success, 1 when a file could not be read or written, 2 for a
+usage error or a value in the way, 3 when a settings file is not valid JSON.`,
+		Example: `  rune agent observe claude            # start recording
+  rune agent observe claude --dry-run  # print the difference, write nothing
+  rune agent observe claude --remove   # stop recording`,
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return &cli.UsageError{Err: errors.New("rune agent observe takes one client: claude")}
+			}
+			return nil
+		},
+		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return []cobra.Completion{"claude"}, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("file") && opts.File == "" {
+				return &cli.UsageError{Err: errors.New("--file needs a path")}
+			}
+			return cli.AgentObserve(*opts, flags, args[0])
+		},
+	}
+	f := cmd.Flags()
+	f.StringVarP(&opts.File, "file", "f", "", "observe the project of this Runefile instead of the one found from the working directory")
+	f.BoolVar(&flags.Remove, "remove", false, "take Rune's handlers out of the settings file")
+	f.BoolVar(&flags.DryRun, "dry-run", false, "print the difference to standard output and write nothing")
+	return cmd
+}
+
+// newAgentRecordCmd builds the hidden `agent record`: the command of the
+// handlers `agent observe` adds. It reads one hook event from standard input,
+// prints nothing and always exits 0, so it can never change what the agent's
+// command does.
+func newAgentRecordCmd(opts *cli.Options) *cobra.Command {
+	return &cobra.Command{
+		Use:    "record",
+		Short:  "Record one Claude Code hook event (run by the hook rune agent observe adds)",
+		Hidden: true,
+		Args:   cobra.ArbitraryArgs,
+		// Flags would be parsed, and a parse error would exit non-zero.
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			return cli.AgentRecord(*opts)
+		},
+	}
 }
 
 // newAgentInitCmd builds `agent init <client>`: it writes the project files

@@ -380,11 +380,12 @@ func TestServeHasNoRootFlags(t *testing.T) {
 
 // Spec 048 FR-013: only the server gained the flag. Spec 052 adds `log`,
 // which reads the log of the Runefile a server was given with the same flag,
-// and spec 056 adds `export`, which describes the Runefile it is given.
+// spec 056 adds `export`, which describes the Runefile it is given, and spec
+// 058 adds `suggest`, which reads the records of that Runefile's project.
 func TestOnlyServeHasFileFlag(t *testing.T) {
 	root, serve := commandTree(t, &cli.Options{})
 	for _, cmd := range root.Commands() {
-		if cmd != serve && cmd.Name() != "log" && cmd.Name() != "export" && cmd.Flag("file") != nil {
+		if cmd != serve && cmd.Name() != "log" && cmd.Name() != "export" && cmd.Name() != "suggest" && cmd.Flag("file") != nil {
 			t.Errorf("%s accepts --file", cmd.Name())
 		}
 	}

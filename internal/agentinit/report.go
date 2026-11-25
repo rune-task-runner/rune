@@ -104,7 +104,7 @@ func CheckReport(res *Result) (text string, complete bool) {
 func Diff(res *Result) string {
 	var b strings.Builder
 	for _, f := range res.Files {
-		b.WriteString(unifiedDiff(f.Path, f.Old, f.New, f.Existed))
+		b.WriteString(UnifiedDiff(f.Path, f.Old, f.New, f.Existed))
 	}
 	return b.String()
 }
