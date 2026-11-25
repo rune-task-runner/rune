@@ -1,5 +1,6 @@
 # A CI pipeline as one task with dependencies, plus a gated deploy.
-# In CI: `rune ci` (predictable exit codes), or `rune --dry-run ci` to preview.
+# In CI: `rune -- ci` (predictable exit codes), or `rune --dry-run -- ci` to preview.
+# The -- is needed because `rune ci` is a built-in command.
 
 # The CI gate: lint, test, build must all pass.
 ci: lint test build

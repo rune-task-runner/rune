@@ -128,6 +128,12 @@ func execute(opts Options, runefile string, args []string) error {
 		plan = planSummary
 	}
 
+	// `rune ci run` runs exactly one task: an override or a second task would
+	// make the job run something other than its node (spec 059).
+	if opts.nodeRun != nil && (len(overrides) > 0 || len(rawInvs) != 1) {
+		return usagef("rune ci run runs one task with its arguments: rune ci run TASK [ARG...]")
+	}
+
 	// Bare `rune` (a real run with no task requested) prints the version + task
 	// overview instead of running anything — Rune no longer auto-runs a default
 	// task. (`--dry-run`/`--summary` with no task still error via resolveRoots.)
@@ -211,8 +217,12 @@ func execute(opts Options, runefile string, args []string) error {
 		}
 	}
 
+	run := scheduler.Run
+	if opts.nodeRun != nil {
+		run = func(_ scheduler.Engine, invs []scheduler.Invocation) error { return opts.nodeRun(eng, invs) }
+	}
 	var failure error
-	if err := scheduler.Run(eng, invs); err != nil {
+	if err := run(eng, invs); err != nil {
 		failure = eng.classifyRunErr(err)
 	}
 	if eng.finishApply(CodeFor(failure)) && failure == nil {

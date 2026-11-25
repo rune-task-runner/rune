@@ -10,7 +10,7 @@
 ## Run it
 
 ```sh
-rune ci
+rune -- ci
 ```
 
 ## Expected output
@@ -22,8 +22,10 @@ go build ./...
 CI passed ✓
 ```
 
-In CI, `rune ci` exits non-zero if any step fails, so the pipeline fails fast. Preview without
-running via `rune --dry-run ci`, and list tasks with `rune --list`. `deploy` is gated with
+In CI, `rune -- ci` exits non-zero if any step fails, so the pipeline fails fast. The `--`
+is needed because `rune ci` is a built-in command (it writes a GitHub Actions workflow; see
+the [ci-github example](../ci-github/README.md)). Preview without running via
+`rune --dry-run -- ci`, and list tasks with `rune --list`. `deploy` is gated with
 `[confirm]`, so an unattended run needs `--yes`.
 
 ## How it works

@@ -3,6 +3,7 @@ package cache
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,7 +112,7 @@ func TestCacheCorruptionIsMiss(t *testing.T) {
 	d, _ := Decide(spec)
 	_ = Store(spec, d.Hash, "t")
 	// Corrupt the record.
-	writeFile(t, recordPath(spec), "{not valid json")
+	writeFile(t, RecordPath(spec), "{not valid json")
 	d2, err := Decide(spec)
 	if err != nil {
 		t.Fatalf("corruption must not error: %v", err)
@@ -133,5 +134,58 @@ func TestClear(t *testing.T) {
 	}
 	if _, err := os.Stat(cacheDir(root)); !os.IsNotExist(err) {
 		t.Error("cache dir should be gone after Clear")
+	}
+}
+
+// Spec 059: a CI bundle carries the record and the files of the outputs.
+
+func TestRecordPathIsWhereStoreWrites(t *testing.T) {
+	root := t.TempDir()
+	spec := specFor(root)
+	spec.Key = "api::build"
+	if err := Store(spec, "h", "t"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(RecordPath(spec)); err != nil {
+		t.Fatalf("RecordPath(%q) = %q: %v", spec.Key, RecordPath(spec), err)
+	}
+	if want := filepath.Join(root, ".rune", "cache", "api__build.json"); RecordPath(spec) != want {
+		t.Errorf("RecordPath = %q, want %q", RecordPath(spec), want)
+	}
+}
+
+func TestOutputFiles(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "out", "bin"), "x")
+	writeFile(t, filepath.Join(root, "dist", "a.txt"), "a")
+	writeFile(t, filepath.Join(root, "dist", "sub", "b.txt"), "b")
+	writeFile(t, filepath.Join(root, "gen", "x.go"), "x")
+	writeFile(t, filepath.Join(root, "gen", "y.txt"), "y")
+	if err := os.MkdirAll(filepath.Join(root, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := OutputFiles(root, []string{"out/bin", "dist", "gen/*.go", "missing/*", "empty", "out/bin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"dist", "dist/a.txt", "dist/sub", "dist/sub/b.txt", "empty", "gen/x.go", "out/bin"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("OutputFiles = %v, want %v", got, want)
+	}
+}
+
+func TestOutputFilesNone(t *testing.T) {
+	got, err := OutputFiles(t.TempDir(), []string{"nothing", "none/**"})
+	if err != nil || len(got) != 0 {
+		t.Errorf("OutputFiles = %v, %v; want none", got, err)
+	}
+}
+
+func TestRecordPathWithNamespace(t *testing.T) {
+	spec := specFor(t.TempDir())
+	spec.Namespace = "api"
+	if got := filepath.Base(RecordPath(spec)); got != "api__build.json" {
+		t.Errorf("RecordPath = %q", got)
 	}
 }

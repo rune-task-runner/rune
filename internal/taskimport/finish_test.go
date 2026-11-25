@@ -275,6 +275,16 @@ func TestFinishSuggestIsARuneCommand(t *testing.T) {
 	}
 }
 
+// rune ci is a command (spec 059), so a task named ci is run with
+// rune -- ci, and the importer says so.
+func TestFinishCIIsARuneCommand(t *testing.T) {
+	src := &source{tasks: []*Task{{Source: "ci", Line: 1}}}
+	mustFinish(t, src, Options{Format: FormatMake, SourceName: "Makefile"})
+	if got := src.tasks[0]; got.Status != Review || !slices.Equal(got.Notes, []string{"ci is also a rune command: run the task with rune -- ci"}) {
+		t.Errorf("ci = %v %q", got.Status, got.Notes)
+	}
+}
+
 func TestFinishConfirmWithDependencies(t *testing.T) {
 	const note = "the source runner asks before the dependencies run; Rune asks after them"
 	src := &source{tasks: []*Task{

@@ -12,6 +12,10 @@ lint:
     go vet ./...
     golangci-lint run
 
+# Lint the workflows `rune ci github` writes: the golden files and the example.
+actionlint:
+    docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 internal/ci/testdata/*.yml docs/examples/ci-github/.github/workflows/rune.yml
+
 # Run the full test suite inside Docker (never on the host).
 test:
     docker-compose run --rm test go test ./...

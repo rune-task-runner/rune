@@ -62,7 +62,7 @@ func Decide(spec Spec) (Decision, error) {
 	}
 	d := Decision{Hash: hash, InputFiles: files}
 
-	stored, ok := readRecord(recordPath(spec))
+	stored, ok := readRecord(RecordPath(spec))
 	if !ok || stored.Hash != hash {
 		return d, nil
 	}
@@ -93,7 +93,56 @@ func Store(spec Spec, hash, createdAt string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(recordPath(spec), data, 0o644)
+	return os.WriteFile(RecordPath(spec), data, 0o644)
+}
+
+// OutputFiles lists, relative to root and with forward slashes, what the
+// output patterns name: the files a pattern matches by the glob rules of
+// Decide, else the path itself when it exists, a directory with everything
+// below it. A CI bundle carries these between jobs (spec 059).
+func OutputFiles(root string, outputs []string) ([]string, error) {
+	set := map[string]bool{}
+	for _, pat := range outputs {
+		matches, err := expandGlobs(root, []string{pat})
+		if err != nil {
+			return nil, err
+		}
+		if len(matches) > 0 {
+			for _, m := range matches {
+				set[m] = true
+			}
+			continue
+		}
+		base := filepath.Join(root, pat)
+		info, err := os.Lstat(base)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			set[filepath.ToSlash(filepath.Clean(pat))] = true
+			continue
+		}
+		err = filepath.WalkDir(base, func(path string, _ fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			set[filepath.ToSlash(rel)] = true
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	out := make([]string, 0, len(set))
+	for f := range set {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Clear removes the project-local cache directory.
@@ -107,7 +156,8 @@ func Clear(root string) error {
 
 func cacheDir(root string) string { return filepath.Join(root, ".rune", "cache") }
 
-func recordPath(spec Spec) string {
+// RecordPath is the file Store writes the fingerprint record of spec to.
+func RecordPath(spec Spec) string {
 	key := spec.Key
 	if spec.Namespace != "" {
 		key = spec.Namespace + "::" + spec.Key

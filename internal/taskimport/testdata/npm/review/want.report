@@ -1,4 +1,4 @@
-package.json:3: review: ci: calls npm, which must still be installed
+package.json:3: review: ci: calls npm, which must still be installed; ci is also a rune command: run the task with rune -- ci
 package.json:4: converted: lint
 package.json:5: review: test: calls npx, which must still be installed
 package.json:6: review: prepare: npm also runs this script by itself; Rune runs it only by name
