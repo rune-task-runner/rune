@@ -44,7 +44,7 @@ func TestCacheMissThenHit(t *testing.T) {
 	if d1.Skip {
 		t.Fatal("first run should not skip (no stored record)")
 	}
-	if err := Store(spec, d1.Hash, "2026-06-08T00:00:00Z"); err != nil {
+	if err := Store(spec, d1.Hash, "2026-06-08T00:00:00Z", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,7 +65,7 @@ func TestCacheInputChangeForcesRun(t *testing.T) {
 	spec := specFor(root)
 
 	d, _ := Decide(spec)
-	_ = Store(spec, d.Hash, "t")
+	_ = Store(spec, d.Hash, "t", "")
 
 	writeFile(t, filepath.Join(root, "src", "a.go"), "package a // changed")
 	d2, _ := Decide(spec)
@@ -80,7 +80,7 @@ func TestCacheMissingOutputForcesRun(t *testing.T) {
 	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
 	spec := specFor(root)
 	d, _ := Decide(spec)
-	_ = Store(spec, d.Hash, "t")
+	_ = Store(spec, d.Hash, "t", "")
 
 	_ = os.Remove(filepath.Join(root, "out", "bin"))
 	d2, _ := Decide(spec)
@@ -95,7 +95,7 @@ func TestCacheVarChangeForcesRun(t *testing.T) {
 	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
 	spec := specFor(root)
 	d, _ := Decide(spec)
-	_ = Store(spec, d.Hash, "t")
+	_ = Store(spec, d.Hash, "t", "")
 
 	spec.Vars["target"] = "windows"
 	d2, _ := Decide(spec)
@@ -110,7 +110,7 @@ func TestCacheCorruptionIsMiss(t *testing.T) {
 	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
 	spec := specFor(root)
 	d, _ := Decide(spec)
-	_ = Store(spec, d.Hash, "t")
+	_ = Store(spec, d.Hash, "t", "")
 	// Corrupt the record.
 	writeFile(t, RecordPath(spec), "{not valid json")
 	d2, err := Decide(spec)
@@ -128,7 +128,7 @@ func TestClear(t *testing.T) {
 	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
 	spec := specFor(root)
 	d, _ := Decide(spec)
-	_ = Store(spec, d.Hash, "t")
+	_ = Store(spec, d.Hash, "t", "")
 	if err := Clear(root); err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestRecordPathIsWhereStoreWrites(t *testing.T) {
 	root := t.TempDir()
 	spec := specFor(root)
 	spec.Key = "api::build"
-	if err := Store(spec, "h", "t"); err != nil {
+	if err := Store(spec, "h", "t", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(RecordPath(spec)); err != nil {
@@ -187,5 +187,52 @@ func TestRecordPathWithNamespace(t *testing.T) {
 	spec.Namespace = "api"
 	if got := filepath.Base(RecordPath(spec)); got != "api__build.json" {
 		t.Errorf("RecordPath = %q", got)
+	}
+}
+
+func TestStoreRecordsReceipt(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module x")
+	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
+	spec := specFor(root)
+	d, err := Decide(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Store(spec, d.Hash, "t", "20261125T101500Z-1a2b3c4d5e6f7a8b"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(RecordPath(spec))
+	if !strings.Contains(string(data), `"receipt": "20261125T101500Z-1a2b3c4d5e6f7a8b"`) {
+		t.Fatalf("record lacks the receipt: %s", data)
+	}
+	hit, err := Decide(spec)
+	if err != nil || !hit.Skip || hit.Receipt != "20261125T101500Z-1a2b3c4d5e6f7a8b" {
+		t.Fatalf("hit = %+v err %v", hit, err)
+	}
+
+	if err := Store(spec, d.Hash, "t", ""); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(RecordPath(spec))
+	if strings.Contains(string(data), "receipt") {
+		t.Fatalf("an empty receipt must be omitted: %s", data)
+	}
+}
+
+func TestDecideOldRecordWithoutReceipt(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "go.mod"), "module x")
+	writeFile(t, filepath.Join(root, "out", "bin"), "binary")
+	spec := specFor(root)
+	d, err := Decide(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := `{"key":"build","namespace":"","hash":"` + d.Hash + `","inputs":[],"outputs":[],"executor":"sh","createdAt":"t"}`
+	writeFile(t, RecordPath(spec), old)
+	hit, err := Decide(spec)
+	if err != nil || !hit.Skip || hit.Receipt != "" {
+		t.Fatalf("old record: %+v err %v", hit, err)
 	}
 }

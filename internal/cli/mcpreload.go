@@ -400,7 +400,7 @@ func symlinkTarget(path string) (string, bool) {
 // succeeded (FR-021, FR-023).
 func (r *reloader) reload(ctx context.Context) {
 	stderr, th := r.opts.Stderr, r.opts.themeStderr()
-	adapter, rec, err := loadMCPAdapter(r.opts, r.runefile)
+	adapter, rec, err := loadMCPAdapter(ctx, r.opts, r.runefile)
 	paths := rec.paths
 	if err != nil {
 		fmt.Fprintln(stderr, th.Muted.Render(fmt.Sprintf("reload failed: %v; keeping the previous tools", err)))

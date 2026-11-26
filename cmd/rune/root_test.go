@@ -261,3 +261,32 @@ func TestRootReadsSandboxEnvironment(t *testing.T) {
 		t.Errorf("SandboxEnv = %q", opts.SandboxEnv)
 	}
 }
+
+// The CI signing key is read once and leaves the environment before any
+// command runs, so no task, hook or child process inherits it (spec 060).
+func TestRootTakesReceiptKeyOutOfEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte("build:\n    @echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("RUNE_RECEIPT_KEY", "pem-text")
+	var opts cli.Options
+	root := newRootCmd(&opts, "1.2.3", "abc", nil)
+	addCommands(root, &opts)
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"version"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if opts.ReceiptKey != "pem-text" {
+		t.Errorf("ReceiptKey = %q", opts.ReceiptKey)
+	}
+	if _, set := os.LookupEnv("RUNE_RECEIPT_KEY"); set {
+		t.Error("RUNE_RECEIPT_KEY is still in the environment")
+	}
+	if opts.Commit != "abc" {
+		t.Errorf("Commit = %q", opts.Commit)
+	}
+}

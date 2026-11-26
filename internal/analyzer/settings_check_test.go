@@ -31,7 +31,7 @@ func TestValidSettingsNotFlagged(t *testing.T) {
 	src := "set working-directory := \"x\"\nset quiet\nset export\nset fallback\n" +
 		"set dotenv := \".env\"\nset shell := [\"sh\"]\nset python := [\"python3\"]\n" +
 		"set node := [\"node\"]\nset agent_cmd := [\"a\"]\nset agent_provider := \"p\"\n" +
-		"set minimum_version := \"0.8.0\"\nset rune_version := \"0.8.0\"\n"
+		"set minimum_version := \"0.8.0\"\nset rune_version := \"0.8.0\"\nset receipts\n"
 	if diags := checkSettings(t, src); len(diags) != 0 {
 		t.Errorf("valid settings flagged: %v", diags)
 	}

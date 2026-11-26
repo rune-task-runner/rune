@@ -135,3 +135,15 @@ func TestResolveSettingsMCPOutputLimitInvalid(t *testing.T) {
 		t.Errorf("undefined variable: diagnostics = %v", diags)
 	}
 }
+
+// Spec 060: `set receipts` turns recording on; without it nothing records.
+func TestResolveSettingsReceipts(t *testing.T) {
+	s, diags := resolve(t, "set receipts\n\nok:\n    @true\n")
+	if diags.HasErrors() || !s.Receipts {
+		t.Fatalf("Receipts = %v, diags %v", s.Receipts, diags)
+	}
+	s, _ = resolve(t, "ok:\n    @true\n")
+	if s.Receipts {
+		t.Fatal("receipts must be off without the setting")
+	}
+}

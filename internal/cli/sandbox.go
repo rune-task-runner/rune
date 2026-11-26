@@ -439,6 +439,11 @@ func (s *sandboxState) hidden() (dirs, files []string) {
 	if socket, ok := strings.CutPrefix(s.getenv("DOCKER_HOST"), "unix://"); ok {
 		candidates = append(candidates, socket)
 	}
+	// The local key that signs receipts: a body that could read it could
+	// sign a receipt for a run that never happened (spec 060).
+	if keys, err := receiptKeyDir(s.getenv, runtime.GOOS, func() (string, error) { return s.home, nil }); err == nil {
+		candidates = append(candidates, keys)
+	}
 	if s.home != "" {
 		for _, entry := range homeCredentials {
 			candidates = append(candidates, filepath.Join(s.home, filepath.FromSlash(entry)))

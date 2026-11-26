@@ -220,9 +220,11 @@ func TestAuditCompletedAndFailed(t *testing.T) {
 			eng, rec := buildEngine(), newRecorder()
 			eng.result.ExitCode = tt.exit
 			var idInEngine string
+			var sessionInEngine AuditSession
 			var startsBeforeRun int
 			eng.run = func(ctx context.Context, _ string, _ map[string]string) (Result, error) {
 				idInEngine = AuditFromContext(ctx).ID()
+				sessionInEngine = AuditFromContext(ctx).Session()
 				startsBeforeRun = len(rec.calls())
 				time.Sleep(time.Millisecond)
 				return eng.result, nil
@@ -245,6 +247,9 @@ func TestAuditCompletedAndFailed(t *testing.T) {
 			}
 			if call.Session.Transport != "stdio" || call.Session.Auth != "process" || !isHexID(call.Session.ID) {
 				t.Errorf("session %+v", call.Session)
+			}
+			if sessionInEngine != call.Session {
+				t.Errorf("session in the engine %+v, recorded %+v", sessionInEngine, call.Session)
 			}
 			if call.Identity != eng.ident {
 				t.Errorf("identity %+v", call.Identity)
@@ -571,6 +576,9 @@ func TestCallAuditNilReceiver(t *testing.T) {
 	var c *CallAudit
 	if c.ID() != "" {
 		t.Error("an id on nil")
+	}
+	if c.Session() != (AuditSession{}) {
+		t.Error("a session on nil")
 	}
 	c.SetEffective([]AuditArg{{Name: "a"}})
 	c.SetErrorKind(AuditKindPolicy)

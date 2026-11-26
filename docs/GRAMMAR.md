@@ -159,6 +159,19 @@ same name in both is a static error citing both spans. A listed name absent
 from the environment is inert. See the
 [secret masking guide](how-to/secret-masking.md) for semantics and limits.
 
+## Receipts setting
+
+One boolean setting turns on signed execution receipts:
+
+```rune
+set receipts
+```
+
+With it, every task Rune runs in run mode, from the command line, `rune ci run` or an
+agent's tool call, writes a signed receipt to `.rune/receipts/`. Like the other boolean
+settings it is written bare. Without it nothing is recorded. See
+[Receipts](how-to/receipts.md).
+
 ## MCP output limit setting
 
 One string-valued setting caps the task output a tool result returns to an

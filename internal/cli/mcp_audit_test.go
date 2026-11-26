@@ -283,7 +283,7 @@ func TestLoadComputesIdentity(t *testing.T) {
 	if err := os.WriteFile(runefile, []byte("build:\n    @echo hi\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	a, _, err := loadMCPAdapter(Options{Stderr: &bytes.Buffer{}}, runefile)
+	a, _, err := loadMCPAdapter(context.Background(), Options{Stderr: &bytes.Buffer{}}, runefile)
 	if err != nil {
 		t.Fatal(err)
 	}

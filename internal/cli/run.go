@@ -17,12 +17,14 @@ import (
 
 	"github.com/rune-task-runner/rune/internal/analyzer"
 	"github.com/rune-task-runner/rune/internal/ast"
+	"github.com/rune-task-runner/rune/internal/audit"
 	"github.com/rune-task-runner/rune/internal/cache"
 	"github.com/rune-task-runner/rune/internal/config"
 	"github.com/rune-task-runner/rune/internal/diag"
 	"github.com/rune-task-runner/rune/internal/dotenv"
 	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/parser"
+	"github.com/rune-task-runner/rune/internal/receipt"
 	rt "github.com/rune-task-runner/rune/internal/runtime"
 	"github.com/rune-task-runner/rune/internal/runtime/agent"
 	"github.com/rune-task-runner/rune/internal/runtime/interp"
@@ -194,6 +196,20 @@ func execute(opts Options, runefile string, args []string) error {
 		eng.planIdent = eng.identity()
 	}
 
+	// Receipts are prepared before anything runs: a signing key that cannot
+	// be had stops the run here (spec 060).
+	if settings.Receipts && plan == planRun {
+		signer, err := newReceiptSigner(eng.ctx, mopts, runefile, rec.found(), eng.maskFunc())
+		if err != nil {
+			return &UsageError{Err: maskErr(err, set)}
+		}
+		claims := &receipt.Claims{Env: envClaims(os.Getenv, eng.maskFunc())}
+		if claims.Env == nil {
+			claims = nil
+		}
+		eng.receipts = newRecorder(signer, receiptChannel(opts, agentRun), audit.NewID(), eng.invocation, claims)
+	}
+
 	invs, err := eng.resolveRoots(rawInvs)
 	if err != nil {
 		return err
@@ -347,6 +363,10 @@ type engine struct {
 	// (agent) task opens.
 	loaded, missing []string
 
+	// receipts, when set, writes a signed receipt for every body this
+	// engine is asked to run (spec 060). Nil records nothing.
+	receipts *recorder
+
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
 	// fix-suggestion section (spec 022). Nil on the CLI path: hook output
@@ -483,7 +503,17 @@ func variadicIndex(t *ast.Task) int {
 }
 
 // Execute handles plan modes, confirmation, and caching, then runs the body.
+// With receipts on, the run gets one (spec 060).
 func (e *engine) Execute(task *ast.Task, params eval.Args) error {
+	run := e.beginReceipt(task, params, receipt.RoleTask, "")
+	err := e.executeTask(task, params, run)
+	e.finishReceipt(run, err)
+	return err
+}
+
+// executeTask is Execute for one run, whose receipt is run (nil records
+// nothing).
+func (e *engine) executeTask(task *ast.Task, params eval.Args, run *receiptRun) error {
 	if e.plan == planSummary {
 		fmt.Fprintln(e.opts.Stdout, task.Name)
 		return nil
@@ -529,31 +559,45 @@ func (e *engine) Execute(task *ast.Task, params eval.Args) error {
 		spec := e.cacheSpec(task, params, cacheAttr)
 		d, derr := cache.Decide(spec)
 		if derr == nil && d.Skip {
+			e.cachedHit(run, d.Receipt, d.InputFiles)
 			// Cache-hit notice is dimmed so real output stands out (FR-014).
 			fmt.Fprintf(e.opts.Stderr, "%s\n", e.theme.Muted.Render(fmt.Sprintf("cached: %s", task.Name)))
 			return nil
 		}
 		// "running" is an active status label (FR-014).
 		fmt.Fprintf(e.opts.Stderr, "%s: %s\n", e.theme.Success.Render("running"), task.Name)
+		e.bodyStarting(run, d.InputFiles)
+		if derr != nil {
+			run.inputsUnknown()
+		}
 		if err := e.runBody(task, params); err != nil {
 			return err
 		}
 		if derr == nil {
-			if cerr := cache.Store(spec, d.Hash, e.now()); cerr != nil {
+			if cerr := cache.Store(spec, d.Hash, e.now(), run.ID()); cerr != nil {
 				fmt.Fprintf(e.opts.Stderr, "%s: failed to write cache for %s: %v\n", e.theme.Warning.Render("warning"), task.Name, cerr)
 			}
 		}
 		return nil
 	}
 
+	e.bodyStarting(run, nil)
 	return e.runBody(task, params)
 }
 
 // ExecuteFailHook runs a || failure-hook body (spec 022). Hooks bypass the
 // cache deliberately — a "cached" diagnostic would skip the one run whose
 // output is wanted — but keep the [confirm] gate: an unconfirmable hook
-// declines, fails, and surfaces as a one-line warning upstream.
+// declines, fails, and surfaces as a one-line warning upstream. With
+// receipts on, the hook's run gets one that names the failed run.
 func (e *engine) ExecuteFailHook(task *ast.Task, params eval.Args, f scheduler.Failure) error {
+	run := e.beginReceipt(task, params, receipt.RoleFailureHook, f.TaskName)
+	err := e.executeFailHook(task, params, f, run)
+	e.finishReceipt(run, err)
+	return err
+}
+
+func (e *engine) executeFailHook(task *ast.Task, params eval.Args, f scheduler.Failure, run *receiptRun) error {
 	if e.plan != planRun {
 		return nil // plan modes never execute bodies, so no failure can reach here
 	}
@@ -588,6 +632,7 @@ func (e *engine) ExecuteFailHook(task *ast.Task, params eval.Args, f scheduler.F
 		"RUNE_FAILED_TASK=" + f.TaskName,
 		fmt.Sprintf("RUNE_FAILED_EXIT_CODE=%d", f.ExitCode),
 	}
+	e.bodyStarting(run, nil)
 	return e.runBodyTo(task, params, stdout, failEnv)
 }
 
@@ -772,11 +817,6 @@ func (e *engine) cacheSpec(task *ast.Task, params eval.Args, attr *ast.Attribute
 		body.WriteString(bl.Raw)
 		body.WriteByte('\n')
 	}
-	sel := rt.Select(task, e.settings)
-	execID := sel.Display
-	if len(sel.Command) > 0 {
-		execID += ":" + strings.Join(sel.Command, " ")
-	}
 	return cache.Spec{
 		Key:      task.Name,
 		Root:     e.root,
@@ -784,8 +824,18 @@ func (e *engine) cacheSpec(task *ast.Task, params eval.Args, attr *ast.Attribute
 		Outputs:  evalAll(attr.Outputs),
 		Body:     body.String(),
 		Vars:     e.collectVars(task, params),
-		Executor: execID,
+		Executor: e.executorID(task),
 	}
+}
+
+// executorID names the executor of a task and its command, as the cache
+// fingerprint and receipts record it.
+func (e *engine) executorID(task *ast.Task) string {
+	sel := rt.Select(task, e.settings)
+	if len(sel.Command) > 0 {
+		return sel.Display + ":" + strings.Join(sel.Command, " ")
+	}
+	return sel.Display
 }
 
 // collectVars resolves the values of every variable/param the task references

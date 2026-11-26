@@ -74,6 +74,10 @@ type Options struct {
 	// MCPNoReload is --no-reload: rune serve keeps the tasks it read at
 	// start and watches no file. Only ServeMCP reads it (spec 043).
 	MCPNoReload bool
+	// ReceiptKey is RUNE_RECEIPT_KEY, the PEM private key receipts are
+	// signed with in CI. cmd/rune removes the variable from the process
+	// environment once it is read, so no task inherits it (spec 060).
+	ReceiptKey string
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own
@@ -81,6 +85,7 @@ type Options struct {
 	ColorStdout bool
 	ColorStderr bool
 	Version     string
+	Commit      string // the build's commit, recorded in receipts
 	Cwd         string
 	Ctx         context.Context // cancelled on SIGINT (nil => Background)
 	Stdin       io.Reader

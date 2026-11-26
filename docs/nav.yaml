@@ -34,6 +34,7 @@ groups:
       - how-to/os-filtering.md
       - how-to/import-from-other-runners.md
       - how-to/ci-github.md
+      - how-to/receipts.md
       - how-to/agent-setup.md
       - how-to/agent-instructions.md
       - how-to/learn-tasks-from-agent.md

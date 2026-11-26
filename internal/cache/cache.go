@@ -40,6 +40,9 @@ type Fingerprint struct {
 	Outputs   []string `json:"outputs"`
 	Executor  string   `json:"executor"`
 	CreatedAt string   `json:"createdAt"`
+	// Receipt is the receipt of the run that stored the record, when
+	// receipts were on (spec 060). A cache hit names it as the run it reuses.
+	Receipt string `json:"receipt,omitempty"`
 }
 
 // Decision is the result of evaluating the cache for a task.
@@ -47,6 +50,7 @@ type Decision struct {
 	Skip       bool
 	Hash       string
 	InputFiles []string
+	Receipt    string // the stored record's receipt, on a hit
 }
 
 // Decide computes the current fingerprint and reports whether the task may be
@@ -70,12 +74,14 @@ func Decide(spec Spec) (Decision, error) {
 		return d, nil
 	}
 	d.Skip = true
+	d.Receipt = stored.Receipt
 	return d, nil
 }
 
-// Store writes the fingerprint record after a successful run. createdAt is
-// informational only and never part of the hash.
-func Store(spec Spec, hash, createdAt string) error {
+// Store writes the fingerprint record after a successful run. createdAt and
+// receipt are informational only and never part of the hash; receipt is ""
+// when the run wrote none.
+func Store(spec Spec, hash, createdAt, receipt string) error {
 	dir := cacheDir(spec.Root)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -88,6 +94,7 @@ func Store(spec Spec, hash, createdAt string) error {
 		Outputs:   spec.Outputs,
 		Executor:  spec.Executor,
 		CreatedAt: createdAt,
+		Receipt:   receipt,
 	}
 	data, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {

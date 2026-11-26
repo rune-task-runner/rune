@@ -200,6 +200,7 @@ set dotenv := ".env"        # load this file's KEY=VALUE lines into task environ
 set secrets := ["DEPLOY_CFG"]   # mask these variables' values in all output
 set unmasked := ["OAUTH_METHOD"]  # exempt from built-in secret-name patterns
 set mcp_output_limit := "256KiB"  # bytes of stdout and of stderr an agent gets per call
+set receipts                # write a signed receipt for every task run
 ```
 
 A bare `set name` is shorthand for `set name := true`.

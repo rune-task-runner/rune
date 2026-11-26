@@ -13,7 +13,7 @@ import (
 var RuneCommands = map[string]bool{
 	"help": true, "version": true, "serve": true, "mcp": true, "log": true,
 	"agent": true, "export": true, "analyze": true, "lsp": true, "completion": true,
-	"suggest": true, "ci": true,
+	"suggest": true, "ci": true, "verify": true, "receipt": true,
 }
 
 // finish applies the rules that hold for every format: a task that is

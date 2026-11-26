@@ -1084,3 +1084,31 @@ func TestCallRefusedHiddenProject(t *testing.T) {
 		t.Error("the body ran")
 	}
 }
+
+// Spec 060: the directory of the local receipt signing key is hidden, where
+// the state directory says it is.
+func TestHiddenReceiptKeyDirectory(t *testing.T) {
+	root := realTempDir(t)
+	home := filepath.Join(root, "home")
+	state := filepath.Join(root, "state")
+	for _, dir := range []string{filepath.Join(home, ".local", "state", "rune", "receipts"), filepath.Join(state, "rune", "receipts")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env := map[string]string{}
+	s := newSandboxState(sandbox.ModeEnforce, &stubBackend{}, "/opt/rune", "/ws", "/base", "", home, func(key string) string { return env[key] }, time.Now)
+	s.replaced = nil
+	if dirs, _ := s.hidden(); !slices.Equal(dirs, []string{filepath.Join(home, ".local", "state", "rune", "receipts")}) {
+		t.Errorf("dirs = %v", dirs)
+	}
+	env["XDG_STATE_HOME"] = state
+	if dirs, _ := s.hidden(); !slices.Equal(dirs, []string{filepath.Join(state, "rune", "receipts")}) {
+		t.Errorf("with XDG_STATE_HOME: dirs = %v", dirs)
+	}
+	s = newSandboxState(sandbox.ModeEnforce, &stubBackend{}, "/opt/rune", "/ws", "/base", "", "", func(string) string { return "" }, time.Now)
+	s.replaced = nil
+	if dirs, _ := s.hidden(); len(dirs) != 0 {
+		t.Errorf("no home, no state: dirs = %v", dirs)
+	}
+}

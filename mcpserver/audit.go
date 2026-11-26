@@ -203,8 +203,9 @@ type AuditEngine interface {
 // it to add what only it knows. Every method is safe on a nil receiver, so
 // an engine need not check whether the server records.
 type CallAudit struct {
-	id     string
-	redact func(string) string
+	id      string
+	session AuditSession
+	redact  func(string) string
 
 	mu sync.Mutex
 	// named holds the values under secret-like names, as supplied and as
@@ -246,6 +247,16 @@ func (c *CallAudit) ID() string {
 		return ""
 	}
 	return c.id
+}
+
+// Session is the session the call arrived on, as it was recorded: the
+// client's name and version are what it reported, not a verified identity.
+// The zero value when nothing is recorded.
+func (c *CallAudit) Session() AuditSession {
+	if c == nil {
+		return AuditSession{}
+	}
+	return c.session
 }
 
 // SetEffective records the arguments the task was bound to. The values must
@@ -473,11 +484,11 @@ func (s *Server) auditCall(ctx context.Context, method string, req mcp.Request, 
 	snap := s.state.Load()
 	redact := redactorOf(snap.engine)
 	name, raw := callParams(req)
-	rec := &CallAudit{id: newAuditID(), redact: redact, named: namedSecrets(raw)}
+	rec := &CallAudit{id: newAuditID(), session: s.auditSession(req, redact), redact: redact, named: namedSecrets(raw)}
 	call := AuditCall{
 		ID:       rec.id,
 		Start:    time.Now(),
-		Session:  s.auditSession(req, redact),
+		Session:  rec.session,
 		Tool:     redactText(name, redact, maxAuditValueBytes),
 		Supplied: redactSupplied(raw, redact),
 	}

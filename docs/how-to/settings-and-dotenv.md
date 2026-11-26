@@ -37,6 +37,9 @@ GREETING=hello
 A relative path starts at the Runefile's directory. A file that does not exist is not an
 error: the tasks run without its values.
 
+`set receipts` makes every task run leave a signed receipt; see
+[Receipts](receipts.md).
+
 ## Runnable example
 
 See **[examples/settings-dotenv](../examples/settings-dotenv/README.md)**: `set export` and

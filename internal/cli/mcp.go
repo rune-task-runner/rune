@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"runtime"
 	"slices"
 	"time"
 
 	"github.com/rune-task-runner/rune/internal/ast"
+	"github.com/rune-task-runner/rune/internal/audit"
 	"github.com/rune-task-runner/rune/internal/config"
 	"github.com/rune-task-runner/rune/internal/eval"
 	"github.com/rune-task-runner/rune/internal/mask"
+	"github.com/rune-task-runner/rune/internal/receipt"
 	"github.com/rune-task-runner/rune/internal/runtime/scheduler"
 	"github.com/rune-task-runner/rune/mcpserver"
 )
@@ -74,6 +77,10 @@ type mcpAdapter struct {
 	// may change neither kind.
 	sandbox         *sandboxState
 	loaded, missing []string
+
+	// receipts signs the receipt of every body a call runs, when the
+	// Runefile has `set receipts` (spec 060). Nil records nothing.
+	receipts *receiptSigner
 
 	// contextTimeout bounds the [context] hook run; zero means the fixed
 	// defaultContextTimeout. A field (not a global) so tests shrink it per
@@ -334,6 +341,28 @@ func (a *mcpAdapter) approvalRequest(t *ast.Task, params eval.Args, tasks []stri
 	return req
 }
 
+// callRecorder is the recorder of one call: its receipts share the call's
+// audit ID and say what the client reported, as claims. Nil when the load
+// records no receipts.
+func (a *mcpAdapter) callRecorder(call *mcpserver.CallAudit) *recorder {
+	if a.receipts == nil {
+		return nil
+	}
+	invocation := call.ID()
+	if invocation == "" {
+		invocation = audit.NewID()
+	}
+	sess := call.Session()
+	claims := &receipt.Claims{Auth: sess.Auth, Env: envClaims(os.Getenv, a.maskText)}
+	if sess.ClientName != "" || sess.ClientVersion != "" {
+		claims.Client = &receipt.Client{Name: a.maskText(sess.ClientName), Version: a.maskText(sess.ClientVersion)}
+	}
+	if claims.Auth == "" && claims.Client == nil && claims.Env == nil {
+		claims = nil
+	}
+	return newRecorder(a.receipts, receipt.ChannelMCP, invocation, "", claims)
+}
+
 // maskText masks the adapter's secrets in s. An adapter built without a mask
 // set masks nothing.
 func (a *mcpAdapter) maskText(s string) string {
@@ -425,6 +454,7 @@ func (a *mcpAdapter) call(ctx context.Context, name string, args map[string]stri
 
 		invocation: rec.ID(),
 		audit:      rec,
+		receipts:   a.callRecorder(rec),
 	}
 
 	params, err := bindNamedParams(t, args, lists, scope)
