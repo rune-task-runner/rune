@@ -84,3 +84,12 @@ func TestRegistryHasReceiptsSetting(t *testing.T) {
 		t.Fatalf("Lookup(receipts) = %+v, %v", b, ok)
 	}
 }
+
+// Spec 061: completion and hover read the registry, so [reuse] has to be in
+// it with the signature of the contract.
+func TestRegistryHasReuseAttribute(t *testing.T) {
+	b, ok := Lookup(BuiltinAttribute, "reuse")
+	if !ok || b.Signature != "[reuse]" || b.Documentation == "" {
+		t.Fatalf("Lookup(reuse) = %+v, %v", b, ok)
+	}
+}

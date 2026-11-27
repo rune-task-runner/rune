@@ -39,7 +39,8 @@ func (p *parser) parseAttrItem() *ast.Attribute {
 	switch name.Lit {
 	case ast.AttrPrivate, ast.AttrParallel, ast.AttrLinux, ast.AttrMacos,
 		ast.AttrWindows, ast.AttrUnix, ast.AttrNoCD, ast.AttrNetwork,
-		ast.AttrNoExitMessage, ast.AttrContext, ast.AttrReadonly, ast.AttrAgentSummary:
+		ast.AttrNoExitMessage, ast.AttrContext, ast.AttrReadonly, ast.AttrAgentSummary,
+		ast.AttrReuse:
 		// No arguments (confirm may also be bare).
 		return a
 

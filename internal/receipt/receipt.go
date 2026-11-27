@@ -51,6 +51,7 @@ type Receipt struct {
 	Task              string          `json:"task"`
 	Arguments         []Arg           `json:"arguments"`
 	ArgumentsRedacted bool            `json:"argumentsRedacted,omitempty"`
+	Overrides         []string        `json:"overrides,omitempty"` // names overridden on the command line, never values (spec 061)
 	Role              string          `json:"role"`
 	Related           *Related        `json:"related,omitempty"`
 	Status            string          `json:"status"`

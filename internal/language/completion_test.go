@@ -126,3 +126,10 @@ func TestCompleteAgentOutputAttributes(t *testing.T) {
 		}
 	}
 }
+
+func TestCompleteReuseAttribute(t *testing.T) {
+	items := completeAt(t, "[reu|\n# B.\nbuild:\n    @echo b\n")
+	if !contains(items, "reuse") {
+		t.Errorf("attribute completions = %v, want reuse", labels(items))
+	}
+}

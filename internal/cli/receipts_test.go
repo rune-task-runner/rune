@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -263,5 +265,110 @@ func clearClaimVars(t *testing.T) {
 	t.Helper()
 	for _, name := range receiptClaimVars {
 		t.Setenv(name, "")
+	}
+}
+
+// Spec 061 R9: a snapshot taken for reuse is the one the body runs on.
+func TestBodyStartingKeepsSnapshot(t *testing.T) {
+	e, _ := reuseEngine(t, false)
+	task := e.tasks["check"]
+	r := &receiptRun{task: task, snapped: true, before: "kept"}
+	e.bodyStarting(r, []string{"in.txt"})
+	if !r.started || r.before != "kept" || len(r.inputs) != 1 {
+		t.Fatalf("run %+v", r)
+	}
+	r = &receiptRun{task: task}
+	e.bodyStarting(r, nil)
+	if !r.started || !r.snapped || r.before == "" || r.snapErr != nil {
+		t.Fatalf("run %+v", r)
+	}
+}
+
+// Spec 061 R6: the outputs now, digested as a passed run records them,
+// without writing a manifest.
+func TestCurrentOutputs(t *testing.T) {
+	src := "set receipts\n\n[cache(inputs=[\"in.txt\"], outputs=[\"out\"])]\nbuild:\n    @echo b\n\nplain:\n    @echo p\n"
+	e := availEngine(t, src, "linux", planRun, &bytes.Buffer{})
+	same := func(s string) string { return s }
+	write := func(n int) []string {
+		t.Helper()
+		var rel []string
+		for i := range n {
+			name := fmt.Sprintf("out/f%03d", i)
+			if err := os.MkdirAll(filepath.Join(e.root, "out"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(e.root, name), []byte(name), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			rel = append(rel, name)
+		}
+		return rel
+	}
+	if out, manifest, err := e.currentOutputs(e.tasks["build"], eval.Args{}, same); out != nil || manifest != nil || err != nil {
+		t.Fatalf("no output files: %+v %v", out, err)
+	}
+	rel := write(2)
+	files, err := receipt.OutputFiles(e.root, rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _, _ := receipt.BuildOutputs(files)
+	out, manifest, err := e.currentOutputs(e.tasks["build"], eval.Args{}, same)
+	if err != nil || manifest != nil || out.Digest != want.Digest || out.Count != 2 {
+		t.Fatalf("outputs %+v %v, want %+v", out, err, want)
+	}
+	if out, _, err := e.currentOutputs(e.tasks["plain"], eval.Args{}, same); out != nil || err != nil {
+		t.Fatalf("no [cache]: %+v %v", out, err)
+	}
+	write(receipt.MaxInlineOutputs + 1)
+	out, manifest, err = e.currentOutputs(e.tasks["build"], eval.Args{}, same)
+	if err != nil || manifest == nil || out.Count != receipt.MaxInlineOutputs+1 {
+		t.Fatalf("many outputs: %+v %v", out, err)
+	}
+	if _, err := os.Stat(filepath.Join(e.root, ".rune")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("something was written: %v", err)
+	}
+}
+
+// Spec 061 FR-017: every receipt names the variables the invocation
+// overrode on the command line, sorted, and never their values.
+func TestReceiptsRecordOverrides(t *testing.T) {
+	src := "set receipts\n\nmode := \"debug\"\nlevel := \"1\"\n\nbuild:\n    @echo {{mode}}\n\ntest: build\n    @echo {{level}}\n"
+	dir := receiptProject(t, src, map[string]string{}, true)
+	if _, err := runReceipts(t, dir, Options{}, "mode=release-value", "level=2", "test"); err != nil {
+		t.Fatal(err)
+	}
+	list := readReceipts(t, dir)
+	if len(list) != 2 {
+		t.Fatalf("%d receipts", len(list))
+	}
+	for _, rc := range list {
+		if !slices.Equal(rc.Overrides, []string{"level", "mode"}) {
+			t.Errorf("%s: overrides %v", rc.Task, rc.Overrides)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(receipt.Dir(dir), list[0].ID+".json"))
+	if err != nil || strings.Contains(string(data), "release-value") {
+		t.Fatalf("a value was recorded: %v", err)
+	}
+	if err := os.RemoveAll(receipt.Dir(dir)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runReceipts(t, dir, Options{}, "build"); err != nil {
+		t.Fatal(err)
+	}
+	if rc := readReceipts(t, dir)[0]; rc.Overrides != nil {
+		t.Fatalf("no override: %v", rc.Overrides)
+	}
+}
+
+func TestOverrideNames(t *testing.T) {
+	if got := overrideNames(map[string]string{}, strings.ToUpper); got != nil {
+		t.Errorf("none: %v", got)
+	}
+	got := overrideNames(map[string]string{"b": "1", "a": "2"}, strings.ToUpper)
+	if !slices.Equal(got, []string{"A", "B"}) {
+		t.Errorf("names %v", got)
 	}
 }

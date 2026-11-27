@@ -425,7 +425,7 @@ func TestEngineReceiptHelpers(t *testing.T) {
 		t.Fatalf("mask: %q", got)
 	}
 	s := &receiptSigner{}
-	e.receipts = newRecorder(s, receipt.ChannelCLI, "i", "", nil)
+	e.receipts = newRecorder(s, receipt.ChannelCLI, "i", "", nil, nil)
 	if e.receiptSigner() != s {
 		t.Fatal("the signer of the recorder")
 	}

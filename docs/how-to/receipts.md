@@ -1,7 +1,8 @@
 # Prove a task ran: receipts and `rune verify`
 
-> Make every task run leave a small signed receipt, and check receipts against a git revision
-> without running anything. Part of the [how-to guides](README.md).
+> Make every task run leave a small signed receipt, check receipts against a git revision
+> without running anything, and let CI skip what a run it trusts already proved. Part of the
+> [how-to guides](README.md).
 
 An agent can say "all tests pass" without running them. A receipt is evidence that Rune's own
 execution path wrote: which task ran, on which files, with what result, started from where,
@@ -204,6 +205,127 @@ git notes --ref=rune-receipts merge -s cat_sort_uniq refs/notes/origin/rune-rece
 Moving a note to another commit makes nothing valid there: a receipt counts only for a
 revision whose tree is the snapshot it signed.
 
+## Reuse evidence in CI
+
+CI can skip a task that a run it trusts already proved on exactly the same files. Two opt-ins
+are needed, and neither alone skips anything:
+
+- The author marks the task `[reuse]`: its result depends only on the files git does not
+  ignore, its arguments, and Rune's version, OS and architecture. Not on the environment, the
+  network, installed tools or ignored files.
+- The CI step names the public keys it trusts with `--reuse-key FILE` (repeatable).
+
+```rune
+set receipts
+
+# Lint the code.
+[reuse]
+lint:
+    golangci-lint run
+
+# Run the tests.
+[reuse]
+test:
+    go test ./...
+```
+
+```sh
+git fetch origin refs/notes/rune-receipts:refs/notes/rune-receipts
+rune --reuse-key ci-receipts.pub lint test
+```
+
+```text
+reused: lint (receipt 20261127T101500Z-1a2b3c4d5e6f7a8b, signed by SHA256:Qm3x...)
+not reused: test (the receipt is older than 24h0m0s)
+```
+
+A reused task runs no body and counts as a success. `rune ci run` takes the same flags.
+
+Rune reads the receipts in `.rune/receipts/` and in the notes of every commit whose tree is
+the files the task would run on now, so receipts attached to a pull request's merge preview
+count after a squash merge that produces the same files. Fetching the notes ref does not fetch
+the commits it annotates; from a note on a commit the clone lacks, Rune takes the receipts that
+name those files. It reuses the newest receipt for
+which all of these hold:
+
+- a key given with `--reuse-key` signed it. This machine's own key and `RUNE_RECEIPT_KEY` are
+  not trusted unless you give their public key;
+- the task passed, on exactly these files before and after its body, with the Runefile, its
+  imports and the declared `[cache]` inputs covered, as `rune verify` requires, in its run and
+  in this one;
+- it is a run of the task itself, not of a failure hook, whose body saw the failed run;
+- it finished within `--reuse-max-age` (default `24h`), and not in the future;
+- the OS, architecture, Rune version and commit, the task's definition and its arguments are
+  this run's;
+- no variable was overridden on the command line, in its run or in this one, and no argument
+  was masked;
+- for a task with declared `[cache]` outputs, the output files here are exactly the ones it
+  recorded. In CI they come from the job's restored bundle; when they are missing, the task
+  runs.
+
+When none qualifies, the task runs and Rune says why, with the reason of the most relevant
+receipt: the texts of `rune verify` above, plus:
+
+| Reason | Text |
+|---|---|
+| no receipt | `no receipt for these files` |
+| failure hook | `it ran as a failure hook` |
+| stale | `the receipt is older than 24h0m0s`, or `the receipt finished in the future` |
+| other platform | `it ran on another OS or architecture` |
+| other Rune | `it ran with another rune` |
+| other definition | `the task's definition changed` |
+| masked arguments | `masked arguments cannot be compared` |
+| other arguments | `it ran with other arguments` |
+| overridden | `a variable was overridden on the command line` |
+| outputs differ | `the declared outputs are not the ones it made` |
+
+The receipt of a reused run says `cached` and names the receipt it reused. It is never evidence
+that the task passed: `rune verify` reports it as `cached`, and it is never reused itself.
+
+`[reuse]` cannot be combined with `[confirm]`, `[plan]`, `[applies]` or `[network]`, or be used
+on an `agent` task. Without `set receipts`, or outside a git repository, `--reuse-key` is a
+usage error. `rune mcp` and `rune serve` never reuse: an agent's call always runs the task.
+
+### In GitHub Actions
+
+The pull request signs with the CI key, attaches its receipts and pushes the notes; `main`
+fetches them and reuses. Keep the public key where a pull request cannot change it, such as a
+repository variable, since a key file in the commit under test is the contributor's to edit:
+
+```yaml
+# On pull requests from this repository (forks get neither the secret nor write access).
+permissions:
+  contents: write
+steps:
+  - uses: actions/checkout@v4
+  - name: Test
+    env:
+      RUNE_RECEIPT_KEY: ${{ secrets.RUNE_RECEIPT_KEY }}
+    run: rune lint test
+  - name: Share the receipts
+    run: |
+      git config user.name ci && git config user.email ci@users.noreply.github.com
+      git fetch origin refs/notes/rune-receipts:refs/notes/rune-receipts || true
+      rune receipt attach
+      git push origin refs/notes/rune-receipts
+```
+
+```yaml
+# On pushes to main.
+steps:
+  - uses: actions/checkout@v4
+  - name: Test, reusing what the pull request proved
+    env:
+      REUSE_KEY: ${{ vars.RUNE_REUSE_PUBLIC_KEY }}
+    run: |
+      git fetch origin refs/notes/rune-receipts:refs/notes/rune-receipts || true
+      printf '%s\n' "$REUSE_KEY" > "$RUNNER_TEMP/ci.pub"
+      rune --reuse-key "$RUNNER_TEMP/ci.pub" lint test
+```
+
+When two jobs push notes at the same time, one push is refused; fetch and merge the notes as
+shown above, then push again.
+
 ## What a receipt proves, and what it does not
 
 A receipt attests to what Rune observed when it ran the task, signed by a key. It does not
@@ -240,6 +362,14 @@ not evidence. Know the limits before you rely on it:
 - **Snapshots store objects.** Taking a snapshot stores unreachable blobs and trees in the
   repository's object database, as `git stash create` does; git's own maintenance removes
   them. The index, HEAD, refs and working tree are never touched.
+- **A reuse trusts the key's holder, not the code.** `--reuse-key` skips work because someone
+  who holds that key ran it. Give it only keys whose holders you trust to run the task, and
+  take the key file from somewhere the contributor under test cannot change.
+- **`[reuse]` is the author's word.** Rune does not check that a task's result depends only on
+  its files. A task that reads the environment, the network, installed tools or ignored files
+  can pass on one machine and fail on another; leave it without `[reuse]`.
+- **Receipts do not replace CI.** Tasks without `[reuse]` always run, and a reused run is not
+  evidence that the task passed.
 
 ## The receipt format
 

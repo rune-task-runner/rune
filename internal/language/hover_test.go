@@ -76,3 +76,12 @@ func TestHoverAgentOutputAttributes(t *testing.T) {
 		}
 	}
 }
+
+func TestHoverReuseAttribute(t *testing.T) {
+	src := "# T.\n[reuse]\ntest:\n    @echo hi\n"
+	f, _ := resolve(t, src)
+	md, _, ok := Hover(f, "Runefile", at(src, "reuse"))
+	if !ok || !strings.Contains(md, "[reuse]") {
+		t.Errorf("hover on reuse: ok=%v md=%q", ok, md)
+	}
+}

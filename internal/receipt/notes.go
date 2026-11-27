@@ -42,17 +42,88 @@ func (r *Repo) readNote(ctx context.Context, ref, commit string) ([][]byte, erro
 	if blob == "" {
 		return nil, nil
 	}
+	return r.blobLines(ctx, blob, nil)
+}
+
+// blobLines appends the non-blank lines of the note blob to lines.
+func (r *Repo) blobLines(ctx context.Context, blob string, lines [][]byte) ([][]byte, error) {
 	data, _, err := runGit(ctx, r.Top, nil, nil, "cat-file", "blob", blob)
 	if err != nil {
 		return nil, err
 	}
-	var lines [][]byte
 	for line := range bytes.SplitSeq(data, []byte("\n")) {
 		if line = bytes.TrimSpace(line); len(line) > 0 {
 			lines = append(lines, line)
 		}
 	}
 	return lines, nil
+}
+
+// NotesForTree returns the non-blank lines of the receipts notes of every
+// commit whose tree is tree (spec 061). A receipt is evidence for a tree, so
+// a note on another commit with the same files counts too. Fetching the
+// notes ref does not fetch the commits it annotates, so from a note on a
+// commit this clone lacks it keeps the lines whose receipt names tree as its
+// snapshot. It writes nothing.
+func (r *Repo) NotesForTree(ctx context.Context, tree string) ([][]byte, error) {
+	// git lists nothing, and exits 0, when the ref does not exist; any
+	// failure is one the caller should hear of.
+	out, _, err := runGit(ctx, r.Top, nil, nil, "notes", "--ref="+NotesRef, "list")
+	if err != nil {
+		return nil, err
+	}
+	var blobs []string
+	var query bytes.Buffer
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if fields := strings.Fields(line); len(fields) == 2 {
+			blobs = append(blobs, fields[0])
+			query.WriteString(fields[1] + "^{tree}\n")
+		}
+	}
+	if len(blobs) == 0 {
+		return nil, nil
+	}
+	// One answer per line asked, in order: the tree's ID, or "... missing".
+	trees, _, err := runGit(ctx, r.Top, nil, query.Bytes(), "cat-file", "--batch-check=%(objectname)")
+	if err != nil {
+		return nil, err
+	}
+	var lines [][]byte
+	for i, got := range strings.Split(strings.TrimSuffix(string(trees), "\n"), "\n") {
+		if i >= len(blobs) {
+			break
+		}
+		switch {
+		case got == tree:
+			lines, err = r.blobLines(ctx, blobs[i], lines)
+		case strings.HasSuffix(got, " missing"):
+			var note [][]byte
+			note, err = r.blobLines(ctx, blobs[i], nil)
+			for _, line := range note {
+				if snapshotOf(line) == tree {
+					lines = append(lines, line)
+				}
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return lines, nil
+}
+
+// snapshotOf is the snapshot before the body that the receipt in line
+// names, unverified, or "" when line is not a receipt with one.
+func snapshotOf(line []byte) string {
+	_, payload, err := Decode(line)
+	if err != nil {
+		return ""
+	}
+	r, err := ParseStatement(payload)
+	if err != nil || r.Source == nil {
+		return ""
+	}
+	return r.Source.Before
 }
 
 // attachTries bounds how often attach merges again with a note that another

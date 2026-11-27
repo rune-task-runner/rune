@@ -507,6 +507,7 @@ const (
 	AttrApplies          = "applies"         // the task applies the stored plan of the named plan task (spec 051)
 	AttrAgentOutput      = "agent-output"    // the lines of each stream an agent's result keeps (spec 057)
 	AttrAgentSummary     = "agent-summary"   // a failed call from an agent gets a failure summary (spec 057)
+	AttrReuse            = "reuse"           // the task may be skipped on a trusted receipt (spec 061)
 )
 
 // The variables Rune gives the body of a task that applies a plan (spec 051).
@@ -535,6 +536,7 @@ var KnownAttributes = []string{
 	AttrCache, AttrNetwork, AttrNoExitMessage, AttrContext,
 	AttrParamDoc, AttrReturns, AttrReadonly, AttrAgentAllow,
 	AttrPlan, AttrApplies, AttrAgentOutput, AttrAgentSummary,
+	AttrReuse,
 }
 
 // Attribute is a `[name(args)]` annotation on a task. Most attributes carry a

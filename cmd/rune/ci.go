@@ -119,6 +119,9 @@ record are written to DIR/bundle.tar.
 
 --key prints the cache key of a [cache] task, key=..., and runs nothing.
 
+--reuse-key and --reuse-max-age skip a [reuse] task that a trusted receipt
+shows passed on exactly these files, as on the command line.
+
 Exit status: as 'rune TASK' exits, 2 for a usage error, and 1 when a bundle
 cannot be read or written.`,
 		Example: `  rune ci run build linux
@@ -131,6 +134,9 @@ cannot be read or written.`,
 			if cmd.Flags().Changed("dir") && flags.Dir == "" {
 				return &cli.UsageError{Err: errors.New("--dir needs a path")}
 			}
+			if err := checkReuseFlags(cmd, opts); err != nil {
+				return err
+			}
 			return cli.CIRun(*opts, flags, args)
 		},
 	}
@@ -139,5 +145,6 @@ cannot be read or written.`,
 	f.StringVarP(&opts.File, "file", "f", "", "use this Runefile instead of the one found from the working directory")
 	f.StringVar(&flags.Dir, "dir", "", "the job's directory for the bundles of outputs")
 	f.BoolVar(&flags.Key, "key", false, "print the cache key of a [cache] task and run nothing")
+	reuseFlags(f, opts)
 	return cmd
 }

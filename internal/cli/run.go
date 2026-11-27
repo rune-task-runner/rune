@@ -207,7 +207,14 @@ func execute(opts Options, runefile string, args []string) error {
 		if claims.Env == nil {
 			claims = nil
 		}
-		eng.receipts = newRecorder(signer, receiptChannel(opts, agentRun), audit.NewID(), eng.invocation, claims)
+		eng.receipts = newRecorder(signer, receiptChannel(opts, agentRun), audit.NewID(), eng.invocation, claims, overrideNames(overrides, eng.maskFunc()))
+	}
+	// Reuse needs the signer's repository, and its keys are checked before
+	// anything runs (spec 061). Plan modes run no body to skip.
+	if plan == planRun {
+		if eng.reuse, err = newReuser(opts, settings.Receipts, eng.receiptSigner(), len(overrides) > 0); err != nil {
+			return err
+		}
 	}
 
 	invs, err := eng.resolveRoots(rawInvs)
@@ -366,6 +373,11 @@ type engine struct {
 	// receipts, when set, writes a signed receipt for every body this
 	// engine is asked to run (spec 060). Nil records nothing.
 	receipts *recorder
+
+	// reuse, when set, lets a trusted receipt stand in for the body of a
+	// [reuse] task (spec 061). Set only on the command line with
+	// --reuse-key; nil on the agent surface.
+	reuse *reuser
 
 	// failHookOut, when set (MCP path), receives || failure-hook body stdout
 	// instead of opts.Stdout, so the adapter can deliver it as a delimited
@@ -564,6 +576,9 @@ func (e *engine) executeTask(task *ast.Task, params eval.Args, run *receiptRun) 
 			fmt.Fprintf(e.opts.Stderr, "%s\n", e.theme.Muted.Render(fmt.Sprintf("cached: %s", task.Name)))
 			return nil
 		}
+		if e.tryReuse(task, params, run, d.InputFiles, derr) {
+			return nil
+		}
 		// "running" is an active status label (FR-014).
 		fmt.Fprintf(e.opts.Stderr, "%s: %s\n", e.theme.Success.Render("running"), task.Name)
 		e.bodyStarting(run, d.InputFiles)
@@ -581,6 +596,9 @@ func (e *engine) executeTask(task *ast.Task, params eval.Args, run *receiptRun) 
 		return nil
 	}
 
+	if e.tryReuse(task, params, run, nil, nil) {
+		return nil
+	}
 	e.bodyStarting(run, nil)
 	return e.runBody(task, params)
 }

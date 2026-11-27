@@ -391,6 +391,10 @@ func CIRun(opts Options, flags CIRunFlags, args []string) error {
 			return &CommandFailure{Err: fmt.Errorf("ci run: %w", err)}
 		}
 	}
+	// --key runs no body, so, as in --dry-run, there is nothing to reuse.
+	if flags.Key {
+		opts.ReuseKeys = nil
+	}
 	stdout, version := opts.Stdout, opts.Version
 	opts.nodeRun = func(e *engine, invs []scheduler.Invocation) error {
 		inv := invs[0]

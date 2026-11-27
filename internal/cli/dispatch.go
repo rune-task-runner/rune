@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/rune-task-runner/rune/internal/config"
 	"github.com/rune-task-runner/rune/internal/runtime/scheduler"
@@ -78,6 +79,13 @@ type Options struct {
 	// signed with in CI. cmd/rune removes the variable from the process
 	// environment once it is read, so no task inherits it (spec 060).
 	ReceiptKey string
+	// ReuseKeys are the --reuse-key files: the public keys whose receipts
+	// may stand in for a run of a [reuse] task. ReuseMaxAge is
+	// --reuse-max-age, the oldest such receipt; zero means
+	// DefaultReuseMaxAge. Only the command line sets them, never a Runefile
+	// (spec 061).
+	ReuseKeys   []string
+	ReuseMaxAge time.Duration
 
 	// Resolved per-stream color decisions (see cmd/rune): ColorStdout gates
 	// --list and --help (which write to stdout); ColorStderr gates Rune's own

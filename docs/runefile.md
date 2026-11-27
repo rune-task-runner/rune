@@ -370,6 +370,7 @@ Attributes sit on their own line(s) above a task in `[...]`:
 [agent-allow(env="staging")]    # the only value an agent may run the task with
 [agent-output(tail="50")]       # an agent's result keeps the last 50 lines of each stream
 [agent-summary]                 # a failed call from an agent gets a failure summary
+[reuse]                         # with --reuse-key, a trusted receipt may stand in for the run
 [plan(file="tfplan", summary="tfplan.txt")]  # the task makes a plan, which Rune stores
 [applies("plan")]               # runs only with the approved plan of the named task, once
 [script("/usr/bin/env python3")]  # run the whole body as a script under this interpreter
@@ -425,6 +426,15 @@ range, and a second attribute of either kind on one task are each a static error
 marks the task that applies the plan of the named plan task. The apply task runs only with
 the plan Rune stored, only after a person approved that plan, and only once. See
 [Plan and apply](#plan-and-apply).
+
+`[reuse]` lets a trusted receipt stand in for a run of the task: with `--reuse-key FILE`
+on the command line, Rune skips the body when a receipt signed by a key in FILE shows the
+task passed, recently, on exactly the files it would run on now, with the same arguments,
+Rune version, OS and architecture. Mark only a task whose result depends on nothing else:
+not on the environment, the network or ignored files. Without `--reuse-key` it changes
+nothing. It cannot be combined with `[confirm]`, `[plan]`, `[applies]` or `[network]`, or be
+used on an `agent` task (`RUNE2022`). See
+[Reuse evidence in CI](how-to/receipts.md#reuse-evidence-in-ci).
 
 `[context]` marks at most one task as the project's **context hook**: Rune runs it
 when an agent session starts and injects its output into the agent's context — see

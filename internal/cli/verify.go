@@ -76,14 +76,25 @@ func trustedKeys(opts Options, files []string) ([]ed25519.PublicKey, error) {
 	if own != nil {
 		keys = append(keys, own.Public().(ed25519.PublicKey))
 	}
+	pubs, err := publicKeyFiles("--key", files)
+	if err != nil {
+		return nil, err
+	}
+	return append(keys, pubs...), nil
+}
+
+// publicKeyFiles reads the public keys in files, which flag named. A file
+// that cannot be read or holds no key is a usage error.
+func publicKeyFiles(flag string, files []string) ([]ed25519.PublicKey, error) {
+	var keys []ed25519.PublicKey
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
-			return nil, &UsageError{Err: fmt.Errorf("--key %s: %w", file, err)}
+			return nil, &UsageError{Err: fmt.Errorf("%s %s: %w", flag, file, err)}
 		}
 		pubs, err := receipt.ParsePublicKeys(data)
 		if err != nil {
-			return nil, &UsageError{Err: fmt.Errorf("--key %s: %w", file, err)}
+			return nil, &UsageError{Err: fmt.Errorf("%s %s: %w", flag, file, err)}
 		}
 		keys = append(keys, pubs...)
 	}

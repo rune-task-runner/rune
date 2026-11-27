@@ -1,0 +1,14 @@
+set receipts
+
+# The reuse attribute (spec 061): a trusted receipt may stand in for the run.
+[reuse]
+lint:
+    @golangci-lint run
+
+[reuse, cache(inputs=["**/*.go"], outputs=["bin/app"])]
+build:
+    @go build -o bin/app .
+
+[private, reuse]
+_vet:
+    @go vet ./...
