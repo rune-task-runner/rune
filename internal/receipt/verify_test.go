@@ -251,3 +251,30 @@ func TestEvaluateSeveralTasks(t *testing.T) {
 		t.Fatalf("verdicts %+v", verdicts)
 	}
 }
+
+func TestJudgeAll(t *testing.T) {
+	key := testKey(t, 1)
+	trusted := []ed25519.PublicKey{key.Public().(ed25519.PublicKey)}
+	test := signed(t, key, passing("a", t0))
+	lint := passing("b", t0)
+	lint.Task = "lint"
+	other := passing("c", t0)
+	other.Project = "sub/Runefile"
+	cands := []Candidate{
+		local(test),
+		{Line: append([]byte(" "), test...), Origin: OriginNote, Name: "note"}, // the same line again
+		local(signed(t, key, lint)),
+		local(signed(t, key, other)),
+		{Line: []byte("not a receipt"), Origin: OriginLocal, Name: "bad.json"},
+	}
+	byTask, problems := judgeAll(cands, trusted, "Runefile", vCommit, vTree)
+	if len(byTask["test"]) != 1 || len(byTask["lint"]) != 1 || len(byTask) != 2 {
+		t.Fatalf("grouped %+v", byTask)
+	}
+	if byTask["test"][0].reason != "" || !byTask["test"][0].matches {
+		t.Fatalf("test judged %+v", byTask["test"][0])
+	}
+	if len(problems) != 1 || problems[0].Origin != "bad.json" || problems[0].Reason != ReasonMalformed {
+		t.Fatalf("problems %+v", problems)
+	}
+}

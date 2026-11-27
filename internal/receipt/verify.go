@@ -94,6 +94,20 @@ type judged struct {
 // of commit, whose tree is tree. Only a receipt signed by a trusted key
 // counts. Each task gets one verdict, in the order given, each named once.
 func Evaluate(cands []Candidate, trusted []ed25519.PublicKey, project string, tasks []string, commit, tree string) ([]Verdict, []Problem) {
+	byTask, problems := judgeAll(cands, trusted, project, commit, tree)
+	var verdicts []Verdict
+	for _, task := range tasks {
+		if slices.ContainsFunc(verdicts, func(v Verdict) bool { return v.Task == task }) {
+			continue
+		}
+		verdicts = append(verdicts, verdictOf(task, byTask[task]))
+	}
+	return verdicts, problems
+}
+
+// judgeAll judges each distinct candidate against tree and groups those of
+// project by task. A candidate that names no task is a problem.
+func judgeAll(cands []Candidate, trusted []ed25519.PublicKey, project, commit, tree string) (map[string][]judged, []Problem) {
 	var problems []Problem
 	byTask := map[string][]judged{}
 	var seen [][]byte
@@ -115,14 +129,7 @@ func Evaluate(cands []Candidate, trusted []ed25519.PublicKey, project string, ta
 		}
 		byTask[j.r.Task] = append(byTask[j.r.Task], j)
 	}
-	var verdicts []Verdict
-	for _, task := range tasks {
-		if slices.ContainsFunc(verdicts, func(v Verdict) bool { return v.Task == task }) {
-			continue
-		}
-		verdicts = append(verdicts, verdictOf(task, byTask[task]))
-	}
-	return verdicts, problems
+	return byTask, problems
 }
 
 // judge reads one envelope. A problem is returned for one that names no

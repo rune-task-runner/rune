@@ -6,8 +6,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/pflag"
 
@@ -211,7 +213,13 @@ func TestEveryRootFlagConflictsWithSelfUpgrade(t *testing.T) {
 			return
 		}
 		args := []string{"--self-upgrade", "--" + f.Name}
-		if f.Value.Type() != "bool" {
+		switch f.Value.Type() {
+		case "bool":
+		case "duration":
+			// An invalid value is a parse error, which the probe leaves to
+			// the real dispatch.
+			args = append(args, "1h")
+		default:
 			args = append(args, "x")
 		}
 		if err := selfUpgradeConflict(args); err == nil {
@@ -288,5 +296,52 @@ func TestRootTakesReceiptKeyOutOfEnvironment(t *testing.T) {
 	}
 	if opts.Commit != "abc" {
 		t.Errorf("Commit = %q", opts.Commit)
+	}
+}
+
+// Spec 061: the reuse flags reach the options on the run command and on
+// ci run; --reuse-max-age needs --reuse-key and a positive duration; the
+// agent servers do not take them.
+func TestReuseFlags(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Runefile"), []byte("build:\n    @echo hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	exec := func(args ...string) (cli.Options, error) {
+		var opts cli.Options
+		root := newRootCmd(&opts, "1.2.3", "abc", nil)
+		addCommands(root, &opts)
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(args)
+		return opts, root.ExecuteContext(context.Background())
+	}
+
+	var opts cli.Options
+	newRootCmd(&opts, "1.2.3", "abc", nil)
+	if opts.ReuseMaxAge != 24*time.Hour || opts.ReuseKeys != nil {
+		t.Errorf("defaults: %v %v", opts.ReuseMaxAge, opts.ReuseKeys)
+	}
+	for _, prefix := range [][]string{nil, {"ci", "run"}} {
+		args := append(slices.Clone(prefix), "--reuse-key", "a.pub", "--reuse-key", "b.pub", "--reuse-max-age", "2h", "build")
+		got, _ := exec(args...)
+		if !slices.Equal(got.ReuseKeys, []string{"a.pub", "b.pub"}) || got.ReuseMaxAge != 2*time.Hour {
+			t.Errorf("%v: keys %v age %v", prefix, got.ReuseKeys, got.ReuseMaxAge)
+		}
+		for flags, want := range map[string]string{
+			"--reuse-max-age 1h":                    "--reuse-max-age needs --reuse-key",
+			"--reuse-key a.pub --reuse-max-age 0":   "--reuse-max-age must be a positive duration, such as 24h",
+			"--reuse-key a.pub --reuse-max-age -1h": "--reuse-max-age must be a positive duration, such as 24h",
+		} {
+			args := append(slices.Clone(prefix), strings.Fields(flags)...)
+			_, err := exec(append(args, "build")...)
+			if cli.CodeFor(err) != cli.ExitUsage || err.Error() != want {
+				t.Errorf("%v %s: %v", prefix, flags, err)
+			}
+		}
+	}
+	if _, err := exec("serve", "--reuse-key", "a.pub"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Errorf("serve took --reuse-key: %v", err)
 	}
 }

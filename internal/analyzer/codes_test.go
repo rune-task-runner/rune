@@ -42,6 +42,7 @@ func TestSemanticCodes(t *testing.T) {
 		{"duplicate parameter", "greet a a:\n    @echo hi\n", diag.CodeDuplicateParam, diag.Error},
 		{"dependency cycle", "c: c\n    @echo c\n", diag.CodeDependencyCycle, diag.Error},
 		{"unknown parameter type", "deploy env:bogus:\n    @echo {{env}}\n", diag.CodeUnknownParamType, diag.Error},
+		{"reuse with confirm", "[reuse, confirm]\nwipe:\n    @echo w\n", diag.CodeInvalidReuse, diag.Error},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

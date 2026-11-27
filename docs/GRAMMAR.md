@@ -69,6 +69,7 @@ AttrItem    = "private"
             | "plan" "(" PlanArg { "," PlanArg } ")"     (* the task makes a plan that Rune stores *)
             | "agent-output" "(" OutputArg { "," OutputArg } ")"  (* lines an agent's result keeps *)
             | "agent-summary"                             (* a failure summary for agents *)
+            | "reuse"                                     (* a trusted receipt may stand in for the run *)
             | "applies" "(" StringLit ")"                (* applies the named task's stored plan *)
             | "cache" "(" "inputs" "=" List [ "," "outputs" "=" List ] ")" ;
 AllowPred   = Name "=" StringLit ;               (* a parameter and the one value an agent may run with *)
@@ -171,6 +172,28 @@ With it, every task Rune runs in run mode, from the command line, `rune ci run` 
 agent's tool call, writes a signed receipt to `.rune/receipts/`. Like the other boolean
 settings it is written bare. Without it nothing is recorded. See
 [Receipts](how-to/receipts.md).
+
+## Reuse attribute
+
+`[reuse]` takes no argument. It is the author's statement that the task's result depends
+only on the files git does not ignore, its arguments, and Rune's version, OS and
+architecture. With `--reuse-key FILE` on the command line, Rune may then skip the task when
+a receipt signed by a key in FILE shows it passed recently on exactly these files. Without
+the flag it changes nothing.
+
+```rune
+set receipts
+
+# Run the tests.
+[reuse]
+test:
+    go test ./...
+```
+
+`[reuse]` cannot be combined with `[confirm]`, `[plan]`, `[applies]` or `[network]`, or be
+used on an `agent` task, and a task has at most one (`RUNE2022`). `[reuse(...)]` with an
+argument is a syntax error. See
+[Reuse evidence in CI](how-to/receipts.md#reuse-evidence-in-ci).
 
 ## MCP output limit setting
 

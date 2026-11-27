@@ -1,0 +1,10 @@
+set receipts
+
+# The reuse attribute (spec 061).
+[reuse , private]
+_lint:
+    @golangci-lint run
+
+[cache(inputs=["**/*.go"]),reuse]
+test:
+    @go test ./...

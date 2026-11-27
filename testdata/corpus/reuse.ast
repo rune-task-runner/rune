@@ -1,0 +1,17 @@
+File
+  Setting receipts = true
+  Task lint
+    doc: "The reuse attribute (spec 061): a trusted receipt may stand in for the run."
+    Attr reuse
+    Body
+      @"golangci-lint run"
+  Task build
+    Attr reuse
+    Attr cache(inputs=["**/*.go"], outputs=["bin/app"])
+    Body
+      @"go build -o bin/app ."
+  Task _vet
+    Attr private
+    Attr reuse
+    Body
+      @"go vet ./..."

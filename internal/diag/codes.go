@@ -50,6 +50,9 @@ const (
 	// missing argument, a number of lines that is not 1 to 10000, or a second
 	// attribute on the task (spec 057).
 	CodeInvalidAgentOutput = "RUNE2021"
+	// Invalid [reuse]: with [confirm], [plan], [applies] or [network], on an
+	// agent task, or a second attribute on the task (spec 061).
+	CodeInvalidReuse = "RUNE2022"
 
 	// Project diagnostics (RUNE3xxx) — always error severity.
 	CodeUnresolvedImport   = "RUNE3001"

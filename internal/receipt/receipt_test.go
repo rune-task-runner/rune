@@ -53,7 +53,7 @@ func TestReceiptJSONOmitsEmptyOptionalFields(t *testing.T) {
 	}
 	got := string(data)
 	for _, absent := range []string{
-		"parentInvocation", "argumentsRedacted", "related", "exitCode", "source",
+		"parentInvocation", "argumentsRedacted", "overrides", "related", "exitCode", "source",
 		"uncoveredInputs", "outputs", "claims",
 	} {
 		if strings.Contains(got, `"`+absent+`"`) {
@@ -70,6 +70,7 @@ func TestReceiptJSONFieldOrder(t *testing.T) {
 	r.ParentInvocation = "p"
 	r.Arguments = []Arg{{Name: "a", Values: []string{"1"}}}
 	r.ArgumentsRedacted = true
+	r.Overrides = []string{"a", "b"}
 	r.Related = &Related{Dependencies: []string{"d"}, Follows: "f", FailureOf: "x", Reuses: "r"}
 	code := 0
 	r.ExitCode = &code
@@ -83,9 +84,12 @@ func TestReceiptJSONFieldOrder(t *testing.T) {
 	}
 	order := []string{
 		"version", "id", "invocation", "parentInvocation", "task", "arguments", "argumentsRedacted",
-		"role", "related", "status", "exitCode", "startedAt", "finishedAt", "durationMs", "rune",
+		"overrides", "role", "related", "status", "exitCode", "startedAt", "finishedAt", "durationMs", "rune",
 		"executor", "definition", "project", "runefiles", "source", "uncoveredInputs", "outputs",
 		"channel", "claims",
+	}
+	if !strings.Contains(string(data), `"argumentsRedacted":true,"overrides":["a","b"],`) {
+		t.Fatalf("overrides not right after argumentsRedacted: %s", data)
 	}
 	last := -1
 	for _, key := range order {
@@ -150,6 +154,7 @@ func TestStatementWithoutProjectEntry(t *testing.T) {
 
 func TestParseStatement(t *testing.T) {
 	r := minimalReceipt()
+	r.Overrides = []string{"mode"}
 	data, err := Statement(r)
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +163,7 @@ func TestParseStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != r.ID || got.Task != r.Task || !got.StartedAt.Equal(r.StartedAt) {
+	if got.ID != r.ID || got.Task != r.Task || !got.StartedAt.Equal(r.StartedAt) || len(got.Overrides) != 1 || got.Overrides[0] != "mode" {
 		t.Fatalf("round trip lost data: %+v", got)
 	}
 	for name, bad := range map[string]string{

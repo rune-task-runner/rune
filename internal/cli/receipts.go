@@ -236,6 +236,7 @@ type recorder struct {
 	invocation string
 	parent     string
 	claims     *receipt.Claims
+	overrides  []string // the names overridden on the command line (spec 061)
 
 	mu      sync.Mutex
 	byKey   map[string]string // the last receipt of a task and its arguments
@@ -243,9 +244,9 @@ type recorder struct {
 	failed  map[string]string // a task name to the receipt of its last failed body
 }
 
-func newRecorder(s *receiptSigner, channel, invocation, parent string, claims *receipt.Claims) *recorder {
+func newRecorder(s *receiptSigner, channel, invocation, parent string, claims *receipt.Claims, overrides []string) *recorder {
 	return &recorder{
-		signer: s, channel: channel, invocation: invocation, parent: parent, claims: claims,
+		signer: s, channel: channel, invocation: invocation, parent: parent, claims: claims, overrides: overrides,
 		byKey: map[string]string{}, follows: map[string]string{}, failed: map[string]string{},
 	}
 }
@@ -326,14 +327,17 @@ func (e *engine) beginReceipt(task *ast.Task, params eval.Args, role, failureOf 
 	return r
 }
 
-// bodyStarting takes the snapshot before the body, right before it starts.
-// inputs are the declared [cache] inputs the cache matched.
+// bodyStarting takes the snapshot before the body, right before it starts,
+// unless reuse took it a moment ago (spec 061). inputs are the declared
+// [cache] inputs the cache matched.
 func (e *engine) bodyStarting(r *receiptRun, inputs []string) {
 	if r == nil {
 		return
 	}
 	r.started, r.inputs = true, inputs
-	e.takeBefore(r)
+	if !r.snapped {
+		e.takeBefore(r)
+	}
 }
 
 // cachedHit marks a run that a cache hit skipped, and the run it reuses.
@@ -376,6 +380,7 @@ func (e *engine) finishReceipt(r *receiptRun, runErr error) {
 		Invocation:       rec.invocation,
 		ParentInvocation: rec.parent,
 		Task:             r.task.Name,
+		Overrides:        rec.overrides,
 		Role:             r.role,
 		StartedAt:        r.start.UTC(),
 		FinishedAt:       finished.UTC(),
@@ -481,25 +486,10 @@ func (e *engine) uncoveredInputs(inputs []string, mask func(string) string) ([]s
 	return out, nil
 }
 
-// receiptOutputs digests the declared [cache] outputs of a passed run.
+// receiptOutputs digests the declared [cache] outputs of a passed run, and
+// writes their list next to the receipt when it is too long for it.
 func (e *engine) receiptOutputs(r *receiptRun, mask func(string) string) (*receipt.Outputs, error) {
-	attr := r.task.Attr(ast.AttrCache)
-	if attr == nil {
-		return nil, nil
-	}
-	spec := e.cacheSpec(r.task, r.params, attr)
-	rel, err := cache.OutputFiles(e.root, spec.Outputs)
-	if err != nil {
-		return nil, err
-	}
-	files, err := receipt.OutputFiles(e.root, rel)
-	if err != nil {
-		return nil, err
-	}
-	for i := range files {
-		files[i].Path = mask(files[i].Path)
-	}
-	out, manifest, err := receipt.BuildOutputs(files)
+	out, manifest, err := e.currentOutputs(r.task, r.params, mask)
 	if err != nil || manifest == nil {
 		return out, err
 	}
@@ -509,6 +499,30 @@ func (e *engine) receiptOutputs(r *receiptRun, mask func(string) string) (*recei
 	}
 	out.Manifest = name
 	return out, nil
+}
+
+// currentOutputs digests the declared [cache] outputs of task as they are
+// now, as a passed run's receipt records them, and writes nothing. The
+// manifest is the list to write when it does not fit in the receipt. Nil
+// without [cache] or without output files.
+func (e *engine) currentOutputs(task *ast.Task, params eval.Args, mask func(string) string) (*receipt.Outputs, []byte, error) {
+	attr := task.Attr(ast.AttrCache)
+	if attr == nil {
+		return nil, nil, nil
+	}
+	spec := e.cacheSpec(task, params, attr)
+	rel, err := cache.OutputFiles(e.root, spec.Outputs)
+	if err != nil {
+		return nil, nil, err
+	}
+	files, err := receipt.OutputFiles(e.root, rel)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range files {
+		files[i].Path = mask(files[i].Path)
+	}
+	return receipt.BuildOutputs(files)
 }
 
 // maskFunc is the engine's secret mask, or one that changes nothing.
@@ -556,6 +570,17 @@ func receiptChannel(opts Options, agentRun bool) string {
 		return receipt.ChannelAgent
 	}
 	return receipt.ChannelCLI
+}
+
+// overrideNames are the names of the overridden variables, masked and
+// sorted, never their values. Nil when there are none.
+func overrideNames(overrides map[string]string, mask func(string) string) []string {
+	var names []string
+	for name := range overrides {
+		names = append(names, mask(name))
+	}
+	slices.Sort(names)
+	return names
 }
 
 // envClaims are the claim variables that are set, masked. Nil when none is.

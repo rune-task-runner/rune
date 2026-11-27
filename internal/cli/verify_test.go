@@ -342,3 +342,35 @@ func TestShortCommit(t *testing.T) {
 		t.Fatal("shortCommit")
 	}
 }
+
+func TestPublicKeyFiles(t *testing.T) {
+	dir := t.TempDir()
+	a := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{1}, ed25519.SeedSize))
+	b := ed25519.NewKeyFromSeed(bytes.Repeat([]byte{2}, ed25519.SeedSize))
+	write := func(name string, data []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	fa := write("a.pub", receipt.PublicPEM(a.Public().(ed25519.PublicKey)))
+	fb := write("b.pub", receipt.PublicPEM(b.Public().(ed25519.PublicKey)))
+	keys, err := publicKeyFiles("--reuse-key", []string{fa, fb})
+	if err != nil || len(keys) != 2 || !keys[0].Equal(a.Public()) || !keys[1].Equal(b.Public()) {
+		t.Fatalf("keys %v err %v", keys, err)
+	}
+	if keys, err := publicKeyFiles("--key", nil); err != nil || keys != nil {
+		t.Fatalf("no files: %v %v", keys, err)
+	}
+	for name, file := range map[string]string{
+		"unreadable": filepath.Join(dir, "missing.pub"),
+		"no key":     write("empty.pub", []byte("not a key\n")),
+	} {
+		_, err := publicKeyFiles("--reuse-key", []string{file})
+		var usage *UsageError
+		if !errors.As(err, &usage) || !strings.HasPrefix(err.Error(), "--reuse-key "+file+": ") {
+			t.Errorf("%s: err %v", name, err)
+		}
+	}
+}

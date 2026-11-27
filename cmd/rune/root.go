@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -94,6 +95,9 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 				}
 				return upgrade(cmd.Context(), opts)
 			}
+			if err := checkReuseFlags(cmd, opts); err != nil {
+				return err
+			}
 			return cli.Run(*opts, args)
 		},
 	}
@@ -123,11 +127,33 @@ func newRootCmd(opts *cli.Options, version, commit string, upgrade upgradeFunc) 
 	f.BoolVar(&opts.ClearCache, "clear-cache", false, "remove the project-local .rune/cache directory")
 	f.BoolVar(&opts.IgnoreVersion, "ignore-version", false, "bypass the Runefile's minimum_version check (prints a warning)")
 	f.BoolVar(&selfUpgrade, "self-upgrade", false, "upgrade this rune to the latest stable release; runs no task")
+	reuseFlags(f, opts)
 	// --color is persistent so every subcommand (analyze, serve, help, …)
 	// inherits the same control — the one gate for all styled surfaces (FR-008).
 	root.PersistentFlags().StringVar(&colorFlag, "color", "auto", "when to colorize output: auto|always|never")
 
 	return root
+}
+
+// reuseFlags adds the flags of receipt reuse (spec 061) to f: the run
+// command and ci run take them, the agent servers do not.
+func reuseFlags(f *pflag.FlagSet, opts *cli.Options) {
+	f.StringArrayVar(&opts.ReuseKeys, "reuse-key", nil, "skip [reuse] tasks that a receipt signed by the key in `FILE` shows passed on these files (repeatable)")
+	f.DurationVar(&opts.ReuseMaxAge, "reuse-max-age", cli.DefaultReuseMaxAge, "the oldest receipt --reuse-key may reuse, as a `DURATION`")
+}
+
+// checkReuseFlags refuses a --reuse-max-age that cannot apply.
+func checkReuseFlags(cmd *cobra.Command, opts *cli.Options) error {
+	if !cmd.Flags().Changed("reuse-max-age") {
+		return nil
+	}
+	if len(opts.ReuseKeys) == 0 {
+		return &cli.UsageError{Err: errors.New("--reuse-max-age needs --reuse-key")}
+	}
+	if opts.ReuseMaxAge <= 0 {
+		return &cli.UsageError{Err: errors.New("--reuse-max-age must be a positive duration, such as 24h")}
+	}
+	return nil
 }
 
 // selfUpgradeConflict reports `--self-upgrade` combined with anything but

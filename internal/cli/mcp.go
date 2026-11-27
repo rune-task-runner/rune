@@ -360,7 +360,9 @@ func (a *mcpAdapter) callRecorder(call *mcpserver.CallAudit) *recorder {
 	if claims.Auth == "" && claims.Client == nil && claims.Env == nil {
 		claims = nil
 	}
-	return newRecorder(a.receipts, receipt.ChannelMCP, invocation, "", claims)
+	// An agent task's adapter carries the overrides of the command line
+	// that started it, and its receipts name them as the run's do.
+	return newRecorder(a.receipts, receipt.ChannelMCP, invocation, "", claims, overrideNames(a.overrides, a.maskText))
 }
 
 // maskText masks the adapter's secrets in s. An adapter built without a mask

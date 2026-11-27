@@ -109,6 +109,7 @@ var builtinAttributes = []Builtin{
 	{Name: "applies", Kind: BuiltinAttribute, Signature: "[applies(\"plan-task\")]", Documentation: "The task applies the stored plan of the named plan task, once, after a person approved that plan. The body reads it from RUNE_PLAN_FILE."},
 	{Name: "agent-output", Kind: BuiltinAttribute, Signature: "[agent-output(head=\"10\", tail=\"50\")]", Documentation: "An agent's result keeps the first head lines (optional) and the last tail lines of each of stdout and stderr, with one line that says what was left out. The command line prints everything."},
 	{Name: "agent-summary", Kind: BuiltinAttribute, Signature: "[agent-summary]", Documentation: "A failed call from an agent gets a short summary after the exit line: the task and step that failed, the reason, and the last lines of output. The command line is unchanged."},
+	{Name: "reuse", Kind: BuiltinAttribute, Signature: "[reuse]", Documentation: "Let rune skip the task when --reuse-key is given and a receipt signed by one of those keys shows it passed, recently, on exactly these files and arguments with this Rune. Its result must depend on nothing else. Needs set receipts."},
 }
 
 // builtinExecutors are the recognized task executors (mirrors runtime.Select).

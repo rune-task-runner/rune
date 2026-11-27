@@ -578,6 +578,19 @@ func TestCIRunKey(t *testing.T) {
 	}
 }
 
+// --key runs no body, so --reuse-key is not used and asks for no receipts.
+func TestCIRunKeyIgnoresReuseKey(t *testing.T) {
+	dir := ciProject(t, map[string]string{"Runefile": ciRunfile, "src/a": "1"})
+	opts, out, errb := ciOpts(dir)
+	opts.ReuseKeys = []string{filepath.Join(dir, "missing.pub")}
+	if err := CIRun(opts, CIRunFlags{Key: true}, []string{"build"}); err != nil {
+		t.Fatalf("%v %s", err, errb.String())
+	}
+	if !keyLine.MatchString(out.String()) {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
 func TestCIRunKeyErrors(t *testing.T) {
 	dir := ciProject(t, map[string]string{"Runefile": ciRunfile})
 	if _, _, err := runCIRun(t, dir, CIRunFlags{Key: true}, "top"); CodeFor(err) != ExitUsage || !strings.Contains(err.Error(), "--key needs a task with [cache]") {

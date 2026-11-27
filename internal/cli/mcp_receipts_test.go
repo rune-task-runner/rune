@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/rune-task-runner/rune/internal/receipt"
@@ -94,5 +95,35 @@ func TestReceiptChannelOfCIRun(t *testing.T) {
 	}
 	if rc := list[0]; rc.Task != "test" || rc.Channel != receipt.ChannelCIRun || rc.Related != nil {
 		t.Fatalf("ci run: %+v", rc)
+	}
+}
+
+// An agent's call has no command-line overrides to record.
+func TestMCPCallRecordsNoOverrides(t *testing.T) {
+	dir := receiptProject(t, channelRunefile, map[string]string{}, true)
+	a, _, err := loadMCPAdapter(context.Background(), Options{Stderr: &bytes.Buffer{}, Version: "1.0.0"}, filepath.Join(dir, "Runefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs, _, _ := auditedServer(t, a, mcpserver.Options{}, nil)
+	callWith(t, cs, "build", nil)
+	for _, rc := range readReceipts(t, dir) {
+		if rc.Overrides != nil {
+			t.Errorf("%s: overrides %v", rc.Task, rc.Overrides)
+		}
+	}
+}
+
+// Spec 061 FR-017: the receipts of an agent task's calls name the overrides
+// of the command line that started it.
+func TestCallRecorderNamesOverrides(t *testing.T) {
+	clearClaimVars(t)
+	a := &mcpAdapter{receipts: &receiptSigner{}, overrides: map[string]string{"B": "1", "A": "2"}}
+	if rec := a.callRecorder(nil); !slices.Equal(rec.overrides, []string{"A", "B"}) {
+		t.Fatalf("overrides %q", rec.overrides)
+	}
+	a.overrides = map[string]string{}
+	if rec := a.callRecorder(nil); rec.overrides != nil {
+		t.Fatalf("no overrides: %q", rec.overrides)
 	}
 }
