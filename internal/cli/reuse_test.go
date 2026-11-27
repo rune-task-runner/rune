@@ -411,11 +411,9 @@ func TestNoteLinesCachedPerTree(t *testing.T) {
 // A receipts directory that cannot be read is said, and the body runs.
 func TestTryReuseUnreadableReceipts(t *testing.T) {
 	e, stderr := reuseEngine(t, false)
-	s := e.receipts.signer
-	s.dir = filepath.Join(s.root, "not-a-dir")
-	if err := os.WriteFile(s.dir, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// A NUL byte makes the path invalid on every system; a file in place of
+	// the directory would read as missing on Windows.
+	e.receipts.signer.dir = filepath.Join(e.receipts.signer.root, "bad\x00dir")
 	task := e.tasks["check"]
 	if e.tryReuse(task, eval.Args{}, e.beginReceipt(task, eval.Args{}, receipt.RoleTask, ""), nil, nil) {
 		t.Fatal("reused without candidates")
